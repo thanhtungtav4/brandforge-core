@@ -19,16 +19,41 @@ distilled traits and the measured fingerprint, never their passages.
 
 Persistence is NOT here: all style-profile file IO lives in loaders.py
 (load_style_profile / list_style_profiles / save_style_profile).
+
+ALGORITHM VERSIONING (core-completion round, evaluation R4): every
+profile built by the current code carries `algorithm_version` plus a
+`consistency_detail` block (the per-sample key metrics behind its
+consistency warnings). A stored profile whose stamp predates the
+current algorithm is REFRESHED on load (refresh_profile): its
+sample-count and consistency warnings are recomputed from the stored
+evidence instead of being served frozen — a warning written by an
+older, buggier fingerprint must not outlive the fix. When the stored
+evidence cannot re-verify a consistency warning (profiles built
+before per-sample metrics were stored), the warning is DROPPED and
+the refresh says so; rebuild from the samples for a fresh check.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import re
 import statistics
 import unicodedata
 from collections import Counter
 
-from .linter import split_sentences
+from .linter import is_table_like, split_sentences
+
+#: Version of the fingerprint/consistency algorithm that built (or
+#: last refreshed) a profile. Bump when fingerprint or warning
+#: semantics change; refresh_profile migrates older profiles on load.
+ALGORITHM_VERSION = 2
+
+#: Type-token ratio is computed on at most this many leading tokens:
+#: raw TTR falls mechanically as a text grows, so an uncapped TTR
+#: makes a 200-word draft and a 2,000-word profile sample
+#: incomparable (evaluation R4). The cap makes the metric a property
+#: of the writing, not of the sample size, beyond the window.
+TTR_WINDOW_TOKENS = 500
 
 # ---------------------------------------------------------------------------
 # Constants (documented thresholds — tune here, nowhere else)
@@ -108,8 +133,14 @@ def fingerprint(text: str) -> dict:
     (statistics.pstdev) so a single-sentence text has stdev 0.
     Paragraphs split on blank lines; when the text has no blank lines,
     sentences are grouped into chunks of 3 as pseudo-paragraphs.
+
+    Sentence statistics ignore table-like lines (evaluation R4): a
+    markdown price table's rows are not sentences, and counting them
+    corrupted the median/stdev of any sample containing one. The
+    type-token ratio is computed on the first TTR_WINDOW_TOKENS
+    tokens (see the constant's note).
     """
-    sentences = split_sentences(text)
+    sentences = [s for s in split_sentences(text) if not is_table_like(s)]
     lengths = [len(s.split()) for s in sentences]
     ws_tokens = text.split()
     word_count = len(ws_tokens)
@@ -161,7 +192,8 @@ def fingerprint(text: str) -> dict:
 
     content_words = [t for t in tokens if t not in STOPWORDS and not t.isdigit()]
     top_words = [{"word": w, "count": c} for w, c in Counter(content_words).most_common(15)]
-    ttr = _round(len(set(tokens)) / len(tokens)) if tokens else 0.0
+    window = tokens[:TTR_WINDOW_TOKENS]
+    ttr = _round(len(set(window)) / len(window)) if window else 0.0
 
     return {
         "word_count": word_count,
@@ -236,10 +268,35 @@ def analyze_samples(samples: list[str]) -> dict:
             f"total words {total_words} < {MIN_RELIABLE_WORDS} — "
             f"fingerprint may be unreliable")
 
+    slim = [{name: _metric(fp, name) for name in _KEY_METRICS}
+            for fp in per_sample]
+    divergence, divergence_warnings = _divergence(slim)
+    warnings += divergence_warnings
+
+    return {"sample_count": len(samples),
+            "per_sample": per_sample,
+            "fingerprint": aggregate,
+            "consistency": {"divergence_cv": divergence,
+                            "warnings": warnings},
+            "consistency_detail": {"divergence_cv": divergence,
+                                   "per_sample": slim}}
+
+
+def _divergence(per_sample_metrics: list[dict]) -> tuple[dict, list[str]]:
+    """The consistency judgement over per-sample key metrics, shared by
+    analyze_samples and refresh_profile so a refreshed profile is
+    judged by EXACTLY the rule that built it.
+
+    CV rule when the mean is meaningful; near a zero mean CV explodes
+    on agreement (calibration F2), so divergence is judged on the
+    ABSOLUTE spread instead — real disagreement, not division by
+    almost-nothing.
+    """
     divergence: dict[str, float] = {}
-    if len(per_sample) >= 2:
+    warnings: list[str] = []
+    if len(per_sample_metrics) >= 2:
         for name in _KEY_METRICS:
-            values = [_metric(fp, name) for fp in per_sample]
+            values = [m[name] for m in per_sample_metrics]
             mean = statistics.fmean(values)
             if mean > 0:
                 divergence[name] = _round(statistics.pstdev(values) / mean)
@@ -250,19 +307,12 @@ def analyze_samples(samples: list[str]) -> dict:
                         f"(CV {divergence[name]} > {DIVERGENCE_CV}) — "
                         f"possibly mixed authors")
             elif statistics.pstdev(values) > DIVERGENCE_ABS_PSTDEV:
-                # Near-zero mean: CV would explode on agreement (F2), so
-                # only an absolute spread this large counts as divergence.
                 warnings.append(
                     f"samples diverge on {name} "
                     f"(spread {round(statistics.pstdev(values), 2)} with "
                     f"near-zero mean {round(mean, 2)}) — "
                     f"possibly mixed authors")
-
-    return {"sample_count": len(samples),
-            "per_sample": per_sample,
-            "fingerprint": aggregate,
-            "consistency": {"divergence_cv": divergence,
-                            "warnings": warnings}}
+    return divergence, warnings
 
 
 # ---------------------------------------------------------------------------
@@ -360,10 +410,12 @@ def build_profile(name: str, samples: list[str], qualitative: dict | None = None
         "id": pid,
         "name": name,
         "brand_id": brand_id,
+        "algorithm_version": ALGORITHM_VERSION,
         "created_from": {"sample_count": len(samples),
                          "total_words": analysis["fingerprint"]["word_count"]},
         "fingerprint": analysis["fingerprint"],
         "consistency_warnings": analysis["consistency"]["warnings"],
+        "consistency_detail": analysis["consistency_detail"],
         "qualitative": _validate_qualitative(qualitative),
         "exemplars": exemplars,
         "excerpts_note": ("excerpts stored from the samples (user's own / "
@@ -372,6 +424,59 @@ def build_profile(name: str, samples: list[str], qualitative: dict | None = None
                           "traits only (default; use store_excerpts=True "
                           "only for your own/licensed samples)"),
     }
+
+
+def refresh_profile(profile: dict) -> dict:
+    """Bring a stored profile's WARNINGS up to the current algorithm.
+
+    A profile already stamped with ALGORITHM_VERSION is returned
+    unchanged. An older (or unstamped) profile is copied and:
+    - its sample-count / total-words warnings are recomputed from
+      `created_from` (the same strings analyze_samples produces);
+    - its divergence warnings are recomputed from the stored
+      per-sample metrics when the profile carries them
+      (`consistency_detail`, stored since ALGORITHM_VERSION 2);
+    - when it carries NO per-sample metrics, its divergence warnings
+      cannot be re-verified and are DROPPED, with a note saying so —
+      serving a warning written by a fixed bug (the shipped CNM
+      profile's pre-fix "mixed authors") is worse than dropping it.
+    Other warnings (e.g. the duplicate-sample note, a build-time fact)
+    pass through untouched. The fingerprint itself is NOT recomputed:
+    the samples are not stored, by design (copyright rule).
+    """
+    if not isinstance(profile, dict):
+        return profile
+    if profile.get("algorithm_version") == ALGORITHM_VERSION:
+        return profile
+    refreshed = copy.deepcopy(profile)
+    old = refreshed.get("consistency_warnings", [])
+    kept = [w for w in old
+            if not (w.startswith("only ") or w.startswith("total words ")
+                    or w.startswith("samples diverge on "))]
+    created = refreshed.get("created_from", {})
+    n = created.get("sample_count")
+    if isinstance(n, int) and n < 3:
+        kept.append(f"only {n} sample(s) — {RECOMMENDED_SAMPLES} samples "
+                    f"from ONE author recommended")
+    total_words = created.get("total_words")
+    if isinstance(total_words, int) and total_words < MIN_RELIABLE_WORDS:
+        kept.append(f"total words {total_words} < {MIN_RELIABLE_WORDS} — "
+                    f"fingerprint may be unreliable")
+    detail = refreshed.get("consistency_detail") or {}
+    per_sample = detail.get("per_sample") or []
+    if len(per_sample) >= 2:
+        _, divergence_warnings = _divergence(per_sample)
+        kept += divergence_warnings
+    elif any(w.startswith("samples diverge on ") for w in old):
+        kept.append(
+            "consistency warnings from an older algorithm version "
+            "could not be re-verified (no stored per-sample metrics) "
+            "and were dropped — rebuild the profile from its samples "
+            "for a fresh consistency check")
+    refreshed["consistency_warnings"] = kept
+    refreshed["warnings_refreshed_from"] = profile.get("algorithm_version")
+    refreshed["algorithm_version"] = ALGORITHM_VERSION
+    return refreshed
 
 
 # ---------------------------------------------------------------------------
@@ -515,6 +620,11 @@ def style_match(text: str, profile: dict) -> dict:
     short text's score at SHORT_TEXT_SCORE_CAP when two or more density
     metrics passed only on the widened ranges.
     """
+    # A stored profile from an older algorithm version is refreshed
+    # first, so its warnings (surfaced by callers from the profile they
+    # passed in — here, the refreshed copy's judgement is what the
+    # metrics below are compared under) are current, never frozen.
+    profile = refresh_profile(profile)
     draft_fp = fingerprint(text)
     prof_fp = profile.get("fingerprint", {})
     word_count = draft_fp["word_count"]

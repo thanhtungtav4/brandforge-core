@@ -88,8 +88,138 @@ def load_brand(path: Path | None = None) -> dict:
     return yaml.safe_load((path or DATA_DIR / "brand_mocbrew.yaml").read_text(encoding="utf-8"))
 
 
-def load_facts(path: Path | None = None) -> dict:
-    return json.loads((path or DATA_DIR / "facts_lorebook.json").read_text(encoding="utf-8"))
+# --- Facts profiles (per-brand fact bases) ---
+# The fact base is PER-BRAND (core-completion round): fact_check used
+# to be hardwired to Mộc Brew's facts file, so truthful content for
+# any second brand could never pass (the Cao Nguyên Mộc calibration:
+# its true 89.000đ price failed as wrong_price against Mộc Brew's
+# 185.000đ). Facts documents now live in a store keyed by brand_id —
+# data/facts_profiles/<brand-id>.json, the same stored-profile pattern
+# as style/quality profiles; tests point
+# CONTENT_CORE_FACTS_PROFILES_DIR at a tmp dir. The shipped
+# data/facts_lorebook.json remains the moc-brew fallback when no
+# stored moc-brew profile exists (byte-equivalent behaviour).
+
+def facts_profiles_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_FACTS_PROFILES_DIR")
+    return Path(override) if override else DATA_DIR / "facts_profiles"
+
+
+def _facts_profile_path(brand_id: str) -> Path:
+    return facts_profiles_dir() / f"{stored_file_stem(brand_id)}.json"
+
+
+def validate_facts(doc: dict) -> dict:
+    """Schema-check a facts document (the save_facts discipline, same
+    as save_brand_draft's: checked BEFORE anything is written).
+    Required: brand_id; facts.price (price_vnd_per_250g positive int
+    OR a price_display containing digits); facts.pack_weight_g > 0;
+    facts.origins a non-empty list of names. Optional:
+    known_prices_vnd (verified prices beyond the primary pack),
+    pack_weights_g (the brand's real pack sizes), delivery_days,
+    roast_weekday, and lorebook `entries` (dicts with id + content).
+    Raises ValueError with a specific message; returns the doc."""
+    if not isinstance(doc, dict):
+        raise ValueError("facts document must be an object")
+    brand_id = doc.get("brand_id")
+    if not isinstance(brand_id, str) or not brand_id.strip():
+        raise ValueError("facts document needs a non-empty brand_id")
+    facts = doc.get("facts")
+    if not isinstance(facts, dict):
+        raise ValueError("facts document needs a 'facts' object")
+    price = facts.get("price_vnd_per_250g")
+    display = facts.get("price_display")
+    if not (isinstance(price, int) and not isinstance(price, bool) and price > 0) \
+            and not (isinstance(display, str) and any(c.isdigit() for c in display)):
+        raise ValueError(
+            "facts.price: give price_vnd_per_250g (positive int) or a "
+            "price_display containing the amount")
+    weight = facts.get("pack_weight_g")
+    if not (isinstance(weight, (int, float)) and not isinstance(weight, bool)
+            and weight > 0):
+        raise ValueError("facts.pack_weight_g must be a positive number")
+    origins = facts.get("origins")
+    if not (isinstance(origins, list) and origins
+            and all(isinstance(o, str) and o.strip() for o in origins)):
+        raise ValueError("facts.origins must be a non-empty list of origin names")
+    for key in ("known_prices_vnd",):
+        values = facts.get(key)
+        if values is not None and not (
+                isinstance(values, list)
+                and all(isinstance(v, int) and not isinstance(v, bool) and v > 0
+                        for v in values)):
+            raise ValueError(f"facts.{key} must be a list of positive ints")
+    weights = facts.get("pack_weights_g")
+    if weights is not None and not (
+            isinstance(weights, list) and weights
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                    and v > 0 for v in weights)):
+        raise ValueError("facts.pack_weights_g must be a non-empty list of positive numbers")
+    for key in ("delivery_days", "roast_weekday"):
+        if key in facts and not isinstance(facts[key], str):
+            raise ValueError(f"facts.{key} must be a string when present")
+    entries = doc.get("entries")
+    if entries is not None:
+        if not isinstance(entries, list) or not all(
+                isinstance(e, dict) and e.get("id") and e.get("content")
+                for e in entries):
+            raise ValueError("entries must be a list of objects with id and content")
+    return doc
+
+
+def save_facts(doc: dict) -> dict:
+    """Validate + persist a facts document, keyed by its brand_id
+    (atomic write, like every stored profile). Returns the doc."""
+    validate_facts(doc)
+    atomic_write_text(_facts_profile_path(doc["brand_id"]),
+                      json.dumps(doc, ensure_ascii=False, indent=2))
+    return doc
+
+
+def load_facts_profile(brand_id: str) -> dict | None:
+    """Return the stored facts document for a brand, or None."""
+    path = _facts_profile_path(brand_id)
+    if not path.exists():
+        return None
+    return _load_json_file(path)
+
+
+def list_facts_profiles() -> list[dict]:
+    """Summaries of every stored facts profile: brand_id, price."""
+    d = facts_profiles_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        out.append({"brand_id": doc.get("brand_id", path.stem),
+                    "price_display": doc.get("facts", {}).get("price_display", ""),
+                    "simulated": doc.get("simulated", False)})
+    return out
+
+
+def load_facts(brand_id: str = "moc-brew", path: Path | None = None) -> dict:
+    """Resolve the fact base for a brand.
+
+    `path` (explicit file) wins — the legacy single-file load. Otherwise
+    the stored facts profile for `brand_id`; for "moc-brew" with no
+    stored profile, the shipped data/facts_lorebook.json. An unknown
+    brand_id raises ValueError: NEVER a silent fallback to another
+    brand's facts — a wrong fact base is worse than no fact base."""
+    if path is not None:
+        return _load_json_file(path)
+    stored = load_facts_profile(brand_id)
+    if stored is not None:
+        return stored
+    if brand_id == "moc-brew":
+        return _load_json_file(DATA_DIR / "facts_lorebook.json")
+    raise ValueError(
+        f"no facts stored for brand_id {brand_id!r} — save a facts "
+        f"profile first (save_facts); refusing to fall back to "
+        f"another brand's facts")
 
 
 # --- Layer 4: Craft & Domain Library (separate from Persona/Brand/Facts) ---

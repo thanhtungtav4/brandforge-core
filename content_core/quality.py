@@ -46,6 +46,7 @@ import json
 from .craft import craft_check
 from .fact_check import check_draft
 from .linter import lint_draft
+from .loaders import banned_terms as _brand_banned_terms
 from .loaders import load_quality_profile
 from .seo import seo_pass
 from .style import style_match
@@ -276,13 +277,18 @@ def evaluate_quality(draft, fmt: str, profile: dict, judged: dict | None,
             brand["voice"]["sentence_rules"]["max_sentence_words"])
     except (KeyError, TypeError, ValueError):
         max_sentence_words = None
+    try:
+        quality_banned_terms = _brand_banned_terms(brand)
+    except (KeyError, TypeError):
+        quality_banned_terms = None
     measured: dict[str, tuple[float, dict]] = {
         "facts": _facts_score(sections, facts, brand),
         "voice": _voice_score(sections, fmt, brand, style_profile),
         "clarity": (float(craft_check(
             "\n\n".join(s.get("text", "") for s in sections), fmt,
             brand_id=brand_id,
-            max_sentence_words=max_sentence_words)["score"]), {}),
+            max_sentence_words=max_sentence_words,
+            banned_terms=quality_banned_terms)["score"]), {}),
         "seo": _seo_score(sections, brief),
     }
 

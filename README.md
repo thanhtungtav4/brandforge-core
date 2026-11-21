@@ -631,7 +631,7 @@ any host app's model can be the writer; the core stays the referee.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Tools (29)
+### Tools (31)
 
 | Tool | What it does |
 |---|---|
@@ -653,7 +653,9 @@ any host app's model can be the writer; the core stays the referee.
 | `save_section(draft_id, section_id, heading, text, …)` | Save/overwrite ONE section; rewriting gate-flagged sections counts toward the max-2 rewrite budget |
 | `get_draft(draft_id)` | Full stored draft state incl. gate history |
 | `brand_check(text?, format?, draft_id?)` | Deterministic brand linter + score on a text or a whole draft |
-| `fact_check(text?, draft_id?)` | Prices/numbers vs facts file; `[NEEDS SOURCE]` claims flagged, unmarked unsupported claims block |
+| `fact_check(text?, draft_id?, brand_id?)` | Prices/numbers vs the ACTIVE brand's fact base; `[NEEDS SOURCE]` claims flagged, unmarked unsupported claims block. Brand resolution: `brand_id` → draft's `brief.brand_id` → server brand; an unknown brand is a structured error, never a check against another brand's facts |
+| `get_facts(brand_id?)` | The per-brand fact base (default moc-brew; `''` lists the stored facts profiles) |
+| `save_facts(brand_id, facts)` | Validate + persist a brand's fact base (schema-checked, atomic write — same discipline as `save_brand_draft`) |
 | `seo_check(draft_id?, title?, keyword?, topic?)` | Title / meta / headings / keyword coverage |
 | `final_gate(draft_id, quality_profile?, judged_scores?)` | THE shared gate (`gates.evaluate_gate`, same as the graph): PASS only if brand ≥85 AND 0 banned AND 0 unflagged fact issues AND no empty sections AND (blog/product only) craft ≥70 AND, when activated, the Quality Profile passes; returns the Layer 4 `craft` report and records `craft_score`/`craft_blocking` in `gate_history` — craft **blocks** for blog/product, advisory for social/email/comparison; when the brief carries `style_profile_id`, also returns an advisory `style_match` report (recorded as `style_score`, never blocking); returns exactly which sections to rewrite |
 | `get_quality_profile(format_or_id)` | Quality Profile: a format name → the shipped preset; a saved custom id → that profile ({weights sum 100, floors, pass_total}) |

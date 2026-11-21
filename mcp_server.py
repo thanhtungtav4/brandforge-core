@@ -24,9 +24,11 @@ Test: .venv/bin/python test_mcp_client.py   (stdio, end-to-end)
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -49,8 +51,12 @@ from content_core.graph import Core
 from content_core.linter import lint_draft as _lint_draft
 from content_core.linter import lint_section as _lint_section
 from content_core.loaders import DEFAULT_STYLE_PROFILE_ID, atomic_write_text, stored_file_stem
+from content_core.loaders import banned_terms as _brand_banned_terms
 from content_core.loaders import list_style_profiles as _list_style_profiles
+from content_core.loaders import list_facts_profiles as _list_facts_profiles
 from content_core.loaders import load_brand, load_facts, load_persona
+from content_core.loaders import save_facts as _save_facts_file
+from content_core.loaders import validate_facts as _validate_facts
 from content_core.loaders import load_style_profile as _load_style_profile
 from content_core.loaders import save_quality_profile as _save_quality_profile_file
 from content_core.loaders import save_style_profile as _save_style_profile_file
@@ -73,6 +79,7 @@ from content_core.seo import seo_pass as _seo_pass
 from content_core.style import analyze_samples as _analyze_samples
 from content_core.style import fingerprint as _fingerprint
 from content_core.style import build_profile as _build_profile
+from content_core.style import refresh_profile as _refresh_style_profile
 from content_core.style import style_match as _style_match
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -102,11 +109,15 @@ def _facts() -> dict:
 def _resolve_style_profile(profile_id: str | None) -> dict | None:
     """Resolve a style profile id ('default'/'' → the shipped default
     profile) to the stored profile dict, or None when it does not exist.
-    All profile file IO goes through loaders (the one place it lives)."""
+    All profile file IO goes through loaders (the one place it lives).
+    Loaded profiles pass through style.refresh_profile: a profile
+    stored by an older algorithm version serves CURRENT warnings,
+    never frozen ones (evaluation R4)."""
     if not profile_id:
         return None
     pid = DEFAULT_STYLE_PROFILE_ID if profile_id == "default" else profile_id
-    return _load_style_profile(pid)
+    profile = _load_style_profile(pid)
+    return _refresh_style_profile(profile) if profile is not None else None
 
 
 def _style_context_text(profile: dict) -> str:
@@ -217,6 +228,64 @@ def _store_draft(draft: dict) -> dict:
     return draft
 
 
+# Per-draft serialisation for stored-draft read-modify-write
+# (core-completion round, evaluation R7): the MCP server is launched
+# per AI-app session, so two processes can write ONE draft — and
+# load→modify→store was not atomic across processes (measured: 2
+# processes x 15 save_section -> 29/30 sections survived; concurrent
+# final_gates lost gate_history entries). An O_EXCL lockfile per
+# draft serialises the critical section. Single-writer use is
+# unaffected: an uncontended acquire is one syscall.
+_DRAFT_LOCK_TIMEOUT_S = 10.0   # bounded retry before a structured error
+_DRAFT_LOCK_STALE_S = 30.0     # a lock older than this is a crashed holder's
+_DRAFT_LOCK_POLL_S = 0.05
+
+
+@contextlib.contextmanager
+def _draft_lock(draft_id: str):
+    """Hold the per-draft lock (see the constants above). Bounded
+    retry; a stale lock (mtime older than _DRAFT_LOCK_STALE_S) is
+    stolen; the lock is always released in finally. Timeout raises
+    ValueError, which the tools surface as {"error": ...}."""
+    try:
+        stem = stored_file_stem(draft_id)
+    except ValueError:
+        raise ValueError("invalid draft_id") from None
+    lock_path = drafts_dir() / f"{stem}.lock"
+    deadline = time.monotonic() + _DRAFT_LOCK_TIMEOUT_S
+    fd = None
+    while fd is None:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                age = time.time() - lock_path.stat().st_mtime
+            except OSError:
+                age = 0.0  # vanished mid-check: retry the acquire
+            if age > _DRAFT_LOCK_STALE_S:
+                try:
+                    lock_path.unlink()
+                except OSError:
+                    pass
+                continue
+            if time.monotonic() >= deadline:
+                raise ValueError(
+                    f"draft {draft_id} is locked by another writer — "
+                    f"retry shortly (lock timeout "
+                    f"{_DRAFT_LOCK_TIMEOUT_S:.0f}s)")
+            time.sleep(_DRAFT_LOCK_POLL_S)
+    try:
+        yield
+    finally:
+        try:
+            os.close(fd)
+        finally:
+            try:
+                lock_path.unlink()
+            except OSError:
+                pass
+
+
 def _sections_of(draft: dict) -> list[dict]:
     return draft.get("sections", [])
 
@@ -231,13 +300,37 @@ def _brand_max_sentence_words() -> int | None:
         return None
 
 
+def _resolve_brand_facts(brand_id: str) -> tuple[dict, dict]:
+    """(brand, facts) for a brand id — the per-brand resolution every
+    checking tool shares (core-completion round). ''/'moc-brew' → the
+    server brand + its facts. Any other id → the stored Brand Builder
+    draft (the brand rules) + the stored facts profile (the numbers).
+    Raises ValueError for an unknown brand: facts and rules are NEVER
+    borrowed from another brand."""
+    if not brand_id or brand_id == "moc-brew":
+        return _brand(), _facts()
+    draft = _load_brand_draft(brand_id)
+    if draft is None:
+        raise ValueError(
+            f"unknown brand_id: {brand_id!r} — no stored brand draft; "
+            f"build the brand first (analyze_site_brand/save_brand_draft) "
+            f"and save its facts (save_facts)")
+    return draft, load_facts(brand_id)
+
+
 def _run_gate(draft: dict, quality_profile: dict | None = None,
               judged: dict | None = None,
-              style_profile: dict | None = None) -> dict:
+              style_profile: dict | None = None,
+              brand: dict | None = None,
+              facts: dict | None = None) -> dict:
     """Run THE shared gate (gates.evaluate_gate — the same function the
-    LangGraph graph's final_gate node calls) over a stored draft."""
+    LangGraph graph's final_gate node calls) over a stored draft.
+    Brand/facts default to the server brand; final_gate passes the
+    draft brief's own brand resolution when the brief names one."""
     fmt = draft.get("brief", {}).get("format", "blog")
-    return _evaluate_gate(_sections_of(draft), fmt, _brand(), _facts(),
+    return _evaluate_gate(_sections_of(draft), fmt,
+                          brand if brand is not None else _brand(),
+                          facts if facts is not None else _facts(),
                           craft_mode="blocking",
                           quality_profile=quality_profile, judged=judged,
                           style_profile=style_profile,
@@ -259,6 +352,42 @@ def get_brand() -> dict:
     """Return the Mộc Brew Brand Voice profile (parsed YAML): checkable voice
     rules, banned terms, prohibited claims, few-shot examples, anti-examples."""
     return load_brand()
+
+
+@mcp.tool()
+def get_facts(brand_id: str = "moc-brew") -> dict:
+    """Return the fact base for a brand (default: the server brand,
+    moc-brew). Facts are PER-BRAND: each brand's prices/weights/
+    origins live in its own facts profile. With no brand_id argument
+    behaviour is unchanged; pass '' to list the stored profiles. An
+    unknown brand returns a structured error — never another brand's
+    facts."""
+    if not brand_id:
+        return {"profiles": _list_facts_profiles(),
+                "default": load_facts("moc-brew")}
+    try:
+        return load_facts(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "available": _list_facts_profiles()}
+
+
+@mcp.tool()
+def save_facts(brand_id: str, facts: dict) -> dict:
+    """Validate + persist the fact base for a brand (per-brand facts
+    store). `facts` is the facts document: {facts: {price_vnd_per_250g
+    or price_display, pack_weight_g, origins, known_prices_vnd?,
+    pack_weights_g?, delivery_days?, roast_weekday?}, entries?}.
+    The brand_id argument is stamped into the document. Validation is
+    the save_brand_draft discipline: schema-checked BEFORE writing,
+    atomic write; a failed validation returns a structured error and
+    writes nothing."""
+    doc = dict(facts) if isinstance(facts, dict) else {}
+    doc["brand_id"] = brand_id
+    try:
+        _validate_facts(doc)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return _save_facts_file(doc)
 
 
 @mcp.tool()
@@ -346,6 +475,7 @@ def craft_check(text: str = "", format: str = "blog", draft_id: str = "",
     glossary belongs to Mộc Brew — pass another brand's id to judge with
     the generic brand-neutral weak-word/sensory set instead of Mộc
     Brew's coffee vocabulary. Empty = the default Mộc Brew path."""
+    server_brand = not brand_id or brand_id == "moc-brew"
     if draft_id:
         draft, error = _load_draft_or_error(draft_id)
         if error:
@@ -353,11 +483,13 @@ def craft_check(text: str = "", format: str = "blog", draft_id: str = "",
         fmt = draft.get("brief", {}).get("format", format)
         return _craft_check_draft(
             _sections_of(draft), fmt, brand_id=brand_id or None,
-            max_sentence_words=_brand_max_sentence_words()
-            if not brand_id or brand_id == "moc-brew" else None)
+            max_sentence_words=_brand_max_sentence_words() if server_brand else None,
+            banned_terms=_brand_banned_terms(_brand()) if server_brand else None)
     return _craft_check_text(text, format, brand_id=brand_id or None,
                              max_sentence_words=_brand_max_sentence_words()
-                             if not brand_id or brand_id == "moc-brew" else None)
+                             if server_brand else None,
+                             banned_terms=_brand_banned_terms(_brand())
+                             if server_brand else None)
 
 
 @mcp.tool()
@@ -410,10 +542,12 @@ def get_style_profile(profile_id: str = "") -> dict:
         if profile is None:
             return {"error": f"style profile not found: {profile_id}",
                     "available": _list_style_profiles()}
-        return profile
+        return _refresh_style_profile(profile)
+    default_profile = _load_style_profile(DEFAULT_STYLE_PROFILE_ID)
     return {"profiles": _list_style_profiles(),
             "default_id": DEFAULT_STYLE_PROFILE_ID,
-            "default": _load_style_profile(DEFAULT_STYLE_PROFILE_ID)}
+            "default": _refresh_style_profile(default_profile)
+            if default_profile is not None else None}
 
 
 @mcp.tool()
@@ -619,9 +753,10 @@ def assemble_context(brief: dict, format: str | None = None,
         f"- [{c['id']}] {c['name']}: {c['instruction']} Good: {c['good_example']}"
         for c in cards) or "- (no craft cards triggered)"
 
-    # Layer 4b: exemplar for this format. blog uses the blog_intro anchor.
-    exemplar_format = "blog_intro" if fmt == "blog" else fmt
-    exemplars = _get_exemplars(exemplar_format)
+    # Layer 4b: exemplar for this format — resolved through craft's
+    # ONE format mapping (blog -> blog_intro), shared with the
+    # get_exemplars tool (this call site used to carry a private copy).
+    exemplars = _get_exemplars(fmt)
     exemplar_text = "\n".join(
         f"- [{e['format']}] {e['text']} (why it works: {'; '.join(e.get('why_it_works', []))})"
         for e in exemplars[:_MAX_EXEMPLARS]) or "- (no exemplar for this format)"
@@ -703,11 +838,15 @@ def make_outline(brief: dict, proposed_outline: list[dict] | None = None,
         source = "deterministic_template"
     stored = False
     if draft_id:
-        draft, error = _load_draft_or_error(draft_id)
-        if error:
-            return {**error, "ok": False, "outline": []}
-        draft["outline"] = outline
-        _store_draft(draft)
+        try:
+            with _draft_lock(draft_id):
+                draft, error = _load_draft_or_error(draft_id)
+                if error:
+                    return {**error, "ok": False, "outline": []}
+                draft["outline"] = outline
+                _store_draft(draft)
+        except ValueError as exc:  # lock timeout / invalid draft id
+            return {"ok": False, "error": str(exc), "outline": []}
         stored = True
     return {"ok": True, "source": source, "outline": outline, "stored_in_draft": stored}
 
@@ -741,7 +880,23 @@ def save_section(draft_id: str, section_id: str, heading: str, text: str,
     on an overwrite, the existing section's values are preserved — a
     rewrite used to silently wipe them to ""/0. Saving into an
     "approved" draft resets its status to "drafting": the approval no
-    longer describes the stored text."""
+    longer describes the stored text.
+
+    The load→modify→store runs under the per-draft lock (see
+    _draft_lock): a concurrent writer in another server process can
+    no longer silently lose this save; a lock timeout is a structured
+    error."""
+    try:
+        with _draft_lock(draft_id):
+            return _save_section_impl(draft_id, section_id, heading, text,
+                                      intent, target_words)
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+def _save_section_impl(draft_id: str, section_id: str, heading: str, text: str,
+                       intent: str | None = None,
+                       target_words: int | None = None) -> dict:
     draft, error = _load_draft_or_error(draft_id)
     if error:
         return error
@@ -810,15 +965,27 @@ def brand_check(text: str = "", format: str = "blog", draft_id: str = "") -> dic
 
 
 @mcp.tool()
-def fact_check(text: str = "", draft_id: str = "") -> dict:
+def fact_check(text: str = "", draft_id: str = "", brand_id: str = "") -> dict:
     """Deterministic fact checker. Every price/weight/delivery number must
-    match the facts file. Claims marked [NEEDS SOURCE] are flagged (do not
-    block); unmarked unsupported/prohibited claims are issues (block)."""
-    facts, brand = _facts(), _brand()
+    match the ACTIVE brand's facts. Claims marked [NEEDS SOURCE] are
+    flagged (do not block); unmarked unsupported/prohibited claims are
+    issues (block).
+
+    Brand resolution: `brand_id` when given; else the draft's
+    brief.brand_id; else the server brand (moc-brew). A non-default
+    brand resolves its rules from its stored Brand Builder draft and
+    its numbers from its stored facts profile — an unknown brand is a
+    structured error, never a silent check against Mộc Brew."""
     if draft_id:
         draft, error = _load_draft_or_error(draft_id)
         if error:
             return error
+        brand_id = brand_id or draft.get("brief", {}).get("brand_id", "")
+    try:
+        brand, facts = _resolve_brand_facts(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if draft_id:
         issues, flagged, failing = _fact_check_draft(_sections_of(draft), facts, brand)
     else:
         issues, flagged = _fact_check_section(text, facts, brand, "text")
@@ -906,8 +1073,12 @@ def quality_score(draft_id: str, judged_scores: dict | None = None,
                    else _quality_preset(fmt))
         style_profile = _resolve_style_profile(
             draft.get("brief", {}).get("style_profile_id"))
+        # The fact base (and brand rules) belong to the draft's brand:
+        # brief.brand_id when the brief names one, else the server brand.
+        gate_brand, gate_facts = _resolve_brand_facts(
+            draft.get("brief", {}).get("brand_id", ""))
         report = _evaluate_quality(_sections_of(draft), fmt, profile,
-                                   judged_scores, _brand(), _facts(),
+                                   judged_scores, gate_brand, gate_facts,
                                    style_profile=style_profile,
                                    brief=draft.get("brief", {}))
     except ValueError as exc:
@@ -949,7 +1120,21 @@ def final_gate(draft_id: str, quality_profile: str = "",
     STYLE (advisory, v1): when the draft's brief carries `style_profile_id`,
     a `style_match` report against that Style Profile is included and its
     score recorded in gate_history as `style_score`. It NEVER changes
-    `passed`. Without a profile in the brief, the result is unchanged."""
+    `passed`. Without a profile in the brief, the result is unchanged.
+
+    The gate's load→verdict→store runs under the per-draft lock (see
+    _draft_lock): concurrent gates in another server process queue
+    instead of losing each other's gate_history entries; a lock
+    timeout is a structured error."""
+    try:
+        with _draft_lock(draft_id):
+            return _final_gate_impl(draft_id, quality_profile, judged_scores)
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+def _final_gate_impl(draft_id: str, quality_profile: str = "",
+                     judged_scores: dict | None = None) -> dict:
     draft, error = _load_draft_or_error(draft_id)
     if error:
         return error
@@ -978,9 +1163,14 @@ def final_gate(draft_id: str, quality_profile: str = "",
         draft.get("brief", {}).get("style_profile_id"))
 
     try:
+        # The gate judges against the DRAFT's brand (brief.brand_id)
+        # and that brand's fact base — never another brand's numbers.
+        gate_brand, gate_facts = _resolve_brand_facts(
+            draft.get("brief", {}).get("brand_id", ""))
         verdict = _run_gate(draft, quality_profile=profile, judged=judged_scores,
-                            style_profile=style_profile)
-    except ValueError as exc:  # e.g. an invalid judged grade
+                            style_profile=style_profile,
+                            brand=gate_brand, facts=gate_facts)
+    except ValueError as exc:  # e.g. an invalid judged grade / unknown brand
         return {"error": str(exc), "draft_id": draft_id}
     hard = verdict["hard"]
     craft = verdict["craft"]["report"]
@@ -1093,7 +1283,8 @@ TOOL_NAMES = ["get_persona", "get_brand", "research_facts", "assemble_context",
               "analyze_style", "save_style_profile", "get_style_profile", "style_match",
               "analyze_site_brand", "save_brand_draft", "get_brand_draft",
               "compare_brand_voice",
-              "get_quality_profile", "save_quality_profile", "quality_score"]
+              "get_quality_profile", "save_quality_profile", "quality_score",
+              "get_facts", "save_facts"]
 
 
 if __name__ == "__main__":

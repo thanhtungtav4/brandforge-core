@@ -128,8 +128,9 @@ async def main() -> int:
                         "analyze_style", "save_style_profile", "get_style_profile", "style_match",
                         "analyze_site_brand", "save_brand_draft", "get_brand_draft",
                         "compare_brand_voice",
-                        "get_quality_profile", "save_quality_profile", "quality_score"]
-            check("tools/list", all(n in names for n in expected) and len(names) == 29,
+                        "get_quality_profile", "save_quality_profile", "quality_score",
+                        "get_facts", "save_facts"]
+            check("tools/list", all(n in names for n in expected) and len(names) == 31,
                   f"{len(names)} tools: {names}")
 
             brand = _parse(await session.call_tool("get_brand", {}))

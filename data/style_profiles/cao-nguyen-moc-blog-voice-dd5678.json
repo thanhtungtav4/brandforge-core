@@ -2,6 +2,7 @@
   "id": "cao-nguyen-moc-blog-voice-dd5678",
   "name": "Cao Nguyên Mộc — blog voice",
   "brand_id": "cao-nguyen-moc",
+  "algorithm_version": 2,
   "created_from": {
     "sample_count": 5,
     "total_words": 4081
@@ -36,7 +37,7 @@
         "count": 2
       }
     ],
-    "type_token_ratio": 0.16,
+    "type_token_ratio": 0.45,
     "top_words": [
       {
         "word": "phê",
@@ -100,9 +101,41 @@
       }
     ]
   },
-  "consistency_warnings": [
-    "samples diverge on first_person_rate (CV 2.0 > 0.35) — possibly mixed authors"
-  ],
+  "consistency_warnings": [],
+  "consistency_detail": {
+    "divergence_cv": {
+      "sentence_median": 0.1,
+      "sentence_stdev": 0.12,
+      "first_person_rate": 2.0
+    },
+    "per_sample": [
+      {
+        "sentence_median": 14.0,
+        "sentence_stdev": 10.44,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 14.0,
+        "sentence_stdev": 10.55,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 12.0,
+        "sentence_stdev": 8.8,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 13.0,
+        "sentence_stdev": 9.3,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 16.0,
+        "sentence_stdev": 12.25,
+        "first_person_rate": 0.1
+      }
+    ]
+  },
   "qualitative": {
     "tone_traits": [
       {

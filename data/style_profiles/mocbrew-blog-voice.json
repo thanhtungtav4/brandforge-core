@@ -2,6 +2,7 @@
   "id": "mocbrew-blog-voice",
   "name": "Mộc Brew Blog Voice",
   "brand_id": "moc-brew",
+  "algorithm_version": 2,
   "created_from": {
     "sample_count": 3,
     "total_words": 829
@@ -32,7 +33,7 @@
         "count": 1
       }
     ],
-    "type_token_ratio": 0.37,
+    "type_token_ratio": 0.47,
     "top_words": [
       {
         "word": "mình",
@@ -97,6 +98,30 @@
     ]
   },
   "consistency_warnings": [],
+  "consistency_detail": {
+    "divergence_cv": {
+      "sentence_median": 0.06,
+      "sentence_stdev": 0.05,
+      "first_person_rate": 0.24
+    },
+    "per_sample": [
+      {
+        "sentence_median": 12.0,
+        "sentence_stdev": 8.22,
+        "first_person_rate": 4.58
+      },
+      {
+        "sentence_median": 14.0,
+        "sentence_stdev": 8.55,
+        "first_person_rate": 3.27
+      },
+      {
+        "sentence_median": 13.0,
+        "sentence_stdev": 9.28,
+        "first_person_rate": 2.59
+      }
+    ]
+  },
   "qualitative": {
     "tone_traits": [
       {

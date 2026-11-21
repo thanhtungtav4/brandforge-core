@@ -10,13 +10,27 @@ Data (all in data/, distilled — principles paraphrased, examples original):
 - craft_library.json    technique cards, lorebook-style triggered retrieval
 - exemplars.json        few-shot style anchors, one per format
 - domain_glossary.json  precise domain terms + weak/vague words to replace
+
+SCORE SEMANTICS (evaluation R3-S1, stated plainly): the craft score
+certifies the ABSENCE of the measured surface defects (weak words,
+filler, monotone rhythm, repeated openings, missing sensory terms) —
+it does NOT certify coherence, logic or genuine prose quality, and no
+deterministic signal in this module can: a sensory-stuffed word salad
+scores at the ceiling because it commits none of the five measured
+defects. A unique-token-ratio signal was evaluated as a salad
+detector in the core-completion round and REJECTED with measurements:
+the salad's TTR is 0.95 at 62 words, but the project's own social
+exemplar sits at 0.91 at 64 words and golden email sections reach
+0.92-0.95 at 20-49 words — no threshold separates the salad from
+legitimate short copy. Coherence judgement belongs to the writing
+model and the human reviewer; this layer is a defect index.
 """
 from __future__ import annotations
 
 import re
 import statistics
 
-from .linter import split_sentences
+from .linter import fuzzy_phrase_spans, normalize_for_match, split_sentences
 from .loaders import load_craft_library, load_domain_glossary, load_exemplars
 
 
@@ -127,10 +141,28 @@ def resolve_glossary(glossary: dict | None = None,
 # Loaders (thin wrappers so MCP tools never duplicate logic)
 # --------------------------------------------------------------------------
 
+# Public format -> stored exemplar format. The blog anchor is stored
+# as "blog_intro" (it anchors an introduction), which used to make
+# get_exemplars("blog") silently return [] for every caller except
+# assemble_context, which carried its own private copy of this mapping
+# (evaluation R3 §5.1). ONE mapping now lives here; every caller —
+# including the MCP tool and assemble_context — resolves through it.
+EXEMPLAR_FORMAT_ALIASES = {"blog": "blog_intro"}
+
+
+def resolve_exemplar_format(fmt: str) -> str:
+    """The stored-format key a public format name resolves to."""
+    return EXEMPLAR_FORMAT_ALIASES.get(fmt, fmt)
+
+
 def get_exemplars(fmt: str, exemplars: dict | None = None) -> list[dict]:
-    """Return the exemplar passage(s) for one format ([] if none)."""
+    """Return the exemplar passage(s) for one format ([] if none).
+    Accepts the public format name ("blog") and the stored key
+    ("blog_intro") alike — see EXEMPLAR_FORMAT_ALIASES."""
     data = exemplars if exemplars is not None else load_exemplars()
-    return [e for e in data.get("exemplars", []) if e.get("format") == fmt]
+    want = resolve_exemplar_format(fmt)
+    return [e for e in data.get("exemplars", [])
+            if e.get("format") in (fmt, want)]
 
 
 def glossary_group(group: str | None = None, glossary: dict | None = None) -> dict:
@@ -310,7 +342,8 @@ def _sensory_terms_used(low_text: str, terms: list[str]) -> list[str]:
 
 def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
                 brand_id: str | None = None,
-                max_sentence_words: int | None = None) -> dict:
+                max_sentence_words: int | None = None,
+                banned_terms: list[str] | None = None) -> dict:
     """Score prose QUALITY 0-100 (not brand compliance — see linter.py).
 
     Scoring (documented, deterministic):
@@ -318,8 +351,14 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
       weak/vague word  -6 per occurrence, capped at -30
       filler phrase    -4 per occurrence, capped at -12
       monotone rhythm  -15  (>=4 sentences and stdev of sentence lengths < 2.0)
-      repeated opening -10  (same first word opens >=3 sentences)
+      repeated opening -10  (same first TWO tokens open >=3 sentences)
       no sensory term  -10  (product/blog only: 0 glossary sensory terms used)
+
+    `banned_terms` (optional, supplied by the gate paths from the
+    active brand) names the brand's banned terms so sentences carrying
+    one can be excluded from the rhythm statistic — see the rhythm
+    note in the body. It never creates violations here; banning is
+    the linter's job.
 
     The weak-word and sensory vocabularies come from the ACTIVE
     glossary (resolve_glossary): an explicit `glossary` wins; a
@@ -373,23 +412,66 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
     # the linter's median now follows): an appended over-long sentence
     # is already fined by the linter and must not also "fix" a monotone
     # rhythm by inflating the spread.
-    lengths = _sentence_lengths(text)
-    rhythm_lengths = [ln for ln in lengths
-                      if max_sentence_words is None or ln <= max_sentence_words]
+    # Core-completion extension (R5 residual): a sentence carrying a
+    # violation of its OWN — a weak word or filler phrase, or a banned
+    # term when the caller supplies the brand's list — must not count
+    # as rhythm evidence either: the sweep's residual inversions all
+    # came from one appended violating sentence moving the length
+    # spread across the 2.0 line and erasing the monotone fine (in the
+    # quality total, outweighing its own fine). EXCLUDING such
+    # sentences was tried first and failed measurably (23 -> 24
+    # inversions): dropping a near-mean sentence raises the subset's
+    # stdev just as unpredictably, and can drop the pool under the
+    # four-sentence minimum. The robust-statistics remedy is MEDIAN
+    # IMPUTATION: the violating sentence's length is replaced by the
+    # pool median — it neither helps nor hurts the rhythm verdict and
+    # is fined where it stands. (If EVERY sentence violates, there is
+    # no clean anchor and the raw lengths are used.)
+    sentences = _sentences(text)
+    lengths = [len(s.split()) for s in sentences]
+
+    def _carries_violation(sentence: str) -> bool:
+        s_low = sentence.lower()
+        if _find_phrase_hits(s_low, list(replacements)):
+            return True
+        if _find_phrase_hits(s_low, FILLER_PHRASES):
+            return True
+        if banned_terms:
+            norm = normalize_for_match(sentence)
+            return any(fuzzy_phrase_spans(norm, t) for t in banned_terms)
+        return False
+
+    pool = [(s, ln) for s, ln in zip(sentences, lengths)
+            if max_sentence_words is None or ln <= max_sentence_words]
+    rhythm_lengths = [ln for _, ln in pool]
+    if pool and any(not _carries_violation(s) for s, _ in pool):
+        med = statistics.median(rhythm_lengths)
+        rhythm_lengths = [med if _carries_violation(s) else ln
+                          for s, ln in pool]
     stdev = statistics.stdev(rhythm_lengths) if len(rhythm_lengths) >= 2 else 0.0
     if len(rhythm_lengths) >= 4 and stdev < 2.0:
         violations.append({"type": "monotone_rhythm",
                            "detail": f"stdev {round(stdev, 2)} < 2.0 over {len(rhythm_lengths)} sentences"})
         score -= 15
 
-    # Repeated sentence openings.
+    # Repeated sentence openings — keyed by the first TWO tokens
+    # (core-completion round, evaluation R3 §3.4): keying by the first
+    # syllable-token merged every Vietnamese word sharing an opening
+    # syllable ("Cà phê…", "Cà chua…", "Cà tím…" all counted as 'cà'),
+    # fined brand-name subjects whose verbs differ ("Mộc rang…",
+    # "Mộc ghi…") and fined enumerated steps ("Bước một…", "Bước
+    # hai…"). Two-token keys separate all of those; a genuinely
+    # repeated opening phrase ("Pha phin cần…" x3) still fires.
     openings: dict[str, int] = {}
-    for sentence in _sentences(text):
-        words = sentence.split()
-        if words:
-            first = re.sub(r"[^\wÀ-ỹà-ỹ]", "", words[0].lower())
-            if first:
-                openings[first] = openings.get(first, 0) + 1
+    for sentence in sentences:
+        key_tokens = []
+        for w in sentence.split()[:2]:
+            cleaned = re.sub(r"[^\wÀ-ỹà-ỹ]", "", w.lower())
+            if cleaned:
+                key_tokens.append(cleaned)
+        if key_tokens:
+            key = " ".join(key_tokens)
+            openings[key] = openings.get(key, 0) + 1
     repeated = {w: n for w, n in openings.items() if n >= 3}
     if repeated:
         violations.append({"type": "repeated_openings",
@@ -422,7 +504,8 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
 def craft_check_sections(sections: list[dict], fmt: str,
                          glossary: dict | None = None,
                          brand_id: str | None = None,
-                         max_sentence_words: int | None = None) -> dict:
+                         max_sentence_words: int | None = None,
+                         banned_terms: list[str] | None = None) -> dict:
     """craft_check over a whole draft: worst section score wins (same rule as
     the brand linter), violations carry their section_id. `glossary` /
     `brand_id` select the judging vocabulary exactly as in craft_check.
@@ -434,7 +517,8 @@ def craft_check_sections(sections: list[dict], fmt: str,
     the bar, because even good sections carry a violation or two."""
     if not sections:
         result = craft_check("", fmt, glossary, brand_id,
-                             max_sentence_words=max_sentence_words)
+                             max_sentence_words=max_sentence_words,
+                             banned_terms=banned_terms)
         return {**result, "failing_sections": []}
     all_violations: list[dict] = []
     worst = 100.0
@@ -442,7 +526,8 @@ def craft_check_sections(sections: list[dict], fmt: str,
     total_metrics = {"sentence_count": 0, "weak_words_found": [], "sensory_terms_used": []}
     for sec in sections:
         r = craft_check(sec.get("text", ""), fmt, glossary, brand_id,
-                        max_sentence_words=max_sentence_words)
+                        max_sentence_words=max_sentence_words,
+                        banned_terms=banned_terms)
         for v in r["violations"]:
             all_violations.append({**v, "section_id": sec.get("id", "")})
         worst = min(worst, r["score"])

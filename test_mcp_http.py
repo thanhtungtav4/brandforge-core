@@ -53,7 +53,7 @@ async def _exercise(port: int) -> tuple[bool, str]:
                 return False, f"unexpected server: {init.serverInfo.name}"
             tools = await session.list_tools()
             names = [t.name for t in tools.tools]
-            if len(names) != 29 or "get_quality_profile" not in names:
+            if len(names) != 31 or "get_quality_profile" not in names:
                 return False, f"tools over http: {len(names)} {names}"
             preset = _parse(await session.call_tool(
                 "get_quality_profile", {"format_or_id": "blog"}))

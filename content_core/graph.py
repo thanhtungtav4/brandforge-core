@@ -52,7 +52,12 @@ class Core:
                  facts: dict | None = None, persona: dict | None = None):
         self.writer = writer or get_writer()
         self.brand = brand or load_brand()
-        self.facts = load_facts() if facts is None else facts
+        # The fact base belongs to the ACTIVE brand (core-completion
+        # round): a Core built for another brand resolves THAT brand's
+        # facts, and an unknown brand raises instead of silently
+        # judging against Mộc Brew's numbers.
+        self.facts = (load_facts(brand_id=self.brand["brand"]["id"])
+                      if facts is None else facts)
         self.persona = persona or load_persona()
 
     # -- nodes -------------------------------------------------------------

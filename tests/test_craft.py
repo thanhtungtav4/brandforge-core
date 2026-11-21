@@ -131,7 +131,14 @@ def test_craft_check_flags_monotone_and_repeated_openings():
     out = craft_check(MONOTONE_TEXT, "social")
     types = {v["type"] for v in out["violations"]}
     assert "monotone_rhythm" in types
-    assert "repeated_openings" in types
+    # PIN UPDATED (core-completion round, evaluation R3 §3.4):
+    # repeated_openings used to fire here because all four sentences
+    # open with the token "Mình" — but their TWO-token openings differ
+    # ("Mình rang", "Mình đóng", "Mình ghi", "Mình gửi": one subject,
+    # four different verbs), which is exactly the first-syllable
+    # artefact the two-token key removes. Genuine two-token repetition
+    # is pinned in tests/test_core_closing.py.
+    assert "repeated_openings" not in types
     assert out["metrics"]["rhythm_stdev"] < 2.0
 
 
@@ -166,12 +173,15 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "analyze_style", "save_style_profile", "get_style_profile", "style_match",
                   "analyze_site_brand", "save_brand_draft", "get_brand_draft",
                   "compare_brand_voice",
-                  "get_quality_profile", "save_quality_profile", "quality_score"}
+                  "get_quality_profile", "save_quality_profile", "quality_score",
+                  "get_facts", "save_facts"}
 
 
 def test_mcp_tool_list_now_29():
+    # (Name kept from the 29-tool round; the count is now 31 after the
+    # core-completion round added get_facts/save_facts.)
     assert set(srv.TOOL_NAMES) == EXPECTED_TOOLS
-    assert len(srv.TOOL_NAMES) == 29
+    assert len(srv.TOOL_NAMES) == 31
     for name in EXPECTED_TOOLS:
         assert callable(getattr(srv, name)), name
 

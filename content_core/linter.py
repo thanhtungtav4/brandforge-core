@@ -138,6 +138,107 @@ def phrase_spans(text: str, phrase: str) -> list[tuple[int, int]]:
     return [(m.start(), m.end()) for m in rx.finditer(normalize_for_match(text))]
 
 
+# ---------------------------------------------------------------------------
+# Bounded fuzzy matching + evasion hardening (core-completion round)
+# ---------------------------------------------------------------------------
+# The last R2 evasions were all about BREAKING the token stream so the
+# literal phrase never appears: letter-spacing ("s e a m l e s s"),
+# letter-dotting ("e.l.e.v.a.t.e" — normalization already turns the
+# dots into spaces, i.e. the same shape as letter-spacing), HTML markup
+# ("game-<b>changing</b>", "game&#45;changing") and one inserted word
+# ("tốt nhất ở Việt Nam"). The fixes are deliberately BOUNDED:
+# - letter-spacing collapse joins runs of >= 5 single-letter tokens —
+#   real prose (Vietnamese included) essentially never strings five
+#   one-letter syllables together, and the collapse is applied ONLY to
+#   the banned-term / claim scans, never to length statistics;
+# - markup is stripped and entities decoded for the same scans only;
+# - the fuzzy phrase variants allow AT MOST ONE inserted token in the
+#   whole phrase (at one gap), or a single-token term split across 2-3
+#   adjacent tokens ("seam less") — the latter only for terms of >= 5
+#   chars, so short terms cannot glue unrelated syllables together.
+
+_SPACED_RUN_RE = re.compile(r"\b[a-z0-9](?: [a-z0-9]){4,}\b")
+
+
+def collapse_letter_spacing(norm: str) -> str:
+    """Join letter-spaced runs in NORMALIZED text: 's e a m l e s s' ->
+    'seamless'. See the bounded-fix note above."""
+    return _SPACED_RUN_RE.sub(lambda m: m.group(0).replace(" ", ""), norm)
+
+
+_TAG_RE = re.compile(r"<[^>]*>")
+
+
+def strip_markup(text: str) -> str:
+    """Decode HTML entities and replace tags with a space, for the
+    banned-term / claim scans: 'game&#45;changing' -> 'game-changing',
+    'game-<b>changing</b>' -> 'game- changing' (which normalizes to the
+    same 'game changing' as the phrase itself)."""
+    import html as _html
+    return _TAG_RE.sub(" ", _html.unescape(text or ""))
+
+
+def _phrase_regexes(phrase: str) -> list[re.Pattern]:
+    """[exact regex, *one-insertion variants] for a phrase. Each variant
+    allows ONE extra arbitrary token at ONE gap between the phrase's
+    tokens — 'tốt nhất ở Việt Nam' matches 'tốt nhất Việt Nam', while
+    two inserted words (or insertions at two gaps) still do not."""
+    norm = normalize_for_match(phrase)
+    base = _phrase_regex(phrase)
+    if base is None:
+        return []
+    out = [base]
+    tokens = norm.split()
+    if len(tokens) >= 2:
+        left = r"(?<!\d)" if norm[0].isdigit() else ""
+        right = r"(?!\d)" if norm[-1].isdigit() else ""
+        parts = [re.escape(t) for t in tokens]
+        for gap in range(len(parts) - 1):
+            pat = parts[0]
+            for i in range(1, len(parts)):
+                pat += (r"\s+\S+\s+" if i - 1 == gap else r"\s+") + parts[i]
+            out.append(re.compile(left + pat + right))
+    return out
+
+
+def _split_token_spans(norm: str, term_norm: str) -> list[tuple[int, int]]:
+    """Spans where a single-token term (>= 5 chars) is split across 2-3
+    adjacent tokens: 'seam less' -> 'seamless'. Concatenation must equal
+    the term EXACTLY — no partial or derived forms."""
+    if " " in term_norm or len(term_norm) < 5:
+        return []
+    toks = [(m.group(0), m.start(), m.end())
+            for m in re.finditer(r"\S+", norm)]
+    spans: list[tuple[int, int]] = []
+    for i in range(len(toks)):
+        concat = ""
+        for j in range(i, min(i + 3, len(toks))):
+            concat += toks[j][0]
+            if len(concat) > len(term_norm):
+                break
+            if j > i and concat == term_norm:
+                spans.append((toks[i][1], toks[j][2]))
+    return spans
+
+
+def fuzzy_phrase_spans(norm: str, phrase: str) -> list[tuple[int, int]]:
+    """Every match span of `phrase` in NORMALIZED text: exact matches
+    plus the bounded fuzzy variants above, de-duplicated by overlap
+    (exact matches win). Coordinates are in `norm`."""
+    spans: list[tuple[int, int]] = []
+
+    def _add(span: tuple[int, int]) -> None:
+        if not any(span[0] < e and s < span[1] for s, e in spans):
+            spans.append(span)
+
+    for rx in _phrase_regexes(phrase):
+        for m in rx.finditer(norm):
+            _add((m.start(), m.end()))
+    for span in _split_token_spans(norm, normalize_for_match(phrase)):
+        _add(span)
+    return sorted(spans)
+
+
 def count_phrase(text: str, phrase: str) -> int:
     return len(phrase_spans(text, phrase))
 
@@ -148,12 +249,24 @@ def phrase_in(text: str, phrase: str) -> bool:
 
 # A claim/term immediately preceded by one of these negations (optionally
 # followed by "la") is a DENIAL, not an assertion: "không phải là tốt
-# nhất" must not be treated as claiming "tốt nhất". Narrow on purpose —
-# "không chỉ tốt nhất" (which affirms) is not in the list. Defined here
-# and shared with fact_check (which imports it) so the two checkers can
-# never drift apart on what counts as a negation.
+# nhất" must not be treated as claiming "tốt nhất". "không chỉ tốt nhất"
+# (which affirms) still does NOT match — the "chỉ" intervenes, so the
+# prefix does not end with a negation.
+#
+# Widened (evaluation R1-D6): the original five patterns missed the
+# denial forms real copy actually uses — a bare "không"/"chẳng" right
+# before the claim ("không tốt nhất đâu"), speech-act denials ("không
+# khẳng định", "không công nhận"), and "chưa từng/chưa hề" ("chưa từng
+# nhận là số 1") all false-flagged at a 50% rate on true statements.
+# The bare forms stay safe because the regex is anchored at the END of
+# the prefix: the negation must be the last thing before the claim.
+# Defined here and shared with fact_check (which imports it) so the
+# two checkers can never drift apart on what counts as a negation.
 NEGATED_PREFIX_RE = re.compile(
-    r"(khong phai|chang phai|dau phai|khong nhan|khong dam nhan)( la)?$")
+    r"(khong phai|chang phai|dau phai|khong nhan|khong dam nhan"
+    r"|khong khang dinh|khong cong nhan|khong thua nhan"
+    r"|chua tung nhan|chua tung|chua bao gio nhan|chua he|khong he"
+    r"|khong|chang)( la)?$")
 
 _QUOTE_OPEN = {"«", "“"}
 _QUOTE_CLOSE = {"»", "”"}
@@ -301,17 +414,41 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
     # reported detail stays the brand's own term string. Occurrences are
     # classified per sentence: asserted use -> hard violation; negated or
     # quoted mention -> warning (see _banned_hit_is_context_only).
+    # Evasion hardening (core-completion round): each sentence is
+    # markup-stripped/entity-decoded and letter-spacing-collapsed before
+    # matching, and the bounded fuzzy spans (one inserted token, split
+    # single terms) count too — see fuzzy_phrase_spans. When the
+    # collapse rewrote the sentence, the quote map no longer aligns and
+    # only the negation rule classifies (conservative direction).
     sentences = split_sentences(text)
+    asserted_banned_sentences: set[int] = set()
+    # Whole-text scan coordinates: letter-DOTTED terms ("e.l.e.v.a.t.e")
+    # are torn apart by sentence splitting (every dot is a boundary), so
+    # the per-sentence scan below can never see them; the normalized
+    # whole text can (dots collapse to spaces, then the letter-spacing
+    # collapse joins the run). The whole-text pass runs per term AFTER
+    # the sentence pass and is deduped at TERM level: a term the
+    # sentence pass already classified (either way) is not re-reported.
+    whole_clean = strip_markup(text)
+    whole_raw_norm = normalize_for_match(whole_clean)
+    whole_norm = collapse_letter_spacing(whole_raw_norm)
+    whole_indexed = _normalize_indexed(whole_clean)
+    whole_quote_flags = (whole_indexed[1]
+                         if whole_norm == whole_raw_norm
+                         and whole_indexed[0] == whole_raw_norm else None)
     for term in banned_terms(brand):
-        rx = _phrase_regex(term)
-        if rx is None:
+        if _phrase_regex(term) is None:
             continue
-        for sentence in sentences:
-            norm = normalize_for_match(sentence)
-            indexed = _normalize_indexed(sentence)
-            quote_flags = indexed[1] if indexed[0] == norm else None
-            for m in rx.finditer(norm):
-                if _banned_hit_is_context_only(norm, (m.start(), m.end()), quote_flags):
+        term_seen = False
+        for si, sentence in enumerate(sentences):
+            clean = strip_markup(sentence)
+            raw_norm = normalize_for_match(clean)
+            norm = collapse_letter_spacing(raw_norm)
+            indexed = _normalize_indexed(clean)
+            quote_flags = indexed[1] if norm == raw_norm and indexed[0] == raw_norm else None
+            for span in fuzzy_phrase_spans(norm, term):
+                term_seen = True
+                if _banned_hit_is_context_only(norm, span, quote_flags):
                     violations.append({"section_id": section_id,
                                        "type": "banned_term_context",
                                        "detail": term, "warning": True})
@@ -319,6 +456,18 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
                     violations.append({"section_id": section_id,
                                        "type": "banned_term", "detail": term})
                     score -= 15
+                    asserted_banned_sentences.add(si)
+        if term_seen:
+            continue
+        for span in fuzzy_phrase_spans(whole_norm, term):
+            if _banned_hit_is_context_only(whole_norm, span, whole_quote_flags):
+                violations.append({"section_id": section_id,
+                                   "type": "banned_term_context",
+                                   "detail": term, "warning": True})
+            else:
+                violations.append({"section_id": section_id,
+                                   "type": "banned_term", "detail": term})
+                score -= 15
 
     if fmt == "blog":
         n = text.count("!") + text.count("！")  # ASCII + fullwidth
@@ -329,8 +478,15 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
     lengths = stat_sentence_lengths(text)
     if lengths:
         max_words = int(brand["voice"]["sentence_rules"]["max_sentence_words"])
-        within = [ln for ln in lengths if ln <= max_words]
-        median = statistics.median(within if within else lengths)
+        # The median pool ALSO excludes sentences carrying an asserted
+        # banned term (monotonicity, evaluation R5 residual): such a
+        # sentence is already fined on its own — letting it count as
+        # length evidence let an appended one-word "delve." sentence
+        # drag the median/rhythm and partially pay for itself.
+        pool = [len(s.split()) for i, s in enumerate(sentences)
+                if i not in asserted_banned_sentences and not is_table_like(s)]
+        within = [ln for ln in pool if ln <= max_words]
+        median = statistics.median(within if within else (pool or lengths))
         lo, hi = median_range(brand, fmt)
         if not (lo <= median <= hi):
             violations.append({"section_id": section_id, "type": "median_sentence_length",

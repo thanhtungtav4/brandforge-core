@@ -36,6 +36,7 @@ from __future__ import annotations
 from .craft import CRAFT_BLOCKING_FORMATS, CRAFT_PASS_SCORE, craft_check_sections
 from .fact_check import check_draft
 from .linter import lint_draft, word_count
+from .loaders import banned_terms as _brand_banned_terms
 from .quality import evaluate_quality
 
 # The gate constants live HERE now (graph.py and mcp_server.py import
@@ -84,8 +85,16 @@ def evaluate_gate(sections: list[dict], fmt: str, brand: dict, facts: dict,
             brand["voice"]["sentence_rules"]["max_sentence_words"])
     except (KeyError, TypeError, ValueError):
         max_sentence_words = None
+    # The brand's banned terms go to craft so a sentence carrying one
+    # is excluded from the rhythm statistic (monotonicity, R5
+    # residual) — the gate is the path where that gaming mattered.
+    try:
+        gate_banned_terms = _brand_banned_terms(brand)
+    except (KeyError, TypeError):
+        gate_banned_terms = None
     craft = craft_check_sections(sections, fmt, brand_id=brand_id,
-                                 max_sentence_words=max_sentence_words)
+                                 max_sentence_words=max_sentence_words,
+                                 banned_terms=gate_banned_terms)
 
     # --- 1. HARD layer ---
     # Vacuity guard (audit round 2): an empty draft — no sections at all,
