@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import re
 import statistics
+import unicodedata
 
 from .loaders import banned_terms, median_range
 
-SENTENCE_SPLIT = re.compile(r"[.!?…]+")
+SENTENCE_SPLIT = re.compile(r"[.!?…！？]+")
 
 # Placeholder for '.' inside numbers (Vietnamese thousand separators and
 # decimals): "185.000đ" is ONE token, not a sentence boundary. Without this
@@ -38,6 +39,54 @@ def split_sentences(text: str) -> list[str]:
             for s in SENTENCE_SPLIT.split(protected) if s.strip()]
 
 
+# ---------------------------------------------------------------------------
+# Normalized phrase matching (audit round 2)
+# ---------------------------------------------------------------------------
+# Banned terms and claim phrases used to be matched as raw substrings of the
+# lowercased text. That let three evasion classes slip through every gate:
+#   * diacritics-free Vietnamese ("dang cap the gioi", "chua mat ngu") —
+#     a very common way to write Vietnamese copy;
+#   * punctuation variants ("game changing" for "game-changing",
+#     "100 % ..." for "100% ...");
+#   * fullwidth/CJK punctuation pasted from other editors.
+# Matching now happens on a normalized form: lowercase, diacritics stripped
+# (đ -> d), every run of non-alphanumerics collapsed to one space. A phrase
+# boundary guard ((?<!\d) ... (?!\d)) stops digit-ending phrases like
+# "số 1" from matching inside ordinary numbers ("số 12", "số 185").
+
+def normalize_for_match(text: str) -> str:
+    """Lowercase, strip Vietnamese diacritics, collapse punctuation to
+    single spaces. Digits are kept. 'Đẳng cấp!' -> 'dang cap'."""
+    lowered = (text or "").lower().replace("đ", "d")
+    decomposed = unicodedata.normalize("NFD", lowered)
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", " ", stripped).strip()
+
+
+def _phrase_regex(phrase: str) -> re.Pattern | None:
+    norm = normalize_for_match(phrase)
+    if not norm:
+        return None
+    return re.compile(r"(?<!\d)" + re.escape(norm) + r"(?!\d)")
+
+
+def phrase_spans(text: str, phrase: str) -> list[tuple[int, int]]:
+    """Match spans of `phrase` in the NORMALIZED form of `text`
+    (diacritics/punctuation-insensitive, digit-boundary guarded)."""
+    rx = _phrase_regex(phrase)
+    if rx is None:
+        return []
+    return [(m.start(), m.end()) for m in rx.finditer(normalize_for_match(text))]
+
+
+def count_phrase(text: str, phrase: str) -> int:
+    return len(phrase_spans(text, phrase))
+
+
+def phrase_in(text: str, phrase: str) -> bool:
+    return bool(phrase_spans(text, phrase))
+
+
 def word_count(text: str) -> int:
     return len(text.split())
 
@@ -50,17 +99,20 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
     """Return (violations, score 0-100) for one section."""
     violations: list[dict] = []
     score = 100.0
-    low = text.lower()
 
+    # Banned terms: normalized matching (diacritics/punctuation-insensitive)
+    # so "dang cap the gioi" or "game changing" cannot evade the ban; the
+    # reported detail stays the brand's own term string.
     for term in banned_terms(brand):
-        for _ in re.finditer(re.escape(term), low):
+        for _ in range(count_phrase(text, term)):
             violations.append({"section_id": section_id, "type": "banned_term", "detail": term})
             score -= 15
 
-    if fmt == "blog" and "!" in text:
-        n = text.count("!")
-        violations.append({"section_id": section_id, "type": "exclamation_in_blog", "detail": f"{n} exclamation mark(s)"})
-        score -= 5 * n
+    if fmt == "blog":
+        n = text.count("!") + text.count("！")  # ASCII + fullwidth
+        if n:
+            violations.append({"section_id": section_id, "type": "exclamation_in_blog", "detail": f"{n} exclamation mark(s)"})
+            score -= 5 * n
 
     lengths = sentence_lengths(text)
     if lengths:

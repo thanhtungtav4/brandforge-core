@@ -135,12 +135,14 @@ def validate_profile(data: dict) -> dict:
     for key, value in (data.get("floors") or {}).items():
         if key not in AXIS_KEYS:
             raise ValueError(f"unknown floor axis: {key!r}")
-        if not isinstance(value, (int, float)) or not (0 <= value <= 90):
+        if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                or not (0 <= value <= 90)):
             raise ValueError(f"floor for {key} must be within [0, 90], got {value!r}")
         floors[key] = value
 
     pass_total = data.get("pass_total", PASS_TOTAL)
-    if not isinstance(pass_total, (int, float)) or not (0 <= pass_total <= 100):
+    if (not isinstance(pass_total, (int, float)) or isinstance(pass_total, bool)
+            or not (0 <= pass_total <= 100)):
         raise ValueError(f"pass_total must be within [0, 100], got {pass_total!r}")
 
     return {"id": str(data.get("id") or f"preset-{fmt}"),
@@ -276,7 +278,9 @@ def evaluate_quality(draft, fmt: str, profile: dict, judged: dict | None,
     for axis, grade in judged.items():
         if axis not in JUDGED_AXES:
             raise ValueError(f"{axis!r} is not a judged axis (judged: {JUDGED_AXES})")
-        if grade not in GRADE_SCORES:
+        # bool is an int subclass (True == 1): without the explicit guard a
+        # JSON true would silently grade as 1 (audit round 2).
+        if isinstance(grade, bool) or grade not in GRADE_SCORES:
             raise ValueError(f"judged grade for {axis} must be 0, 1 or 2, got {grade!r}")
 
     axes: list[dict] = []

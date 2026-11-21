@@ -10,6 +10,17 @@ import yaml
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
+def _load_json_file(path: Path) -> dict:
+    """json.loads with a human-actionable error: a corrupt stored file
+    (interrupted write, hand edit) must surface as a clear ValueError
+    naming the file, not a bare JSONDecodeError from deep in a tool call
+    (audit round 2)."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"corrupt JSON in stored file {path}: {exc}") from None
+
+
 def load_persona(path: Path | None = None) -> dict:
     return json.loads((path or DATA_DIR / "persona_linh.json").read_text(encoding="utf-8"))
 
@@ -72,7 +83,7 @@ def load_style_profile(profile_id: str) -> dict | None:
     path = _style_profile_path(profile_id)
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _load_json_file(path)
 
 
 def list_style_profiles() -> list[dict]:
@@ -126,7 +137,7 @@ def load_brand_draft(draft_id: str) -> dict | None:
     path = _brand_draft_path(draft_id)
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _load_json_file(path)
 
 
 def list_brand_drafts() -> list[dict]:
@@ -181,7 +192,7 @@ def load_quality_profile(profile_id: str) -> dict | None:
     path = _quality_profile_path(profile_id)
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _load_json_file(path)
 
 
 def list_quality_profiles() -> list[dict]:

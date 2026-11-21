@@ -29,7 +29,6 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -44,8 +43,7 @@ from content_core.fact_check import find_refused_claims
 # Gate policy lives in ONE place: content_core/gates.py (BRAND_PASS_SCORE,
 # MAX_REWRITES, and the craft constants re-exported from craft.py). Both
 # this server's final_gate and the LangGraph graph call gates.evaluate_gate.
-from content_core.gates import BRAND_PASS_SCORE, MAX_REWRITES
-from content_core.gates import CRAFT_BLOCKING_FORMATS, CRAFT_PASS_SCORE
+from content_core.gates import CRAFT_PASS_SCORE, MAX_REWRITES
 from content_core.gates import evaluate_gate as _evaluate_gate
 from content_core.graph import Core
 from content_core.linter import lint_draft as _lint_draft
@@ -166,7 +164,10 @@ def _load_draft(draft_id: str) -> dict:
     path = _draft_path(draft_id)
     if not path.exists():
         raise ValueError(f"draft not found: {draft_id}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"corrupt JSON in draft file {path}: {exc}") from None
 
 
 def _store_draft(draft: dict) -> dict:
@@ -311,8 +312,11 @@ def save_style_profile(name: str, samples: list[str], qualitative: dict | None =
     are stored only for the user's OWN or licensed samples. For other
     people's writing, keep the fingerprint + distilled traits only.
     Returns the stored profile, including its generated id."""
-    profile = _build_profile(name, samples, qualitative=qualitative,
-                             store_excerpts=store_excerpts, brand_id=brand_id)
+    try:
+        profile = _build_profile(name, samples, qualitative=qualitative,
+                                 store_excerpts=store_excerpts, brand_id=brand_id)
+    except ValueError as exc:  # e.g. zero usable samples
+        return {"error": str(exc)}
     return _save_style_profile_file(profile)
 
 
@@ -546,9 +550,16 @@ def make_outline(brief: dict, proposed_outline: list[dict] | None = None,
         for i, item in enumerate(proposed_outline):
             if not str(item.get("heading", "")).strip():
                 return {"ok": False, "error": f"outline item {i} has no heading", "outline": []}
+            try:
+                target_words = int(item.get("target_words", 120))
+            except (TypeError, ValueError):
+                return {"ok": False,
+                        "error": f"outline item {i} has a non-numeric target_words: "
+                                 f"{item.get('target_words')!r}",
+                        "outline": []}
             outline.append({"id": f"s{i+1}", "heading": item["heading"],
                             "intent": item.get("intent", ""),
-                            "target_words": int(item.get("target_words", 120)), "text": ""})
+                            "target_words": target_words, "text": ""})
         source = "model_proposed_validated"
     else:
         outline = core.outline({"brief": brief})["outline"]  # type: ignore[arg-type]

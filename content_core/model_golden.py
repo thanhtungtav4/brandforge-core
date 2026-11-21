@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .craft import craft_check, craft_check_sections
+from .craft import craft_check
 from .gates import BRAND_PASS_SCORE, evaluate_gate
 from .loaders import DATA_DIR, load_brand, load_facts
 

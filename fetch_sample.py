@@ -75,13 +75,20 @@ def strip_html(html: str) -> tuple[str, str]:
     return title, text
 
 
-def fetch_url(url: str, timeout: int = 20) -> dict:
+#: Hard cap on bytes read per page (audit round 2): a hostile or broken
+#: server must not make this helper buffer an unbounded response.
+MAX_BYTES = 5_000_000
+
+
+def fetch_url(url: str, timeout: int = 20, max_bytes: int = MAX_BYTES) -> dict:
     request = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        html = response.read().decode("utf-8", errors="replace")
+        raw = response.read(max_bytes + 1)
+    truncated = len(raw) > max_bytes
+    html = raw[:max_bytes].decode("utf-8", errors="replace")
     title, text = strip_html(html)
     return {"url": url, "title": title, "text": text,
-            "word_count": len(text.split())}
+            "word_count": len(text.split()), "truncated": truncated}
 
 
 def main(argv: list[str]) -> int:

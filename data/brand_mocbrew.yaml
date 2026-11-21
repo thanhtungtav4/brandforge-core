@@ -45,7 +45,7 @@ voice:
 
 examples:
   - format: blog_intro
-    text: "Một gói 250g có giá 185.000đ trước khi nói tới hương vị. Mộc Brew rang vào thứ Ba hàng tuần, bạn nhận hạt còn mới, pha tại bàn làm việc vẫn gọn và nhanh."
+    text: "Một gói 250g có giá 185.000đ trước khi nói tới hương vị. Mộc Brew rang vào thứ Ba hàng tuần. Bạn nhận hạt còn mới, pha tại bàn làm việc vẫn gọn và nhanh."
     why_it_works: "giá và lịch rang nói trước, câu ngắn, không hype"
 anti_examples:
   - bad: "Trải nghiệm cà phê đẳng cấp thế giới, elevate buổi sáng của bạn!"

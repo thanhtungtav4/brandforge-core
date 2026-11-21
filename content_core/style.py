@@ -159,8 +159,8 @@ def fingerprint(text: str) -> dict:
         "short_sentence_share": short_share,
         "long_sentence_share": long_share,
         "paragraph_len_median": paragraph_len_median,
-        "question_rate": _round(text.count("?") / n_sent * 100),
-        "exclamation_rate": _round(text.count("!") / n_sent * 100),
+        "question_rate": _round((text.count("?") + text.count("？")) / n_sent * 100),
+        "exclamation_rate": _round((text.count("!") + text.count("！")) / n_sent * 100),
         "first_person_rate": _round(fp * per100w),
         "reader_rate": _round(tokens.count("bạn") * per100w),
         "number_density": _round(sum(1 for t in ws_tokens if any(ch.isdigit() for ch in t)) * per100w),
@@ -295,8 +295,15 @@ def build_profile(name: str, samples: list[str], qualitative: dict | None = None
     licensed. Otherwise `exemplars` is [] and `excerpts_note` says so.
     `profile_id` overrides the generated id (slug + content hash), used for
     the shipped default profile.
+
+    Raises ValueError when there are no usable samples: a profile built
+    from zero samples has an all-zero fingerprint and would silently
+    poison every later style_match comparison (audit round 2).
     """
     samples = [s for s in samples if s and s.strip()]
+    if not samples:
+        raise ValueError("at least one non-empty sample is required to "
+                         "build a style profile")
     analysis = analyze_samples(samples)
     digest = hashlib.sha1("\n".join(samples).encode("utf-8")).hexdigest()[:6]
     pid = profile_id or f"{_slugify(name)}-{digest}"

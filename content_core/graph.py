@@ -12,7 +12,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from .fact_check import check_draft, find_refused_claims
-from .gates import BRAND_PASS_SCORE, MAX_REWRITES, evaluate_gate
+from .gates import MAX_REWRITES, evaluate_gate
 from .linter import lint_draft
 from .loaders import load_brand, load_facts, load_persona
 from .seo import seo_pass as run_seo

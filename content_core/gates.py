@@ -6,8 +6,10 @@ table in the codebase, and it lives in this module:
 
 1. HARD layer (never traded away, never weighted):
    brand score >= BRAND_PASS_SCORE (85) AND 0 banned terms AND
-   0 unflagged fact issues. (Prohibited-claim refusal happens earlier,
-   in validate_brief, and is not part of the gate.)
+   0 unflagged fact issues AND the draft is not vacuous (at least one
+   section, and every section has words — an empty draft used to pass
+   every checker trivially; audit round 2). (Prohibited-claim refusal
+   happens earlier, in validate_brief, and is not part of the gate.)
 2. CRAFT layer: for formats in CRAFT_BLOCKING_FORMATS (blog, product) a
    craft score below CRAFT_PASS_SCORE (70) fails the gate and the
    craft-failing sections join the rewrite list. For other formats craft
@@ -33,7 +35,7 @@ from __future__ import annotations
 
 from .craft import CRAFT_BLOCKING_FORMATS, CRAFT_PASS_SCORE, craft_check_sections
 from .fact_check import check_draft
-from .linter import lint_draft
+from .linter import lint_draft, word_count
 from .quality import evaluate_quality
 
 # The gate constants live HERE now (graph.py and mcp_server.py import
@@ -72,15 +74,26 @@ def evaluate_gate(sections: list[dict], fmt: str, brand: dict, facts: dict,
     craft = craft_check_sections(sections, fmt)
 
     # --- 1. HARD layer ---
+    # Vacuity guard (audit round 2): an empty draft — no sections at all,
+    # or a section with zero words — used to sail through every checker
+    # (no text = no violations = brand 100) and get APPROVED. An empty
+    # section is a hard failure and joins the rewrite list.
+    if sections:
+        empty_sections = [sec.get("id", "") for sec in sections
+                          if word_count(sec.get("text", "")) == 0]
+    else:
+        empty_sections = ["<no sections>"]
     banned = [v for v in violations if v["type"] == "banned_term"]
-    hard_passed = brand_score >= BRAND_PASS_SCORE and not banned and not issues
+    hard_passed = (brand_score >= BRAND_PASS_SCORE and not banned and not issues
+                   and not empty_sections)
     hard = {"passed": hard_passed,
             "brand_score": brand_score,
             "brand_pass_score": BRAND_PASS_SCORE,
             "brand_violations": violations,
             "banned_terms_found": banned,
             "fact_issues": issues,
-            "flagged_claims": flagged}
+            "flagged_claims": flagged,
+            "empty_sections": empty_sections}
 
     # --- 2. CRAFT layer ---
     craft_blocking = fmt in CRAFT_BLOCKING_FORMATS and craft_mode == "blocking"
@@ -108,6 +121,8 @@ def evaluate_gate(sections: list[dict], fmt: str, brand: dict, facts: dict,
 
     failing = sorted({v["section_id"] for v in violations}
                      | {i["section_id"] for i in issues})
+    if empty_sections and sections:
+        failing = sorted(set(failing) | set(empty_sections))
     if craft_failed:
         failing = sorted(set(failing) | set(craft["failing_sections"]))
     if passed:

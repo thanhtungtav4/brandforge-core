@@ -8,6 +8,7 @@ from __future__ import annotations
 import sys
 
 from .fact_check import NEEDS_SOURCE
+from .gates import BRAND_PASS_SCORE
 from .graph import run_flow
 from .golden import BAD_DRAFT_BRIEF, GOLDEN_BRIEFS
 from .linter import word_count
@@ -20,7 +21,7 @@ def _draft_text(state: dict) -> str:
 def _common_ok(state: dict) -> bool:
     banned = [v for v in state.get("brand_violations", []) if v["type"] == "banned_term"]
     return (state.get("status") == "approved"
-            and state.get("scores", {}).get("brand", 0) >= 85
+            and state.get("scores", {}).get("brand", 0) >= BRAND_PASS_SCORE
             and not banned and not state.get("fact_issues"))
 
 

@@ -198,10 +198,12 @@ def discover_links(root_url: str, html: str) -> list[str]:
     return sorted(seen, key=priority)  # stable: document order within a tier
 
 
-def _fetch_html(url: str, timeout: int = 20) -> str:
+def _fetch_html(url: str, timeout: int = 20, max_bytes: int = 5_000_000) -> str:
+    """Fetch one page's HTML, capped at max_bytes (audit round 2: bounded
+    reads — together with max_pages this bounds a whole site fetch)."""
     request = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
+        return response.read(max_bytes).decode("utf-8", errors="replace")
 
 
 def fetch_site(root_url: str, max_pages: int = 8, timeout: int = 20) -> dict:
@@ -229,10 +231,18 @@ def fetch_site(root_url: str, max_pages: int = 8, timeout: int = 20) -> dict:
 def main(argv: list[str]) -> int:
     args = [a for a in argv if not a.startswith("--")]
     max_pages = 8
-    for a in argv:
+    for i, a in enumerate(argv):
         if a.startswith("--max-pages"):
-            value = a.split("=", 1)[1] if "=" in a else argv[argv.index(a) + 1]
-            max_pages = int(value)
+            value = a.split("=", 1)[1] if "=" in a else (
+                argv[i + 1] if i + 1 < len(argv) else "")
+            try:
+                max_pages = int(value)
+            except (TypeError, ValueError):
+                print("usage: fetch_site.py <root_url> [--max-pages 8]",
+                      file=sys.stderr)
+                return 2
+            if "=" not in a and value:
+                args = [x for x in args if x != value]
     if not args:
         print("usage: fetch_site.py <root_url> [--max-pages 8]", file=sys.stderr)
         return 2

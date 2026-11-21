@@ -51,7 +51,8 @@ draft_sections → brand_check → fact_check → seo_pass → final_gate ─(pa
   check section below; unsupported claims block the gate unless marked
   `[NEEDS SOURCE]` (then they are recorded as `flagged_claims`).
 - **final_gate**: pass only if brand score ≥ 85 **and** 0 banned terms **and**
-  0 unflagged fact issues **and** (blog/product) craft ≥ 70 — the rule lives in
+  0 unflagged fact issues **and** the draft is not vacuous (every section has
+  words) **and** (blog/product) craft ≥ 70 — the rule lives in
   `content_core/gates.py` and is shared with the MCP `final_gate` tool,
   which can additionally apply the optional Quality Profile layer. On failure
   it rewrites **only the failing sections**, max 2 rewrites, and records
@@ -74,22 +75,27 @@ draft_sections → brand_check → fact_check → seo_pass → final_gate ─(pa
 `data/facts_lorebook.json` only:
 
 - **Money, normalized**: `185.000đ`, `185.000 đ`, `185.000đ/gói`,
-  `185.000 VND` / `vnđ`, `185000đ`, `185k`, `185 nghìn`, `185 ngàn` are all
+  `185.000 VND` / `vnđ`, `185000đ`, `185k`, `185 nghìn`, `185 ngàn`,
+  comma-grouped `185,000đ` and the `₫` sign (`185.000₫`) are all
   recognized, converted to a VND integer and compared with the fact price
   (185000). Any other amount — in any of those shapes — is a `wrong_price`
   issue, reported once per amount (span de-duplication).
-- **Weight / delivery**: pack weights other than 250g/1000g, delivery ranges
-  other than 2-3 ngày.
+- **Weight / delivery**: pack weights other than 250g/1000g (including the
+  `gam`/`gram` spellings, `300 gam`), delivery ranges other than 2-3 ngày —
+  typographic dashes and spaced ranges (`5–7 ngày`, `5 - 7 ngày`) are
+  checked too.
 - **Roast weekday**: a sentence about roasting ("rang") that names a weekday
   other than the fact's thứ Ba is a `wrong_roast_day` issue. Weekdays in
-  non-roast sentences are ignored.
-- **Origins**: checked per clause — Arabica pairs only with Cầu Đất, Robusta
-  only with Đắk Lắk (`wrong_origin`); one sentence may list both correct
-  pairings. Another coffee region (Bảo Lộc, Di Linh, Gia Lai, Kon Tum,
-  Sơn La, Điện Biên, Buôn Ma Thuột) presented as the source of the brand's
-  beans (sourcing markers like "hạt của", "trồng tại", "nguồn hạt",
-  "Mộc Brew") is an `unknown_origin` issue; merely mentioning such a region
-  (e.g. in a comparison) is not flagged.
+  non-roast sentences are ignored, and a negated mention ("không rang vào
+  thứ Tư") is not a claim.
+- **Origins**: Arabica pairs only with Cầu Đất, Robusta only with Đắk Lắk
+  (`wrong_origin`); a sentence naming a bean with the other region is
+  flagged only when the bean's true home is not named in the same sentence,
+  so one sentence may list both correct pairings. Another coffee region
+  (Bảo Lộc, Di Linh, Gia Lai, Kon Tum, Sơn La, Điện Biên, Buôn Ma Thuột)
+  presented as the source of the brand's beans (sourcing markers like
+  "hạt của", "trồng tại", "nguồn hạt", "Mộc Brew") is an `unknown_origin`
+  issue; merely mentioning such a region (e.g. in a comparison) is not flagged.
 - **Unsupported numbers**: a digit + countable unit (`500 khách hàng`,
   `3 cửa hàng`, `10 năm kinh nghiệm`, …) that no fact supports is an
   `unsupported_number` issue — unless the sentence is marked
@@ -97,6 +103,28 @@ draft_sections → brand_check → fact_check → seo_pass → final_gate ─(pa
   Fact numbers (185/250/1000, the 2-3 delivery range) are whitelisted.
 - **Claims**: prohibited phrases block outright; evidence-requiring phrases
   and bare percentages block unless marked `[NEEDS SOURCE]`.
+
+## Matching is normalized + negation-aware (audit round 2)
+
+Banned terms (linter), claim phrases, roast weekdays and origin pairing are
+matched on a NORMALIZED form of the text (lowercase, Vietnamese diacritics
+stripped, punctuation collapsed — `linter.normalize_for_match`), because raw
+substring matching had three evasion classes and one false-positive class:
+
+- diacritics-free copy evaded everything: `dang cap the gioi`,
+  `100% chua mat ngu`, `Arabica Dak Lak` now match their banned/claim forms;
+- punctuation variants evaded: `game changing` matches `game-changing`,
+  `100 % …` matches `100% …`; fullwidth `！` counts as an exclamation mark
+  in blog and as a sentence boundary;
+- `số 1` no longer matches inside ordinary numbers (`số 12`, `số 185`) —
+  digit-boundary guards on phrase matching;
+- a NEGATED claim is not an assertion: `không phải là tốt nhất`,
+  `không nhận là chữa mất ngủ` are not flagged (the narrow negation list
+  does not include `không chỉ …`, which affirms and still flags).
+
+The gate also rejects a VACUOUS draft (audit round 2): no sections, or any
+section with zero words, is a hard failure — an empty draft used to pass
+every checker trivially (no text = no violations = brand 100).
 
 ## Four data layers — kept separate on purpose
 
@@ -552,7 +580,7 @@ any host app's model can be the writer; the core stays the referee.
 | `brand_check(text?, format?, draft_id?)` | Deterministic brand linter + score on a text or a whole draft |
 | `fact_check(text?, draft_id?)` | Prices/numbers vs facts file; `[NEEDS SOURCE]` claims flagged, unmarked unsupported claims block |
 | `seo_check(draft_id?, title?, keyword?, topic?)` | Title / meta / headings / keyword coverage |
-| `final_gate(draft_id, quality_profile?, judged_scores?)` | THE shared gate (`gates.evaluate_gate`, same as the graph): PASS only if brand ≥85 AND 0 banned AND 0 unflagged fact issues AND (blog/product only) craft ≥70 AND, when activated, the Quality Profile passes; returns the Layer 4 `craft` report and records `craft_score`/`craft_blocking` in `gate_history` — craft **blocks** for blog/product, advisory for social/email/comparison; when the brief carries `style_profile_id`, also returns an advisory `style_match` report (recorded as `style_score`, never blocking); returns exactly which sections to rewrite |
+| `final_gate(draft_id, quality_profile?, judged_scores?)` | THE shared gate (`gates.evaluate_gate`, same as the graph): PASS only if brand ≥85 AND 0 banned AND 0 unflagged fact issues AND no empty sections AND (blog/product only) craft ≥70 AND, when activated, the Quality Profile passes; returns the Layer 4 `craft` report and records `craft_score`/`craft_blocking` in `gate_history` — craft **blocks** for blog/product, advisory for social/email/comparison; when the brief carries `style_profile_id`, also returns an advisory `style_match` report (recorded as `style_score`, never blocking); returns exactly which sections to rewrite |
 | `get_quality_profile(format_or_id)` | Quality Profile: a format name → the shipped preset; a saved custom id → that profile ({weights sum 100, floors, pass_total}) |
 | `save_quality_profile(format, weights, floors?, pass_total?)` | Quality Profile: validate (7 axes, each weight in [2, 45], sum exactly 100) + persist a custom profile to `data/quality_profiles/` |
 | `quality_score(draft_id, judged_scores?, quality_profile?)` | Quality Profile: score a draft on the 7 axes WITHOUT running the gate — dumbbell-ready per-axis score vs floor, weighted total, quality_pass; judged axes (coherence/persuasion/depth) are the writer's 0/1/2 grades, missing ones are excluded, never invented |

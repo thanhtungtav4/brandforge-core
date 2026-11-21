@@ -42,7 +42,7 @@ from collections import Counter
 
 import yaml
 
-from .fact_check import CLAIM_PHRASES
+from .fact_check import CLAIM_PHRASES, find_claim
 from .linter import split_sentences
 from .loaders import load_brand, prohibited_claims
 from .style import STOPWORDS, fingerprint
@@ -358,8 +358,10 @@ def find_site_claims(pages: list[dict]) -> list[dict]:
     seen: set[tuple[str, str]] = set()
     for p in pages or []:
         for sentence in split_sentences(p.get("text", "")):
-            low = sentence.lower()
-            hit = next((ph for ph in patterns if ph in low), None)
+            # Same matcher as fact_check: normalized (diacritics-free copy
+            # still counts), digit-boundary guarded ("số 12" is not a
+            # claim), negation-aware (a denied claim is not a claim).
+            hit = find_claim(sentence, patterns)
             if hit:
                 claim = sentence.strip()[:200]
                 key = (claim, p.get("url", ""))
