@@ -193,5 +193,7 @@ def test_assemble_context_new_order():
     parts = [o["part"] for o in out["ordered_context"]]
     assert parts == ["persona", "brand_rules", "craft_cards", "facts_triggered",
                      "exemplar", "task", "post_history_reminder"]
-    assert out["craft_cards"] and out["exemplars"]
+    # Backlog item 8: full structured payloads were replaced by counts
+    # (the rendered context_text is the single representation).
+    assert out["counts"]["craft_cards"] >= 1 and out["counts"]["exemplars"] >= 1
     assert "185.000đ" in out["context_text"]

@@ -42,9 +42,16 @@ def check_case(case: dict, state: dict) -> tuple[bool, str]:
         ok = _common_ok(state) and NEEDS_SOURCE in text and bool(state.get("flagged_claims"))
         return ok, f"flagged_claims={len(state.get('flagged_claims', []))}, unflagged=0"
     if kind == "refuse_false_claim":
+        # Refusal routing (backlog item 7): the flow now ENDS at
+        # validate_brief with status "refused" — no draft is produced
+        # at all. The old check required an approved clean draft; the
+        # new one is stricter (nothing is written), so it asserts the
+        # refusal itself + the distinct end status + no claim text.
         refused = state.get("refused_claims", [])
-        ok = bool(refused) and "chữa mất ngủ" not in text and _common_ok(state)
-        return ok, f"refused={refused}, claim absent from draft={('chữa mất ngủ' not in text)}"
+        ok = (bool(refused) and state.get("status") == "refused"
+              and "chữa mất ngủ" not in text)
+        return ok, (f"refused={refused}, status={state.get('status')}, "
+                    f"claim absent from draft={('chữa mất ngủ' not in text)}")
     if kind == "bad_draft_recovery":
         first = (state.get("gate_history") or [{}])[0]
         caught = first.get("brand_violations", 0) > 0 or first.get("fact_issues", 0) > 0

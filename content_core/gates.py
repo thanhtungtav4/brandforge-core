@@ -71,7 +71,21 @@ def evaluate_gate(sections: list[dict], fmt: str, brand: dict, facts: dict,
     # --- checkers (the same functions every path has always used) ---
     violations, brand_score, _lint_failing = lint_draft(sections, fmt, brand)
     issues, flagged, _fact_failing = check_draft(sections, facts, brand)
-    craft = craft_check_sections(sections, fmt)
+    # Craft judges with the ACTIVE brand's glossary (evaluation R3-S4:
+    # the blocking paths used to omit brand_id, so every brand was
+    # judged with Mộc Brew's coffee vocabulary — the calibration F8
+    # false positives, inside the gate itself). The brand id and the
+    # brand's own max sentence length (for the rhythm statistic) come
+    # from the brand dict this gate already receives; the MCP
+    # final_gate inherits both automatically.
+    brand_id = (brand.get("brand") or {}).get("id")
+    try:
+        max_sentence_words = int(
+            brand["voice"]["sentence_rules"]["max_sentence_words"])
+    except (KeyError, TypeError, ValueError):
+        max_sentence_words = None
+    craft = craft_check_sections(sections, fmt, brand_id=brand_id,
+                                 max_sentence_words=max_sentence_words)
 
     # --- 1. HARD layer ---
     # Vacuity guard (audit round 2): an empty draft — no sections at all,
@@ -119,7 +133,7 @@ def evaluate_gate(sections: list[dict], fmt: str, brand: dict, facts: dict,
     passed = (hard_passed and not craft_failed
               and (quality is None or quality["quality_pass"]))
 
-    failing = sorted({v["section_id"] for v in violations}
+    failing = sorted({v["section_id"] for v in violations if not v.get("warning")}
                      | {i["section_id"] for i in issues})
     if empty_sections and sections:
         failing = sorted(set(failing) | set(empty_sections))

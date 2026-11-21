@@ -187,6 +187,10 @@ def extract_brand_kit(pages: list[dict]) -> dict:
         for c in meta.get("colors", []):
             color_counts[c["hex"]] += int(c.get("count", 1))
         for f in meta.get("fonts", []):
+            # Defensive (F5): pages can come from fetchers other than
+            # fetch_site.py — a CSS variable is never a font family.
+            if "var(" in str(f.get("family", "")).lower():
+                continue
             font_counts[f["family"]] += int(f.get("count", 1))
 
     return {
@@ -205,14 +209,75 @@ def extract_brand_kit(pages: list[dict]) -> dict:
 # Voice-rule suggestions — derived from the measured fingerprint
 # ---------------------------------------------------------------------------
 
-def suggest_voice_rules(corpus_text: str) -> dict:
+#: Fallback max-sentence cap when a corpus has no measurable sentences,
+#: and the floor of the derived range (a derived cap never goes below the
+#: long-standing default — brands that write short keep the strict cap).
+MAX_SENTENCE_FLOOR = 25
+#: Ceiling of the derived range: beyond ~45 words a Vietnamese sentence
+#: is a run-on for any brand measured so far.
+MAX_SENTENCE_CEILING = 45
+
+
+def _derived_max_sentence(corpus_text: str) -> int:
+    """Derive the max-sentence cap from the site's OWN sentence lengths
+    (calibration R3/F6): the 90th percentile of observed lengths,
+    clamped to [MAX_SENTENCE_FLOOR, MAX_SENTENCE_CEILING].
+
+    Why p90 and not the observed max or p95: the top decile of a scraped
+    corpus is dominated by extraction artefacts (page furniture and
+    flattened tables became 49-69-word 'sentences' in calibration),
+    while genuine prose tails off below it — Cao Nguyên Mộc's real
+    sentences run to ~39 words (p90 = 39) against a fixed cap of 25 that
+    flagged 28/28 of all violations on its clean published posts. A
+    corpus of short sentences (p90 <= 25) keeps the default 25."""
+    lengths = sorted(len(s.split()) for s in split_sentences(corpus_text or ""))
+    if not lengths:
+        return MAX_SENTENCE_FLOOR
+    p90 = lengths[math.ceil(0.90 * len(lengths)) - 1]
+    return max(MAX_SENTENCE_FLOOR, min(MAX_SENTENCE_CEILING, p90))
+
+
+def _brand_name_subject_hits(corpus_text: str, brand_name: str) -> int:
+    """Sentences that OPEN with the brand name in subject position.
+    Pronoun counting cannot see name-as-pronoun (calibration §2: the
+    brand narrates as a person — 'Mộc bán…', 'Mộc muốn…').
+
+    Opening forms tried (a sentence counts ONCE if any matches): the
+    full name; its last word (the short self-reference form, 'Mộc' for
+    'Cao Nguyên Mộc'); and its PREFIXES — first token and first two
+    tokens (evaluation R6-S1: 'Ong Rừng U Minh' writes as 'Ong Rừng…';
+    the last-token-only rule looked for 'Minh' and found nothing, so a
+    first-person-by-name brand was misread as third-person)."""
+    name_tokens = [t.strip(",.;:()").lower()
+                   for t in (brand_name or "").split() if t.strip(",.;:()")]
+    if not name_tokens:
+        return 0
+    forms = [name_tokens, name_tokens[:2], name_tokens[:1], name_tokens[-1:]]
+    forms = [f for f in dict.fromkeys(tuple(f) for f in forms if f)]
+    hits = 0
+    for sentence in split_sentences(corpus_text or ""):
+        tokens = [t.strip(",.;:()").lower() for t in sentence.split()]
+        if not tokens:
+            continue
+        if any(tokens[:len(f)] == list(f) for f in forms):
+            hits += 1
+    return hits
+
+
+def suggest_voice_rules(corpus_text: str, brand_name: str | None = None) -> dict:
     """Deterministic voice suggestions from style.fingerprint().
 
     - sentence median range: [floor(median*0.85), ceil(median*1.15)],
       clamped to [3, 30] and at least 2 wide — a STARTING range around how
       the site actually writes, for the user to tighten.
+    - max_sentence_words: DERIVED from the corpus (see
+      _derived_max_sentence: p90 of observed lengths, clamped [25, 45])
+      — no longer a fixed 25 for every brand.
     - pov: first_person_rate >= 1.5/100 words → first-person observed;
-      otherwise the copy speaks in third person / brand name.
+      else, when `brand_name` is given and the brand name repeatedly
+      opens sentences as the subject (>= 3 hits) while the reader is
+      addressed as "bạn" (reader_rate >= 0.8) → "first-person (as brand
+      name)"; otherwise the copy speaks in third person / brand name.
     - reader_address: "bạn" when reader_rate >= 0.8/100 words, else None.
     - exclamation: a high rate is reported as a review NOTE, never copied
       into formatting_rules — hype punctuation must be a deliberate choice.
@@ -223,13 +288,23 @@ def suggest_voice_rules(corpus_text: str) -> dict:
     hi = min(30, math.ceil(median * 1.15)) if median else 14
     if hi <= lo:
         hi = lo + 2
+    max_sentence = _derived_max_sentence(corpus_text or "")
 
     fp_rate = fp["first_person_rate"]
+    subject_hits = (_brand_name_subject_hits(corpus_text or "", brand_name)
+                    if brand_name else 0)
     if fp_rate >= 1.5:
         pov = "first-person"
         pov_note = (f"site copy speaks in first person ({fp_rate}/100 words "
                     f"of mình/tôi) — confirm WHICH pronoun the brand uses "
                     f"before approving")
+    elif subject_hits >= 3 and fp["reader_rate"] >= 0.8:
+        pov = "first-person (as brand name)"
+        pov_note = (f"the brand name '{brand_name}' opens {subject_hits} "
+                    f"sentences as the speaking subject while readers are "
+                    f"addressed as 'bạn' ({fp['reader_rate']}/100 words) — "
+                    f"the brand speaks first-person BY NAME, not in third "
+                    f"person; confirm the exact self-reference form")
     else:
         pov = "third-person"
         pov_note = (f"first person is rare in the site copy "
@@ -243,6 +318,12 @@ def suggest_voice_rules(corpus_text: str) -> dict:
             f"site copy uses exclamation marks frequently ({excl} per 100 "
             f"sentences) — decide deliberately whether to keep this; it is "
             f"NOT copied into formatting_rules automatically")
+    if max_sentence > MAX_SENTENCE_FLOOR:
+        notes.append(
+            f"max_sentence_words {max_sentence} was DERIVED from the "
+            f"site's own sentence lengths (90th percentile, clamped to "
+            f"[{MAX_SENTENCE_FLOOR}, {MAX_SENTENCE_CEILING}]) — the fixed "
+            f"default of 25 does not fit how this site actually writes")
     if fp["word_count"] < 800:
         notes.append(
             f"corpus is small ({fp['word_count']} words) — these suggestions "
@@ -251,7 +332,7 @@ def suggest_voice_rules(corpus_text: str) -> dict:
 
     return {
         "sentence_rules": {"median_words_default": [lo, hi],
-                           "max_sentence_words": 25},
+                           "max_sentence_words": max_sentence},
         "pov": pov,
         "pov_note": pov_note,
         "reader_address": "bạn" if fp["reader_rate"] >= 0.8 else None,
@@ -439,17 +520,22 @@ def build_brand_draft(pages: list[dict], qualitative: dict | None = None,
     corpus = site_corpus(pages)
     kit = extract_brand_kit(pages)
     name = brand_name or kit["brand_name"]["value"] or "Brand"
-    suggestions = suggest_voice_rules(corpus["all_text"])
+    suggestions = suggest_voice_rules(corpus["all_text"], brand_name=name)
     vocab = extract_vocabulary(pages)
     claims = find_site_claims(pages)
     qual = _validate_qualitative(qualitative)
 
+    # prohibited_claims starts EMPTY (calibration F3): a brand's
+    # prohibitions are its OWN legal/editorial decisions. Drafts used to
+    # silently inherit the house brand's (Mộc Brew's) list — a new brand
+    # must never be governed by another brand's bans. The generic
+    # requires_evidence guardrails ("mọi số liệu", ...) are not claims
+    # and stay as the default review checklist.
     try:
-        default_prohibited = prohibited_claims(load_brand())
         default_requires = list(load_brand().get("claims_and_guardrails", {})
                                 .get("requires_evidence", _DEFAULT_REQUIRES_EVIDENCE))
     except Exception:
-        default_prohibited, default_requires = [], _DEFAULT_REQUIRES_EVIDENCE
+        default_requires = _DEFAULT_REQUIRES_EVIDENCE
 
     is_competitor = source_type == "competitor"
     examples = []
@@ -466,6 +552,10 @@ def build_brand_draft(pages: list[dict], qualitative: dict | None = None,
         "User sửa và duyệt trước khi dùng.",
         "banned_terms đang TRỐNG: từ cấm không suy ra được từ site (site "
         "không bao giờ tự nói mình cấm gì) — user phải tự thêm.",
+        "prohibited_claims đang TRỐNG: claim cấm là quyết định của TỪNG "
+        "brand — draft KHÔNG kế thừa danh sách cấm của bất kỳ brand nào "
+        "khác; user tự đặt theo rủi ro pháp lý/nội dung của brand mình "
+        "(các claim site đang dùng nằm ở site_claims_to_review để duyệt).",
         "voice.traits do model đề xuất (qualitative) — cần user duyệt từng "
         "trait, không mặc định đúng.",
         f"pov '{suggestions['pov']}' và sentence_rules được SUY từ số đo "
@@ -513,7 +603,7 @@ def build_brand_draft(pages: list[dict], qualitative: dict | None = None,
             },
             "formatting_rules": [],
             "banned_terms": [],
-            "prohibited_claims": default_prohibited,
+            "prohibited_claims": [],
         },
         "vocabulary": {
             "use": vocab["use"],
@@ -525,7 +615,7 @@ def build_brand_draft(pages: list[dict], qualitative: dict | None = None,
         "anti_examples": [],
         "claims_and_guardrails": {
             "requires_evidence": default_requires,
-            "prohibited_claims": default_prohibited,
+            "prohibited_claims": [],
             "unsupported_claim_marker": "[NEEDS SOURCE]",
             "site_claims_to_review": claims,
         },
@@ -543,6 +633,32 @@ def build_brand_draft(pages: list[dict], qualitative: dict | None = None,
 # ---------------------------------------------------------------------------
 
 _DRAFT_ONLY_BRAND_KEYS = ("review_status", "source_type", "source_urls")
+
+
+def _sanitize_brand_kit(kit: dict) -> dict:
+    """The kit that lands in an APPROVED brand file (calibration F9):
+    conversion used to pass the draft's kit through untouched, baking
+    extraction artefacts (a blog-thumbnail 'logo', a var(--…) 'font')
+    into the approved brand. Conversion now re-applies the extraction
+    rules to whatever kit the (reviewed) draft carries:
+    - fonts: CSS variable references and generic families are dropped;
+    - logo_url: kept only when the URL itself carries a positive logo
+      signal ('logo' in its path, the strong-signal rule of the fetch
+      layer) — otherwise nulled, because an approved brand must not
+      point at an article thumbnail.
+    Everything else (name, colors, theme, og_image, source_urls) passes
+    through exactly as reviewed."""
+    kit = dict(kit or {})
+    fonts = [f for f in kit.get("fonts", [])
+             if "var(" not in str(f.get("family", "")).lower()]
+    if fonts != kit.get("fonts"):
+        kit["fonts"] = fonts
+    logo = dict(kit.get("logo_url") or {})
+    value = logo.get("value")
+    if value and "logo" not in urllib.parse.urlparse(str(value)).path.lower():
+        logo["value"] = None
+        kit["logo_url"] = logo
+    return kit
 
 
 def draft_to_brand_yaml(draft: dict) -> str:
@@ -580,9 +696,15 @@ def draft_to_brand_yaml(draft: dict) -> str:
         "banned_terms": voice_in.get("banned_terms", []),
         "prohibited_claims": voice_in.get("prohibited_claims", []),
     }
-    examples = [{"format": e.get("format", "site_copy"), "text": e.get("text", ""),
+    examples = []
+    for e in draft.get("examples", []):
+        # Provenance survives conversion (F9): an approved brand keeps
+        # the source_url each approved example came from.
+        entry = {"format": e.get("format", "site_copy"), "text": e.get("text", ""),
                  "why_it_works": e.get("why_it_works", "")}
-                for e in draft.get("examples", [])]
+        if e.get("source_url"):
+            entry["source_url"] = e["source_url"]
+        examples.append(entry)
     guard_in = draft.get("claims_and_guardrails", {})
     clean = {
         "brand": brand,
@@ -597,7 +719,7 @@ def draft_to_brand_yaml(draft: dict) -> str:
             "unsupported_claim_marker": guard_in.get("unsupported_claim_marker",
                                                      "[NEEDS SOURCE]"),
         },
-        "brand_kit": draft.get("brand_kit", {}),
+        "brand_kit": _sanitize_brand_kit(draft.get("brand_kit", {})),
     }
     return yaml.safe_dump(clean, allow_unicode=True, sort_keys=False,
                           default_flow_style=False)

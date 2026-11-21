@@ -1,0 +1,165 @@
+{
+ "issues": [
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "89.000đ = 89000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "179.000đ = 179000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "359.000đ = 359000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "89.000đ = 89000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "179.000đ = 179000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "359.000đ = 359000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "119.000đ = 119000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "94.000đ = 94000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "169.000đ = 169000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "339.000đ = 339000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "94.000đ = 94000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "169.000đ = 169000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "339.000đ = 339000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "20.000đ = 20000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "299.000đ = 299000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "99.000đ = 99000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "15.000đ = 15000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "500.000đ = 500000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "89.000đ = 89000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "89.000đ = 89000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "119.000đ = 119000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "94.000đ = 94000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "wrong_price",
+   "detail": "94.000đ = 94000đ != fact 185.000đ"
+  },
+  {
+   "section_id": "story",
+   "type": "unknown_weight",
+   "detail": "500g"
+  },
+  {
+   "section_id": "story",
+   "type": "unknown_weight",
+   "detail": "500g"
+  },
+  {
+   "section_id": "story",
+   "type": "unknown_weight",
+   "detail": "12g"
+  },
+  {
+   "section_id": "story",
+   "type": "unknown_weight",
+   "detail": "500g"
+  },
+  {
+   "section_id": "story",
+   "type": "unknown_weight",
+   "detail": "500g"
+  },
+  {
+   "section_id": "story",
+   "type": "unsupported_number",
+   "detail": "1kg"
+  },
+  {
+   "section_id": "story",
+   "type": "unsupported_number",
+   "detail": "1kg"
+  },
+  {
+   "section_id": "story",
+   "type": "unsupported_number",
+   "detail": "1kg"
+  },
+  {
+   "section_id": "story",
+   "type": "unsupported_number",
+   "detail": "1kg"
+  }
+ ],
+ "flagged": []
+}

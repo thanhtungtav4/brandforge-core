@@ -1,0 +1,1389 @@
+[
+ {
+  "id": "ca-phe-rang-moc-nguyen-hat",
+  "ten": "Cà phê rang mộc nguyên hạt",
+  "quay": "caphe",
+  "shop": "moc",
+  "tags": [
+   "lamdep",
+   "quabieu"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "Túi 250g",
+    89000
+   ],
+   [
+    "Túi 500g",
+    179000
+   ],
+   [
+    "Túi 1kg",
+    359000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "ca-phe-rang-xay",
+  "ten": "Cà phê rang xay",
+  "quay": "caphe",
+  "shop": "moc",
+  "tags": [
+   "lamdep",
+   "quabieu"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "Túi 250g",
+    89000
+   ],
+   [
+    "Túi 500g",
+    179000
+   ],
+   [
+    "Túi 1kg",
+    359000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "ca-phe-tui-loc",
+  "ten": "Cà phê túi lọc",
+  "quay": "caphe",
+  "shop": "moc",
+  "tags": [
+   "lamdep",
+   "quabieu"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "Hộp 10 gói × 12g",
+    119000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "hat-dieu-rang-muoi",
+  "ten": "Hạt điều rang muối",
+  "quay": "hat",
+  "shop": "moc",
+  "tags": [
+   "tangcan",
+   "quabieu"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "Túi zip 250g",
+    99000
+   ],
+   [
+    "Hũ 500g",
+    199000
+   ],
+   [
+    "Túi 1kg",
+    379000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "combo-ca-phe-500g-hat-dieu-250g",
+  "ten": "Combo cà phê 500g + hạt điều 250g",
+  "quay": "qua",
+  "shop": "moc",
+  "tags": [
+   "tangcan",
+   "lamdep",
+   "quabieu"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "Combo",
+    269000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "hop-qua-mang-tay-nguyen-ve-nha",
+  "ten": "Hộp quà Mang Tây Nguyên Về Nhà",
+  "quay": "qua",
+  "shop": "moc",
+  "tags": [
+   "quabieu"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "Hộp quà",
+    399000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "oc-cho-do",
+  "ten": "Óc chó đỏ",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": true,
+  "cs": [
+   [
+    "180g",
+    110000
+   ],
+   [
+    "400g",
+    200000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Hàng nhập khẩu, xuất xứ ghi trên bao bì. Nalee đóng gói tại Gia Lai"
+  }
+ },
+ {
+  "id": "hanh-nhan-say",
+  "ten": "Hạnh nhân sấy",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": true,
+  "cs": [
+   [
+    "250g",
+    125000
+   ],
+   [
+    "500g",
+    230000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Hàng nhập khẩu, xuất xứ ghi trên bao bì. Nalee đóng gói tại Gia Lai"
+  }
+ },
+ {
+  "id": "macca-nut-vo-loai-dai",
+  "ten": "Macca đại",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tangcan",
+   "quabieu"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    90000
+   ],
+   [
+    "500g",
+    165000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "macca-nut-vo-loai-trung",
+  "ten": "Macca trung",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tangcan",
+   "quabieu"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    85000
+   ],
+   [
+    "500g",
+    155000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "hat-bi-xanh",
+  "ten": "Hạt bí xanh",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    70000
+   ],
+   [
+    "500g",
+    135000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "me-den-rang",
+  "ten": "Mè đen rang",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "lamdep"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    109000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "mix-5-loai-hat",
+  "ten": "Mix 5 loại hạt",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    189000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "mix-4-loai-hat",
+  "ten": "Mix 4 loại hạt",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    209000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "mix-3-loai-hat",
+  "ten": "Mix 3 loại hạt",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    219000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "mit-say-loai-a",
+  "ten": "Mít sấy loại A",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    75000
+   ],
+   [
+    "500g",
+    145000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "chuoi-say-20",
+  "ten": "Chuối sấy 20%",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    35000
+   ],
+   [
+    "500g",
+    65000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "chuoi-say-60",
+  "ten": "Chuối sấy 60%",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    50000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "xoai-say-deo",
+  "ten": "Xoài sấy dẻo",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    119000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "xoai-say-muoi-ot",
+  "ten": "Xoài sấy dẻo muối ớt",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    120000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "khoai-mix-3-vi",
+  "ten": "Khoai mix 3 vị",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    80000
+   ],
+   [
+    "500g",
+    150000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "khoai-mon-nguyen-vi",
+  "ten": "Khoai môn sấy nguyên vị",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    86000
+   ],
+   [
+    "500g",
+    170000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "khoai-lang-vang-say",
+  "ten": "Khoai lang vàng sấy",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    80000
+   ],
+   [
+    "500g",
+    150000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "khoai-lang-tim-say",
+  "ten": "Khoai lang tím sấy",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    70000
+   ],
+   [
+    "500g",
+    130000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "khoai-say-mat-ong-mix",
+  "ten": "Khoai sấy mật ong",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    89000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "khoai-tim-say-mat-ong",
+  "ten": "Khoai tím sấy mật ong",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    89000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "khoai-vang-say-mat-ong",
+  "ten": "Khoai vàng sấy mật ong",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    79000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "nho-kho-chile",
+  "ten": "Nho Chile",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": true,
+  "cs": [
+   [
+    "250g",
+    60000
+   ],
+   [
+    "500g",
+    110000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Nhập khẩu từ Chile, Nalee đóng gói tại Gia Lai"
+  }
+ },
+ {
+  "id": "tao-do",
+  "ten": "Táo đỏ",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [
+   "lamdep"
+  ],
+  "nk": true,
+  "cs": [
+   [
+    "250g",
+    50000
+   ],
+   [
+    "500g",
+    85000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Hàng nhập khẩu, xuất xứ ghi trên bao bì. Nalee đóng gói tại Gia Lai"
+  }
+ },
+ {
+  "id": "dau-tay-say",
+  "ten": "Dâu tây sấy",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [
+   "lamdep"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "200g",
+    200000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "gao-lut-say",
+  "ten": "Gạo lứt sấy",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "300g",
+    45000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "kho-ga-la-chanh",
+  "ten": "Khô gà lá chanh",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "300g",
+    100000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "thanh-gao-lut-cha-bong",
+  "ten": "Thanh gạo lứt chà bông",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    119000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "thanh-gao-lut-rong-bien",
+  "ten": "Thanh gạo lứt rong biển",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    119000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "banh-thuyen-hanh-nhan",
+  "ten": "Bánh thuyền hạnh nhân",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    169000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "thanh-me-den",
+  "ten": "Thanh mè đen",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "lamdep"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    189000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "banh-hoa-mai",
+  "ten": "Bánh hoa mai",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    199000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "banh-rong-bien-kep-hat",
+  "ten": "Bánh rong biển kẹp hạt",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    199000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "banh-mix-cac-loai",
+  "ten": "Bánh mix các loại",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    169000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet"
+ },
+ {
+  "id": "bot-cacao-sua",
+  "ten": "Bột cacao sữa",
+  "quay": "caphe",
+  "shop": "lan",
+  "tags": [
+   "tangcan",
+   "lamdep"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    80000
+   ],
+   [
+    "500g",
+    150000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "bot-cacao-nguyen-chat",
+  "ten": "Bột cacao nguyên chất",
+  "quay": "caphe",
+  "shop": "lan",
+  "tags": [
+   "lamdep"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    120000
+   ],
+   [
+    "500g",
+    220000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "cacao-nibs-ngoi-cacao",
+  "ten": "Cacao ngòi (cacao nibs)",
+  "quay": "caphe",
+  "shop": "lan",
+  "tags": [
+   "lamdep"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "200g",
+    180000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "bot-ngu-coc-toan-dien",
+  "ten": "Ngũ cốc toàn diện",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "tangcan"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    160000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "bot-gao-lut",
+  "ten": "Bột gạo lứt",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    200000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "bot-me-den",
+  "ten": "Bột mè đen",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "lamdep"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    130000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "bot-chuoi-xanh",
+  "ten": "Bột chuối xanh",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    119000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "bot-san-day",
+  "ten": "Bột sắn dây",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [
+   "lamdep"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    130000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "set-tra-gao-lut",
+  "ten": "Set trà gạo lứt",
+  "quay": "caphe",
+  "shop": "lan",
+  "tags": [
+   "giamcan",
+   "tieuduong"
+  ],
+  "nk": false,
+  "cs": [
+   [
+    "30 gói",
+    169000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "ky-tu",
+  "ten": "Kỷ tử",
+  "quay": "matong",
+  "shop": "lan",
+  "tags": [
+   "lamdep"
+  ],
+  "nk": true,
+  "cs": [
+   [
+    "200g",
+    150000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Hàng nhập khẩu, xuất xứ ghi trên bao bì. Nalee đóng gói tại Gia Lai"
+  }
+ },
+ {
+  "id": "muoi-hong-himalaya",
+  "ten": "Muối hồng",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [],
+  "nk": true,
+  "cs": [
+   [
+    "500g",
+    50000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Hàng nhập khẩu, xuất xứ ghi trên bao bì. Nalee đóng gói tại Gia Lai"
+  }
+ },
+ {
+  "id": "lan-mit-say-xuat-khau",
+  "ten": "Mít sấy xuất khẩu",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    80000
+   ],
+   [
+    "500g",
+    155000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-mit-say-be",
+  "ten": "Mít sấy bể",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    40000
+   ],
+   [
+    "500g",
+    75000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-sau-rieng-say",
+  "ten": "Sầu riêng sấy",
+  "quay": "say",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "150g",
+    200000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-tinh-bot-nghe",
+  "ten": "Tinh bột nghệ",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    130000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-hat-chia",
+  "ten": "Hạt chia",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    50000
+   ],
+   [
+    "500g",
+    90000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-yen-mach",
+  "ten": "Yến mạch",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [],
+  "nk": true,
+  "cs": [
+   [
+    "500g",
+    60000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Nhập khẩu từ Đức (Almatura)"
+  }
+ },
+ {
+  "id": "lan-mat-ong-hoa-ca-phe",
+  "ten": "Mật ong hoa cà phê",
+  "quay": "matong",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "1 lít",
+    169000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-ca-phe-u-lanh",
+  "ten": "Cà phê ủ lạnh",
+  "quay": "caphe",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "10 gói",
+    150000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-ca-phe-nguyen-chat",
+  "ten": "Cà phê nguyên chất",
+  "quay": "caphe",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    190000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-ca-phe-phin-giay",
+  "ten": "Cà phê phin giấy",
+  "quay": "caphe",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "10 gói",
+    129000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-ngu-coc-hat-sen",
+  "ten": "Ngũ cốc hạt sen",
+  "quay": "ngucoc",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "500g",
+    190000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-macca-nhan-nguyen",
+  "ten": "Macca nhân nguyên",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    185000
+   ],
+   [
+    "500g",
+    350000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-macca-nhan-be",
+  "ten": "Macca nhân bể",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    160000
+   ],
+   [
+    "500g",
+    300000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-hat-dieu-sua",
+  "ten": "Hạt điều sữa",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    110000
+   ],
+   [
+    "500g",
+    200000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ },
+ {
+  "id": "lan-hat-dieu-rang-muoi",
+  "ten": "Hạt điều rang muối",
+  "quay": "hat",
+  "shop": "lan",
+  "tags": [],
+  "nk": false,
+  "cs": [
+   [
+    "250g",
+    95000
+   ],
+   [
+    "500g",
+    170000
+   ]
+  ],
+  "img": null,
+  "tt": "duyet",
+  "info": {
+   "xx": "Công ty Cổ phần Nalee Việt Nam, xã Biển Hồ, Gia Lai"
+  }
+ }
+]

@@ -35,6 +35,14 @@ def atomic_write_text(path: Path, text: str) -> None:
         raise
 
 
+#: Stored ids longer than this are rejected at the boundary
+#: (evaluation R7 F2: a 10k-char id used to sail through sanitising and
+#: explode at open() with a raw "[Errno 36] File name too long" that
+#: leaked the absolute store path). 200 chars is far above every real
+#: id in the system (generated ids are slugs + short hashes).
+MAX_STORED_ID_LENGTH = 200
+
+
 def stored_file_stem(raw_id: str) -> str:
     """Map a stored id to its filename stem, INJECTIVELY.
 
@@ -45,7 +53,13 @@ def stored_file_stem(raw_id: str) -> str:
     stable hash of the ORIGINAL id is appended, so distinct ids stay
     distinct. Ids that were already clean keep their exact legacy stem
     ("mocbrew-blog-voice" -> "mocbrew-blog-voice.json"), so every file
-    stored before this change resolves exactly as before."""
+    stored before this change resolves exactly as before.
+
+    Raises ValueError for an empty/unusable id and for an id longer
+    than MAX_STORED_ID_LENGTH — the message never contains a path."""
+    if len(raw_id) > MAX_STORED_ID_LENGTH:
+        raise ValueError(
+            f"id too long ({len(raw_id)} chars > {MAX_STORED_ID_LENGTH})")
     safe = "".join(c for c in raw_id if c.isalnum() or c in "-_")
     if not safe:
         raise ValueError(f"invalid id: {raw_id!r}")

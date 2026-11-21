@@ -93,7 +93,11 @@ def test_research_facts_keyword_triggered():
 def test_validate_brief_refuses_health_claim():
     out = srv.validate_brief({"format": "blog", "topic": "cà phê và giấc ngủ",
                               "requested_claims": ["100% chữa mất ngủ"]})
-    assert out["valid"] is True
+    # Backlog item 7: a brief requesting prohibited claims is REFUSED —
+    # valid=False with status "refused" (was valid=True before the
+    # refusal-routing fix; see evaluation R7 F7 / R8 F8-7).
+    assert out["valid"] is False
+    assert out["status"] == "refused"
     assert "100% chữa mất ngủ" in out["refused_claims"]
 
 

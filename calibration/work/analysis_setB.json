@@ -1,0 +1,368 @@
+{
+ "corpus": {
+  "page_count": 8,
+  "total_words": 8663,
+  "per_page": [
+   {
+    "url": "https://caonguyenmoc.vn/blog/",
+    "title": "Blog Cao Nguyên Mộc: cà phê, dinh dưỡng, làm đẹp, du lịch Gia Lai",
+    "word_count": 2801,
+    "sentence_count": 108
+   },
+   {
+    "url": "https://caonguyenmoc.vn/blog/cao-nguyen-moc-la-ai-xuong-rang-gia-dinh-duc-co/",
+    "title": "Cao Nguyên Mộc: cà phê rang mộc từ Đức Cơ, Gia Lai | Cao Nguyên Mộc",
+    "word_count": 1000,
+    "sentence_count": 68
+   },
+   {
+    "url": "https://caonguyenmoc.vn/blog/ca-phe-rang-moc-la-gi/",
+    "title": "Cà phê rang mộc là gì? Cách phân biệt với cà phê tẩm | Cao Nguyên Mộc",
+    "word_count": 629,
+    "sentence_count": 37
+   },
+   {
+    "url": "https://caonguyenmoc.vn/blog/bao-quan-ca-phe-sau-khi-mo-tui/",
+    "title": "Bảo quản cà phê sau khi mở túi để giữ mùi thơm lâu | Cao Nguyên Mộc",
+    "word_count": 889,
+    "sentence_count": 56
+   },
+   {
+    "url": "https://caonguyenmoc.vn/blog/cach-pha-ca-phe-phin-rang-moc/",
+    "title": "Cách pha cà phê phin ngon với cà phê rang mộc | Cao Nguyên Mộc",
+    "word_count": 616,
+    "sentence_count": 39
+   },
+   {
+    "url": "https://caonguyenmoc.vn/blog/cac-muc-rang-ca-phe-rang-sang-vua-dam/",
+    "title": "Các mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào",
+    "word_count": 968,
+    "sentence_count": 66
+   },
+   {
+    "url": "https://caonguyenmoc.vn/blog/ca-phe-robusta-va-arabica-khac-nhau-the-nao/",
+    "title": "Cà phê Robusta và Arabica khác nhau thế nào? Cách chọn theo khẩu vị",
+    "word_count": 979,
+    "sentence_count": 55
+   },
+   {
+    "url": "https://caonguyenmoc.vn/blog/cach-chon-hat-dieu-ngon-va-bao-quan/",
+    "title": "Cách chọn hạt điều ngon và bảo quản để hạt giòn lâu, không hôi dầu",
+    "word_count": 781,
+    "sentence_count": 48
+   }
+  ]
+ },
+ "fingerprint": {
+  "word_count": 8663,
+  "sentence_count": 477,
+  "sentence_len": {
+   "median": 14.0,
+   "mean": 18.17,
+   "stdev": 12.8
+  },
+  "short_sentence_share": 0.08,
+  "long_sentence_share": 0.33,
+  "paragraph_len_median": 11.0,
+  "question_rate": 21.17,
+  "exclamation_rate": 0.0,
+  "first_person_rate": 0.01,
+  "reader_rate": 0.17,
+  "number_density": 2.33,
+  "transition_freq": [
+   {
+    "term": "nhưng",
+    "count": 11
+   },
+   {
+    "term": "nhất là",
+    "count": 5
+   },
+   {
+    "term": "vì vậy",
+    "count": 2
+   },
+   {
+    "term": "cuối cùng",
+    "count": 1
+   }
+  ],
+  "type_token_ratio": 0.12,
+  "top_words": [
+   {
+    "word": "phê",
+    "count": 307
+   },
+   {
+    "word": "cà",
+    "count": 304
+   },
+   {
+    "word": "hạt",
+    "count": 200
+   },
+   {
+    "word": "rang",
+    "count": 189
+   },
+   {
+    "word": "mộc",
+    "count": 122
+   },
+   {
+    "word": "cách",
+    "count": 90
+   },
+   {
+    "word": "điều",
+    "count": 82
+   },
+   {
+    "word": "nguyên",
+    "count": 70
+   },
+   {
+    "word": "pha",
+    "count": 68
+   },
+   {
+    "word": "gia",
+    "count": 67
+   },
+   {
+    "word": "mùi",
+    "count": 61
+   },
+   {
+    "word": "lai",
+    "count": 58
+   },
+   {
+    "word": "robusta",
+    "count": 52
+   },
+   {
+    "word": "vị",
+    "count": 52
+   },
+   {
+    "word": "túi",
+    "count": 52
+   }
+  ]
+ },
+ "brand_kit": {
+  "brand_name": {
+   "value": "Cao Nguyên Mộc",
+   "source_url": "https://caonguyenmoc.vn/blog/cao-nguyen-moc-la-ai-xuong-rang-gia-dinh-duc-co/"
+  },
+  "logo_url": {
+   "value": "https://caonguyenmoc.vn/img/b/cao-nguyen-moc-la-ai-xuong-rang-gia-dinh-duc-co-t.jpg",
+   "source_url": "https://caonguyenmoc.vn/blog/"
+  },
+  "theme_color": {
+   "value": null,
+   "source_url": ""
+  },
+  "og_image": {
+   "value": "https://caonguyenmoc.vn/og.jpg",
+   "source_url": "https://caonguyenmoc.vn/"
+  },
+  "colors": [
+   {
+    "hex": "#efe2c8",
+    "count": 32
+   },
+   {
+    "hex": "#ffffff",
+    "count": 26
+   },
+   {
+    "hex": "#f2b48f",
+    "count": 24
+   },
+   {
+    "hex": "#141a10",
+    "count": 16
+   },
+   {
+    "hex": "#1d2418",
+    "count": 16
+   },
+   {
+    "hex": "#222b1c",
+    "count": 16
+   }
+  ],
+  "fonts": [
+   {
+    "family": "var(--display)",
+    "count": 16
+   },
+   {
+    "family": "Lora",
+    "count": 10
+   },
+   {
+    "family": "Be Vietnam Pro",
+    "count": 9
+   }
+  ]
+ },
+ "voice_suggestions": {
+  "sentence_rules": {
+   "median_words_default": [
+    11,
+    17
+   ],
+   "max_sentence_words": 25
+  },
+  "pov": "third-person",
+  "pov_note": "first person is rare in the site copy (0.01/100 words) — the brand speaks about itself in third person / by name",
+  "reader_address": null,
+  "formatting_notes": [
+   "first person is rare in the site copy (0.01/100 words) — the brand speaks about itself in third person / by name"
+  ],
+  "fingerprint_summary": {
+   "sentence_median": 14.0,
+   "sentence_stdev": 12.8,
+   "first_person_rate": 0.01,
+   "reader_rate": 0.17,
+   "exclamation_rate": 0.0,
+   "question_rate": 21.17,
+   "number_density": 2.33,
+   "word_count": 8663
+  }
+ },
+ "vocabulary": {
+  "use": [
+   {
+    "term": "cà phê",
+    "count": 303,
+    "instead_of": ""
+   },
+   {
+    "term": "hạt điều",
+    "count": 70,
+    "instead_of": ""
+   },
+   {
+    "term": "gia lai",
+    "count": 57,
+    "instead_of": ""
+   },
+   {
+    "term": "phê rang",
+    "count": 47,
+    "instead_of": ""
+   },
+   {
+    "term": "rang mộc",
+    "count": 47,
+    "instead_of": ""
+   },
+   {
+    "term": "công thức",
+    "count": 32,
+    "instead_of": ""
+   },
+   {
+    "term": "cao nguyên",
+    "count": 28,
+    "instead_of": ""
+   },
+   {
+    "term": "nguyên mộc",
+    "count": 28,
+    "instead_of": ""
+   }
+  ],
+  "exact": [
+   "Cao Nguyên Mộc",
+   "Gia Lai",
+   "W180 W240 W320",
+   "Tây Nguyên",
+   "Tỉnh Gia Lai",
+   "Biển Hồ",
+   "Minh Thành",
+   "Chư Đang Ya"
+  ],
+  "glossary_candidates": [
+   {
+    "term": "cách",
+    "count": 90
+   },
+   {
+    "term": "pha",
+    "count": 68
+   },
+   {
+    "term": "mùi",
+    "count": 61
+   },
+   {
+    "term": "robusta",
+    "count": 52
+   },
+   {
+    "term": "vị",
+    "count": 52
+   },
+   {
+    "term": "túi",
+    "count": 52
+   },
+   {
+    "term": "xay",
+    "count": 49
+   },
+   {
+    "term": "phin",
+    "count": 45
+   },
+   {
+    "term": "đắng",
+    "count": 40
+   },
+   {
+    "term": "đậm",
+    "count": 39
+   }
+  ]
+ },
+ "site_claims": [
+  {
+   "claim": "LoạiSau khi mở túi, ngon nhất trong------Cà phê nguyên hạtKhoảng 3–6 tuầnCà phê rang xayKhoảng 2–4 tuầnCà phê túi lọc (gói kín)Theo hạn in trên hộp, mở gói nào pha gói đó\n\nVì vậy, nên mua vừa đủ uống ",
+   "phrase": "ngon nhất",
+   "source_url": "https://caonguyenmoc.vn/blog/bao-quan-ca-phe-sau-khi-mo-tui/",
+   "risk": "needs_evidence"
+  },
+  {
+   "claim": "Tốt nhất là dùng bã để khử mùi",
+   "phrase": "tốt nhất",
+   "source_url": "https://caonguyenmoc.vn/blog/bao-quan-ca-phe-sau-khi-mo-tui/",
+   "risk": "needs_evidence"
+  },
+  {
+   "claim": "Cà phê xay ngon nhất trong vài tuần đầu sau khi mở",
+   "phrase": "ngon nhất",
+   "source_url": "https://caonguyenmoc.vn/blog/cach-pha-ca-phe-phin-rang-moc/",
+   "risk": "needs_evidence"
+  },
+  {
+   "claim": "Cà phê rang xong bao lâu thì uống ngon nhất",
+   "phrase": "ngon nhất",
+   "source_url": "https://caonguyenmoc.vn/blog/cac-muc-rang-ca-phe-rang-sang-vua-dam/",
+   "risk": "needs_evidence"
+  },
+  {
+   "claim": "Phần lớn cà phê ngon nhất trong khoảng vài ngày đến vài tuần sau ngày rang",
+   "phrase": "ngon nhất",
+   "source_url": "https://caonguyenmoc.vn/blog/cac-muc-rang-ca-phe-rang-sang-vua-dam/",
+   "risk": "needs_evidence"
+  }
+ ],
+ "warnings": [
+  "site makes 5 claim(s) needing evidence — they are listed for review, never approved silently"
+ ]
+}

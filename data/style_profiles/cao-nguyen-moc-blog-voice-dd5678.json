@@ -1,0 +1,146 @@
+{
+  "id": "cao-nguyen-moc-blog-voice-dd5678",
+  "name": "Cao Nguyên Mộc — blog voice",
+  "brand_id": "cao-nguyen-moc",
+  "created_from": {
+    "sample_count": 5,
+    "total_words": 4081
+  },
+  "fingerprint": {
+    "word_count": 4081,
+    "sentence_count": 253,
+    "sentence_len": {
+      "median": 14.0,
+      "mean": 16.13,
+      "stdev": 10.44
+    },
+    "short_sentence_share": 0.05,
+    "long_sentence_share": 0.24,
+    "paragraph_len_median": 9.0,
+    "question_rate": 22.92,
+    "exclamation_rate": 0.0,
+    "first_person_rate": 0.02,
+    "reader_rate": 0.2,
+    "number_density": 1.67,
+    "transition_freq": [
+      {
+        "term": "nhưng",
+        "count": 8
+      },
+      {
+        "term": "nhất là",
+        "count": 4
+      },
+      {
+        "term": "vì vậy",
+        "count": 2
+      }
+    ],
+    "type_token_ratio": 0.16,
+    "top_words": [
+      {
+        "word": "phê",
+        "count": 189
+      },
+      {
+        "word": "cà",
+        "count": 187
+      },
+      {
+        "word": "rang",
+        "count": 127
+      },
+      {
+        "word": "mộc",
+        "count": 58
+      },
+      {
+        "word": "hạt",
+        "count": 53
+      },
+      {
+        "word": "pha",
+        "count": 49
+      },
+      {
+        "word": "mùi",
+        "count": 46
+      },
+      {
+        "word": "robusta",
+        "count": 45
+      },
+      {
+        "word": "vị",
+        "count": 40
+      },
+      {
+        "word": "cách",
+        "count": 37
+      },
+      {
+        "word": "đậm",
+        "count": 35
+      },
+      {
+        "word": "túi",
+        "count": 33
+      },
+      {
+        "word": "phin",
+        "count": 31
+      },
+      {
+        "word": "xay",
+        "count": 29
+      },
+      {
+        "word": "nguyên",
+        "count": 28
+      }
+    ]
+  },
+  "consistency_warnings": [
+    "samples diverge on first_person_rate (CV 2.0 > 0.35) — possibly mixed authors"
+  ],
+  "qualitative": {
+    "tone_traits": [
+      {
+        "trait": "giáo dục, bình tĩnh, không hô hào",
+        "do": "Giải thích cơ chế (vì sao hạt chua, vì sao mất mùi) rồi mới khuyên",
+        "dont": "Không dùng dấu chấm than, không siêu cấp tự khen"
+      },
+      {
+        "trait": "xưng 'Mộc', gọi 'bạn'",
+        "do": "Tự xưng bằng tên thân mật 'Mộc' khi nói về brand",
+        "dont": "Không 'chúng tôi'/'quý khách'"
+      },
+      {
+        "trait": "con số cụ thể",
+        "do": "Cho tỉ lệ, nhiệt độ, thời gian, giá rõ ràng",
+        "dont": "Không nói chung chung 'một ít', 'vừa đủ' khi có thể đo"
+      }
+    ],
+    "opening_patterns": [
+      "Mục 'Trả lời nhanh' tóm tắt đáp án ngay đầu bài",
+      "Câu định nghĩa trực tiếp ('Cà phê rang mộc là cà phê...')"
+    ],
+    "closing_patterns": [
+      "Gợi ý bước tiếp theo / bài liên quan",
+      "Nhắc nhẹ sản phẩm của Mộc kèm giá"
+    ],
+    "signature_devices": [
+      "Tiêu đề mục dạng câu hỏi ('Rang mộc là gì?')",
+      "Bảng so sánh quy cách–giá",
+      "Khung 'Trả lời nhanh'"
+    ],
+    "stance": "Người làm nghề chia sẻ kiến thức thật từ xưởng rang gia đình; minh bạch giá và quy trình; thừa nhận giới hạn (ví dụ: đang tìm nhóm hộ trồng hạt điều cụ thể)",
+    "never_do": [
+      "Không chấm than trong blog",
+      "Không claim chữa bệnh cho sản phẩm của mình",
+      "Không giấu giá"
+    ]
+  },
+  "exemplars": [],
+  "excerpts_note": "excerpts not stored — fingerprint + distilled traits only (default; use store_excerpts=True only for your own/licensed samples)"
+}

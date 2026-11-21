@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Mộc Nhỏ — Cà phê rang mộc</title>
+<meta property="og:site_name" content="Mộc Nhỏ">
+</head>
+<body>
+<div id="app">Cửa hàng đang tải, bạn chờ Mộc Nhỏ trong giây lát nhé.</div>
+<script>
+const PRODUCTS = [
+  {"id": 1, "name": "Cà phê rang mộc nguyên hạt 250g", "price": 89000, "desc": "Robusta Đức Cơ rang sáng, không tẩm bơ đường, hái chín phơi giàn, đóng túi van một chiều giữ mùi thơm lâu cho người pha phin tại nhà mỗi sáng"},
+  {"id": 2, "name": "Cà phê rang mộc nguyên hạt 500g", "price": 179000, "desc": "Robusta Đức Cơ rang sáng, không tẩm bơ đường, hái chín phơi giàn, đóng túi van một chiều giữ mùi thơm lâu cho người pha phin tại nhà mỗi sáng"},
+  {"id": 3, "name": "Cà phê rang xay vừa cho phin 250g", "price": 89000, "desc": "Xay vừa cho phin truyền thống, vị đắng dịu, hậu ngọt nhẹ, rang theo đơn mỗi tuần tại xưởng gia đình ở Đức Cơ Gia Lai gần biên giới phía tây"},
+  {"id": 4, "name": "Cà phê rang xay vừa cho phin 500g", "price": 179000, "desc": "Xay vừa cho phin truyền thống, vị đắng dịu, hậu ngọt nhẹ, rang theo đơn mỗi tuần tại xưởng gia đình ở Đức Cơ Gia Lai gần biên giới phía tây"},
+  {"id": 5, "name": "Hạt điều rang muối 250g", "price": 99000, "desc": "Hạt điều Việt Nam trồng trên đất đỏ bazan Tây Nguyên, rang muối vừa ăn, hạt to đều, giòn thơm, đóng hũ kín tránh ẩm mốc trong mùa mưa dài"},
+  {"id": 6, "name": "Hạt điều rang mộc 250g", "price": 99000, "desc": "Hạt điều Việt Nam trồng trên đất đỏ bazan Tây Nguyên, rang mộc không muối, hạt to đều, giòn thơm, đóng hũ kín tránh ẩm mốc trong mùa mưa dài"},
+  {"id": 7, "name": "Cà phê túi lọc 12g x 10 túi", "price": 119000, "desc": "Túi lọc tiện lợi cho người bận rộn, chỉ cần nước nóng và ba phút chờ, vị gần với pha phin truyền thống mà không cần dụng cụ gì thêm cả"},
+  {"id": 8, "name": "Cà phê rang mộc nguyên hạt 1kg", "price": 359000, "desc": "Robusta Đức Cơ rang sáng, không tẩm bơ đường, hái chín phơi giàn, đóng túi van một chiều giữ mùi thơm lâu cho quán nhỏ và gia đình đông người"}
+];
+let cart = []; let view = "home"; let filter = "all"; let sort = "new";
+function render() { document.getElementById("app").innerHTML = PRODUCTS.map(p => p.name + " — " + p.price + "đ — " + p.desc).join("<br>"); }
+function addToCart(id) { cart.push(id); render(); }
+function setFilter(f) { filter = f; render(); }
+function setSort(s) { sort = s; render(); }
+render();
+</script>
+</body>
+</html>

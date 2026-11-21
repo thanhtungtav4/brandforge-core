@@ -61,6 +61,18 @@ class Core:
         if not brief.get("topic") or not brief.get("format"):
             return {"status": "invalid_brief"}
         refused = find_refused_claims(str(brief), self.brand)
+        if refused:
+            # Refusal routing (evaluation R8): a brief that ASKS for
+            # prohibited claims ends here with the distinct status
+            # "refused" — it is not drafted toward "approved" with the
+            # claims merely noted. The fact checker remains the backstop
+            # for claim-shaped text that slips into a draft anyway.
+            # Disclaimers ("cam kết không chữa mất ngủ") never reach
+            # this branch: find_refused_claims is negation-aware.
+            return {"status": "refused", "refused_claims": refused,
+                    "rewrite_count": 0,
+                    "brand_id": self.brand["brand"]["id"],
+                    "persona_id": self.persona["data"]["name"]}
         return {"status": "validated", "refused_claims": refused, "rewrite_count": 0,
                 "brand_id": self.brand["brand"]["id"],
                 "persona_id": self.persona["data"]["name"]}
@@ -141,7 +153,7 @@ class Core:
     # -- routing -----------------------------------------------------------
     @staticmethod
     def _after_validate(state: ContentState) -> str:
-        return END if state.get("status") == "invalid_brief" else "research"
+        return END if state.get("status") in ("invalid_brief", "refused") else "research"
 
     @staticmethod
     def _after_outline_gate(state: ContentState) -> str:

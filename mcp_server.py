@@ -165,13 +165,48 @@ def _draft_path(draft_id: str) -> Path:
 
 
 def _load_draft(draft_id: str) -> dict:
+    """Load + validate a stored draft (evaluation R7 F11/F12).
+
+    Shape is validated, not just JSON syntax: the stored value must be
+    a JSON object carrying at least one draft key, `sections` must be
+    a list and `brief` a dict — anything else is the named corrupt-file
+    error, not a downstream AttributeError ('str' object has no
+    attribute 'get'). Missing bookkeeping keys are filled with defaults
+    (a draft written by an older version, or missing rewrite_count,
+    used to load fine and then KeyError AFTER a save had committed)."""
     path = _draft_path(draft_id)
     if not path.exists():
         raise ValueError(f"draft not found: {draft_id}")
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"corrupt JSON in draft file {path}: {exc}") from None
+    if not isinstance(data, dict) or not ({"draft_id", "brief", "sections"} & set(data)):
+        raise ValueError(
+            f"corrupt draft file {path}: expected a JSON object with "
+            f"draft keys (draft_id / brief / sections)")
+    if not isinstance(data.get("sections", []), list):
+        raise ValueError(f"corrupt draft file {path}: 'sections' must be a list")
+    if not isinstance(data.get("brief", {}), dict):
+        raise ValueError(f"corrupt draft file {path}: 'brief' must be an object")
+    for key, default in (("brief", {}), ("outline", []), ("sections", []),
+                         ("gate_history", []), ("awaiting_rewrite", [])):
+        data.setdefault(key, type(default)())
+    data.setdefault("rewrite_count", 0)
+    data.setdefault("status", "drafting")
+    data.setdefault("draft_id", draft_id)
+    return data
+
+
+def _load_draft_or_error(draft_id: str) -> tuple[dict | None, dict | None]:
+    """(draft, None) or (None, {"error": ...}) — the unified tool-level
+    error dialect (evaluation R7 F1): a missing/corrupt/invalid draft
+    is a structured tool result everywhere, never a protocol exception
+    whose twin in another tool returns {"error": ...}."""
+    try:
+        return _load_draft(draft_id), None
+    except ValueError as exc:
+        return None, {"error": str(exc), "draft_id": draft_id}
 
 
 def _store_draft(draft: dict) -> dict:
@@ -184,6 +219,16 @@ def _store_draft(draft: dict) -> dict:
 
 def _sections_of(draft: dict) -> list[dict]:
     return draft.get("sections", [])
+
+
+def _brand_max_sentence_words() -> int | None:
+    """The server brand's own max sentence length — passed to craft so
+    its rhythm statistic excludes over-long sentences exactly like the
+    gate paths do (monotonicity fix, evaluation R5)."""
+    try:
+        return int(_brand()["voice"]["sentence_rules"]["max_sentence_words"])
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _run_gate(draft: dict, quality_profile: dict | None = None,
@@ -232,20 +277,28 @@ def research_facts(query: str) -> dict:
 def validate_brief(brief: dict) -> dict:
     """Validate a brief {topic, format, keyword?, title?, requested_claims?}.
 
-    Includes prohibited-claim detection: a brief asking for e.g.
-    '100% chữa mất ngủ' comes back with those claims in refused_claims —
-    the writer must NOT write them, ever."""
+    Includes prohibited-claim detection: a brief ASKING for e.g.
+    '100% chữa mất ngủ' is refused — `valid` is False, `status` is
+    "refused", and the claims are listed in refused_claims. Do not write
+    the brief as asked; the claims must not appear in any draft. A brief
+    that merely DISCLAIMS a claim ("cam kết không chữa mất ngủ") is not
+    a request and validates clean."""
     core = _get_core()
     result = core.validate_brief({"brief": brief})  # type: ignore[arg-type]
     refused = result.get("refused_claims", find_refused_claims(str(brief), _brand()))
+    if refused:
+        instruction = (f"Brief REFUSED: it requests prohibited claims {refused}. "
+                       f"Do not write it as asked — ask the user to re-scope "
+                       f"the brief without those claims.")
+    else:
+        instruction = "Brief is clean to write."
     return {
         "valid": result.get("status") == "validated",
         "status": result.get("status"),
         "refused_claims": refused,
         "brand_id": result.get("brand_id"),
         "persona_id": result.get("persona_id"),
-        "instruction": ("Refused claims must not appear in the draft in any form."
-                        if refused else "Brief is clean to write."),
+        "instruction": instruction,
     }
 
 
@@ -278,7 +331,8 @@ def get_domain_glossary(group: str = "") -> dict:
 
 
 @mcp.tool()
-def craft_check(text: str = "", format: str = "blog", draft_id: str = "") -> dict:
+def craft_check(text: str = "", format: str = "blog", draft_id: str = "",
+                brand_id: str = "") -> dict:
     """Layer 4: deterministic prose-QUALITY check (separate from brand_check).
 
     Scores 0-100 on writing quality only: weak/vague words (with suggested
@@ -286,12 +340,24 @@ def craft_check(text: str = "", format: str = "blog", draft_id: str = "") -> dic
     sentence openings, sensory detail (product/blog). Pass a raw `text` or a
     `draft_id` (worst section score wins). This tool only reports; the
     BLOCKING decision lives in final_gate (craft < 70 fails blog/product
-    drafts there; advisory for social/email/comparison)."""
+    drafts there; advisory for social/email/comparison).
+
+    `brand_id` (optional) selects the judging glossary: the shipped
+    glossary belongs to Mộc Brew — pass another brand's id to judge with
+    the generic brand-neutral weak-word/sensory set instead of Mộc
+    Brew's coffee vocabulary. Empty = the default Mộc Brew path."""
     if draft_id:
-        draft = _load_draft(draft_id)
+        draft, error = _load_draft_or_error(draft_id)
+        if error:
+            return error
         fmt = draft.get("brief", {}).get("format", format)
-        return _craft_check_draft(_sections_of(draft), fmt)
-    return _craft_check_text(text, format)
+        return _craft_check_draft(
+            _sections_of(draft), fmt, brand_id=brand_id or None,
+            max_sentence_words=_brand_max_sentence_words()
+            if not brand_id or brand_id == "moc-brew" else None)
+    return _craft_check_text(text, format, brand_id=brand_id or None,
+                             max_sentence_words=_brand_max_sentence_words()
+                             if not brand_id or brand_id == "moc-brew" else None)
 
 
 @mcp.tool()
@@ -308,7 +374,8 @@ def analyze_style(samples: list[str]) -> dict:
 
 @mcp.tool()
 def save_style_profile(name: str, samples: list[str], qualitative: dict | None = None,
-                       store_excerpts: bool = False, brand_id: str = "moc-brew") -> dict:
+                       store_excerpts: bool | str = False,
+                       brand_id: str = "moc-brew") -> dict:
     """Build + persist a Style Profile from samples and the qualitative
     schema YOU (the model) filled in after reading them: {tone_traits:
     [{trait, do, dont}], opening_patterns, closing_patterns,
@@ -317,7 +384,13 @@ def save_style_profile(name: str, samples: list[str], qualitative: dict | None =
     COPYRIGHT RULE: store_excerpts defaults to False — exemplar passages
     are stored only for the user's OWN or licensed samples. For other
     people's writing, keep the fingerprint + distilled traits only.
+    `store_excerpts` must be a real boolean: a string like "yes" is a
+    structured error, never silently coerced to True (evaluation R7 —
+    excerpt storage is a copyright decision, not a truthy string).
     Returns the stored profile, including its generated id."""
+    if not isinstance(store_excerpts, bool):
+        return {"error": f"store_excerpts must be a boolean (true/false), "
+                         f"got {store_excerpts!r}"}
     try:
         profile = _build_profile(name, samples, qualitative=qualitative,
                                  store_excerpts=store_excerpts, brand_id=brand_id)
@@ -356,7 +429,9 @@ def style_match(text: str = "", draft_id: str = "", profile_id: str = "default")
         return {"error": f"style profile not found: {profile_id}",
                 "available": _list_style_profiles()}
     if draft_id:
-        draft = _load_draft(draft_id)
+        draft, error = _load_draft_or_error(draft_id)
+        if error:
+            return error
         text = "\n\n".join(s.get("text", "") for s in _sections_of(draft))
     result = _style_match(text, profile)
     return {**result, "profile_id": profile["id"]}
@@ -445,6 +520,37 @@ def compare_brand_voice(pages_a: list[dict], pages_b: list[dict]) -> dict:
     return _compare_brand_voice(pages_a, pages_b)
 
 
+# ---------------------------------------------------------------------------
+# assemble_context budget (evaluation R8): the response used to carry the
+# full structured sources/cards/exemplars AND the same content rendered
+# into context_text — a ~3x duplication (~13.8k chars of JSON for a
+# 4.6k-char context), with no bound at all on fat inputs. Now the
+# rendered text is the single representation; the structured payloads
+# are replaced by lightweight metadata (counts + per-part sizes). A
+# documented SOFT BUDGET caps each part; an over-cap part is truncated
+# with an explicit marker and named in `truncated_parts` — never cut
+# silently. Standard briefs sit far below every cap and are untouched.
+# ---------------------------------------------------------------------------
+
+_CONTEXT_PART_CAPS = {"persona": 8000, "brand_rules": 6000,
+                      "craft_cards": 4000, "style_profile": 4000,
+                      "facts_triggered": 3000, "exemplar": 3000,
+                      "task": 1000, "post_history_reminder": 4000}
+_MAX_BRAND_EXAMPLES = 8   # few-shot examples rendered into brand_rules
+_MAX_FACT_ENTRIES = 12    # lorebook entries rendered into facts_triggered
+_MAX_EXEMPLARS = 2        # passages rendered into the exemplar part
+
+
+def _cap_part(text: str, cap: int, part: str, truncated: list[str]) -> str:
+    """Truncate `text` to `cap` chars with an explicit marker, recording
+    the part name in `truncated`. Under-cap text is returned unchanged."""
+    if len(text) <= cap:
+        return text
+    truncated.append(part)
+    marker = f"\n[truncated: {part} exceeded its {cap}-char context budget]"
+    return text[:max(0, cap - len(marker))] + marker
+
+
 @mcp.tool()
 def assemble_context(brief: dict, format: str | None = None,
                      style_profile_id: str | None = None) -> dict:
@@ -454,6 +560,13 @@ def assemble_context(brief: dict, format: str | None = None,
     this format/topic) → 4 triggered facts → 5 exemplar (matching format) →
     6 task → 7 post-history reminder (strongest weight, read last).
     `format` overrides brief['format'] when given.
+
+    The response carries the rendered `context_text` (the single
+    representation of the content) + lightweight metadata: `counts`
+    (sources / craft_cards / exemplars), `ordered_context` (part order,
+    name and char size — no second copy of the content), and
+    `truncated_parts` naming any part cut by the context budget
+    (see _CONTEXT_PART_CAPS; truncation is always marked in the text).
 
     With `style_profile_id` (a stored Style Profile id, or "default"), a
     `style_profile` part is inserted AFTER craft_cards and BEFORE the facts
@@ -477,7 +590,12 @@ def assemble_context(brief: dict, format: str | None = None,
     v = brand["voice"]
     traits = "\n".join(f"- {t['dimension']}: {t['position']} | DO: {t['do']} | DON'T: {t['dont']}"
                        for t in v.get("traits", []))
-    examples = "\n".join(f"- [{e.get('format')}] {e.get('text')}" for e in brand.get("examples", []))
+    all_examples = brand.get("examples", [])
+    examples = "\n".join(f"- [{e.get('format')}] {e.get('text')}"
+                         for e in all_examples[:_MAX_BRAND_EXAMPLES])
+    if len(all_examples) > _MAX_BRAND_EXAMPLES:
+        examples += (f"\n- [truncated: {len(all_examples) - _MAX_BRAND_EXAMPLES} "
+                     f"more brand examples over the context budget]")
     brand_text = "\n".join([
         f"Brand: {brand['brand']['name']} (id={brand['brand']['id']})",
         f"POV: {v.get('pov')}; address the reader as: {v.get('reader_address')}",
@@ -488,7 +606,11 @@ def assemble_context(brief: dict, format: str | None = None,
         f"Traits:\n{traits}",
         f"Few-shot examples:\n{examples}",
     ])
-    facts_text = "\n".join(f"- {s['content']}" for s in sources) or "- (no facts triggered by this brief)"
+    facts_text = "\n".join(f"- {s['content']}" for s in sources[:_MAX_FACT_ENTRIES]) \
+        or "- (no facts triggered by this brief)"
+    if len(sources) > _MAX_FACT_ENTRIES:
+        facts_text += (f"\n- [truncated: {len(sources) - _MAX_FACT_ENTRIES} "
+                       f"more fact entries over the context budget]")
 
     # Layer 4a: technique cards triggered by this brief's format/intent/topic.
     cards = _retrieve_cards(fmt, str(brief.get("intent", "")),
@@ -502,7 +624,10 @@ def assemble_context(brief: dict, format: str | None = None,
     exemplars = _get_exemplars(exemplar_format)
     exemplar_text = "\n".join(
         f"- [{e['format']}] {e['text']} (why it works: {'; '.join(e.get('why_it_works', []))})"
-        for e in exemplars) or "- (no exemplar for this format)"
+        for e in exemplars[:_MAX_EXEMPLARS]) or "- (no exemplar for this format)"
+    if len(exemplars) > _MAX_EXEMPLARS:
+        exemplar_text += (f"\n- [truncated: {len(exemplars) - _MAX_EXEMPLARS} "
+                          f"more exemplars over the context budget]")
 
     task_text = (f"Write format={fmt} about: {brief.get('topic', '')}. "
                  f"Keyword: {brief.get('keyword', '')}. Title: {brief.get('title', '')}. "
@@ -524,17 +649,23 @@ def assemble_context(brief: dict, format: str | None = None,
         parts.append(("style_profile", _style_context_text(style_profile)))
     parts += [("facts_triggered", facts_text), ("exemplar", exemplar_text),
               ("task", task_text), ("post_history_reminder", reminder)]
-    ordered = [{"order": i + 1, "part": name, "content": content}
+    truncated_parts: list[str] = []
+    parts = [(name, _cap_part(content, _CONTEXT_PART_CAPS[name], name,
+                              truncated_parts))
+             for name, content in parts]
+    ordered = [{"order": i + 1, "part": name, "chars": len(content)}
                for i, (name, content) in enumerate(parts)]
     result = {
         "format": fmt,
-        "sources": sources,
-        "craft_cards": cards,
-        "exemplars": exemplars,
+        "counts": {"sources": len(sources), "craft_cards": len(cards),
+                   "exemplars": len(exemplars)},
         "style_profile": ({"id": style_profile["id"], "name": style_profile.get("name", "")}
                           if style_profile else None),
         "ordered_context": ordered,
-        "context_text": "\n\n".join(f"[{o['order']}. {o['part'].upper()}]\n{o['content']}" for o in ordered),
+        "context_text": "\n\n".join(
+            f"[{i + 1}. {name.upper()}]\n{content}"
+            for i, (name, content) in enumerate(parts)),
+        "truncated_parts": truncated_parts,
     }
     if style_error:
         result["style_profile_error"] = style_error
@@ -572,7 +703,9 @@ def make_outline(brief: dict, proposed_outline: list[dict] | None = None,
         source = "deterministic_template"
     stored = False
     if draft_id:
-        draft = _load_draft(draft_id)
+        draft, error = _load_draft_or_error(draft_id)
+        if error:
+            return {**error, "ok": False, "outline": []}
         draft["outline"] = outline
         _store_draft(draft)
         stored = True
@@ -597,21 +730,37 @@ def start_draft(brief: dict) -> dict:
 
 @mcp.tool()
 def save_section(draft_id: str, section_id: str, heading: str, text: str,
-                 intent: str = "", target_words: int = 0) -> dict:
+                 intent: str | None = None,
+                 target_words: int | None = None) -> dict:
     """Save (or overwrite) ONE section of a draft. Write section by section —
     never one long generation. Overwriting a section that the final gate
     flagged counts toward the max-2 rewrite budget once all flagged sections
-    have been rewritten."""
-    draft = _load_draft(draft_id)
+    have been rewritten.
+
+    `intent` / `target_words` are OPTIONAL (evaluation R8): when omitted
+    on an overwrite, the existing section's values are preserved — a
+    rewrite used to silently wipe them to ""/0. Saving into an
+    "approved" draft resets its status to "drafting": the approval no
+    longer describes the stored text."""
+    draft, error = _load_draft_or_error(draft_id)
+    if error:
+        return error
     sections = _sections_of(draft)
     existing = next((s for s in sections if s["id"] == section_id), None)
-    record = {"id": section_id, "heading": heading, "intent": intent,
-              "target_words": target_words, "text": text}
     if existing:
+        record = {"id": section_id, "heading": heading,
+                  "intent": existing.get("intent", "") if intent is None else intent,
+                  "target_words": (existing.get("target_words", 0)
+                                   if target_words is None else target_words),
+                  "text": text}
         sections[sections.index(existing)] = record
     else:
-        sections.append(record)
+        sections.append({"id": section_id, "heading": heading,
+                         "intent": intent or "",
+                         "target_words": target_words or 0, "text": text})
     draft["sections"] = sections
+    if draft.get("status") == "approved":
+        draft["status"] = "drafting"
 
     awaiting = list(draft.get("awaiting_rewrite", []))
     if section_id in awaiting:
@@ -622,13 +771,18 @@ def save_section(draft_id: str, section_id: str, heading: str, text: str,
     _store_draft(draft)
     return {"draft_id": draft_id, "saved": section_id,
             "sections_saved": [s["id"] for s in sections],
-            "rewrite_count": draft["rewrite_count"]}
+            "rewrite_count": draft.get("rewrite_count", 0)}
 
 
 @mcp.tool()
 def get_draft(draft_id: str) -> dict:
-    """Return the full stored draft state (brief, outline, sections, gate history)."""
-    return _load_draft(draft_id)
+    """Return the full stored draft state (brief, outline, sections, gate
+    history). A missing or corrupt draft is a structured {"error": ...}
+    result, like every other tool-level failure."""
+    draft, error = _load_draft_or_error(draft_id)
+    if error:
+        return error
+    return draft
 
 
 # --------------------------------------------------------------------------
@@ -643,7 +797,9 @@ def brand_check(text: str = "", format: str = "blog", draft_id: str = "") -> dic
     in blog, sentence-length rule violations."""
     brand = _brand()
     if draft_id:
-        draft = _load_draft(draft_id)
+        draft, error = _load_draft_or_error(draft_id)
+        if error:
+            return error
         fmt = draft.get("brief", {}).get("format", format)
         violations, score, failing = _lint_draft(_sections_of(draft), fmt, brand)
         return {"score": score, "violations": violations, "failing_sections": failing,
@@ -660,7 +816,9 @@ def fact_check(text: str = "", draft_id: str = "") -> dict:
     block); unmarked unsupported/prohibited claims are issues (block)."""
     facts, brand = _facts(), _brand()
     if draft_id:
-        draft = _load_draft(draft_id)
+        draft, error = _load_draft_or_error(draft_id)
+        if error:
+            return error
         issues, flagged, failing = _fact_check_draft(_sections_of(draft), facts, brand)
     else:
         issues, flagged = _fact_check_section(text, facts, brand, "text")
@@ -675,7 +833,9 @@ def seo_check(draft_id: str = "", title: str = "", keyword: str = "", topic: str
     With draft_id, checks the stored draft; title/keyword/topic override the
     draft's brief fields when given."""
     if draft_id:
-        draft = _load_draft(draft_id)
+        draft, error = _load_draft_or_error(draft_id)
+        if error:
+            return error
         brief = {**draft.get("brief", {})}
         sections = _sections_of(draft)
     else:
@@ -737,7 +897,9 @@ def quality_score(draft_id: str, judged_scores: dict | None = None,
     preset. The report is dumbbell-ready: per-axis score vs floor, plus
     weighted_total and quality_pass (total >= pass_total AND no axis
     below its floor)."""
-    draft = _load_draft(draft_id)
+    draft, error = _load_draft_or_error(draft_id)
+    if error:
+        return error
     fmt = draft.get("brief", {}).get("format", "blog")
     try:
         profile = (_quality_get_profile(quality_profile) if quality_profile
@@ -788,8 +950,20 @@ def final_gate(draft_id: str, quality_profile: str = "",
     a `style_match` report against that Style Profile is included and its
     score recorded in gate_history as `style_score`. It NEVER changes
     `passed`. Without a profile in the brief, the result is unchanged."""
-    draft = _load_draft(draft_id)
+    draft, error = _load_draft_or_error(draft_id)
+    if error:
+        return error
     fmt = draft.get("brief", {}).get("format", "blog")
+
+    if not _sections_of(draft):
+        # Empty draft (evaluation R8): there is nothing to gate. Say so
+        # plainly instead of the old "Rewrite ONLY sections []".
+        return {"passed": False, "draft_id": draft_id,
+                "status": draft.get("status", "drafting"),
+                "failing_sections": [],
+                "instruction": ("This draft has no sections yet — write at "
+                                "least one section with save_section, then "
+                                "call final_gate again.")}
 
     profile = None
     if quality_profile:

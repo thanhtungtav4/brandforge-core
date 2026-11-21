@@ -1,0 +1,1573 @@
+[
+ {
+  "url": "https://caonguyenmoc.vn/",
+  "title": "Cao Nguyên Mộc · Cà phê Robusta rang light, hạt điều rang",
+  "text": "",
+  "headings": [],
+  "html_meta": {
+   "og_site_name": null,
+   "og_image": "https://caonguyenmoc.vn/og.jpg",
+   "theme_color": null,
+   "logo_url": null,
+   "fonts": [
+    {
+     "family": "var(--f-head)",
+     "count": 3
+    },
+    {
+     "family": "Lora",
+     "count": 2
+    },
+    {
+     "family": "var(--f-ui)",
+     "count": 2
+    },
+    {
+     "family": "Be Vietnam Pro",
+     "count": 1
+    }
+   ],
+   "colors": [
+    {
+     "hex": "#ffffff",
+     "count": 26
+    },
+    {
+     "hex": "#000000",
+     "count": 9
+    },
+    {
+     "hex": "#18221b",
+     "count": 4
+    },
+    {
+     "hex": "#1d6a43",
+     "count": 4
+    },
+    {
+     "hex": "#1f3227",
+     "count": 4
+    },
+    {
+     "hex": "#e9b155",
+     "count": 4
+    },
+    {
+     "hex": "#1d2b22",
+     "count": 3
+    },
+    {
+     "hex": "#241a06",
+     "count": 3
+    },
+    {
+     "hex": "#e2efe6",
+     "count": 3
+    },
+    {
+     "hex": "#08130c",
+     "count": 2
+    },
+    {
+     "hex": "#0f1a12",
+     "count": 2
+    },
+    {
+     "hex": "#111613",
+     "count": 2
+    },
+    {
+     "hex": "#16120e",
+     "count": 2
+    },
+    {
+     "hex": "#1a211c",
+     "count": 2
+    },
+    {
+     "hex": "#1b1b1b",
+     "count": 2
+    },
+    {
+     "hex": "#1d3442",
+     "count": 2
+    },
+    {
+     "hex": "#201a14",
+     "count": 2
+    },
+    {
+     "hex": "#222b25",
+     "count": 2
+    },
+    {
+     "hex": "#22382a",
+     "count": 2
+    },
+    {
+     "hex": "#23301f",
+     "count": 2
+    },
+    {
+     "hex": "#24456b",
+     "count": 2
+    },
+    {
+     "hex": "#264a24",
+     "count": 2
+    },
+    {
+     "hex": "#2a2018",
+     "count": 2
+    },
+    {
+     "hex": "#2a221a",
+     "count": 2
+    },
+    {
+     "hex": "#2f3a32",
+     "count": 2
+    },
+    {
+     "hex": "#2f5a2c",
+     "count": 2
+    },
+    {
+     "hex": "#3a2c18",
+     "count": 2
+    },
+    {
+     "hex": "#3a2e18",
+     "count": 2
+    },
+    {
+     "hex": "#3a2f14",
+     "count": 2
+    },
+    {
+     "hex": "#3a2f24",
+     "count": 2
+    },
+    {
+     "hex": "#3d1f1c",
+     "count": 2
+    },
+    {
+     "hex": "#4fb07d",
+     "count": 2
+    },
+    {
+     "hex": "#6fd09c",
+     "count": 2
+    },
+    {
+     "hex": "#86b994",
+     "count": 2
+    },
+    {
+     "hex": "#9c3b26",
+     "count": 2
+    },
+    {
+     "hex": "#a3afa6",
+     "count": 2
+    },
+    {
+     "hex": "#b4a692",
+     "count": 2
+    },
+    {
+     "hex": "#b8401f",
+     "count": 2
+    },
+    {
+     "hex": "#c9d8ee",
+     "count": 2
+    },
+    {
+     "hex": "#d8b48c",
+     "count": 2
+    },
+    {
+     "hex": "#d9a35a",
+     "count": 2
+    },
+    {
+     "hex": "#e0704f",
+     "count": 2
+    },
+    {
+     "hex": "#e8eee9",
+     "count": 2
+    },
+    {
+     "hex": "#eef3fb",
+     "count": 2
+    },
+    {
+     "hex": "#efe6d8",
+     "count": 2
+    },
+    {
+     "hex": "#f08b6a",
+     "count": 2
+    },
+    {
+     "hex": "#f2c060",
+     "count": 2
+    },
+    {
+     "hex": "#f3cf86",
+     "count": 2
+    },
+    {
+     "hex": "#f6c76b",
+     "count": 2
+    },
+    {
+     "hex": "#ff8a65",
+     "count": 2
+    },
+    {
+     "hex": "#ff8f84",
+     "count": 2
+    },
+    {
+     "hex": "#0f3d29",
+     "count": 1
+    },
+    {
+     "hex": "#14425e",
+     "count": 1
+    },
+    {
+     "hex": "#17573a",
+     "count": 1
+    },
+    {
+     "hex": "#18231c",
+     "count": 1
+    },
+    {
+     "hex": "#1b1f1c",
+     "count": 1
+    },
+    {
+     "hex": "#1d2a3a",
+     "count": 1
+    },
+    {
+     "hex": "#221910",
+     "count": 1
+    },
+    {
+     "hex": "#26331a",
+     "count": 1
+    },
+    {
+     "hex": "#26382c",
+     "count": 1
+    },
+    {
+     "hex": "#2c2016",
+     "count": 1
+    },
+    {
+     "hex": "#2e7d32",
+     "count": 1
+    },
+    {
+     "hex": "#2f5b3c",
+     "count": 1
+    },
+    {
+     "hex": "#2f8a5a",
+     "count": 1
+    },
+    {
+     "hex": "#34506f",
+     "count": 1
+    },
+    {
+     "hex": "#3b2a1c",
+     "count": 1
+    },
+    {
+     "hex": "#5a3b24",
+     "count": 1
+    },
+    {
+     "hex": "#5a665d",
+     "count": 1
+    },
+    {
+     "hex": "#6d5f50",
+     "count": 1
+    },
+    {
+     "hex": "#6fa85c",
+     "count": 1
+    },
+    {
+     "hex": "#888888",
+     "count": 1
+    },
+    {
+     "hex": "#8a5a00",
+     "count": 1
+    },
+    {
+     "hex": "#8a958d",
+     "count": 1
+    },
+    {
+     "hex": "#8fc27a",
+     "count": 1
+    },
+    {
+     "hex": "#9a8f82",
+     "count": 1
+    },
+    {
+     "hex": "#9fbf4a",
+     "count": 1
+    },
+    {
+     "hex": "#a3381f",
+     "count": 1
+    },
+    {
+     "hex": "#a76a00",
+     "count": 1
+    },
+    {
+     "hex": "#b3322a",
+     "count": 1
+    },
+    {
+     "hex": "#b5772f",
+     "count": 1
+    },
+    {
+     "hex": "#b8321f",
+     "count": 1
+    },
+    {
+     "hex": "#c4472b",
+     "count": 1
+    },
+    {
+     "hex": "#c9a227",
+     "count": 1
+    },
+    {
+     "hex": "#cfe9f5",
+     "count": 1
+    },
+    {
+     "hex": "#d6b47a",
+     "count": 1
+    },
+    {
+     "hex": "#d8962b",
+     "count": 1
+    },
+    {
+     "hex": "#d9b27a",
+     "count": 1
+    },
+    {
+     "hex": "#dbe7f7",
+     "count": 1
+    },
+    {
+     "hex": "#dde3da",
+     "count": 1
+    },
+    {
+     "hex": "#e0a526",
+     "count": 1
+    },
+    {
+     "hex": "#e5ebdd",
+     "count": 1
+    },
+    {
+     "hex": "#e6dac6",
+     "count": 1
+    },
+    {
+     "hex": "#e6f0fb",
+     "count": 1
+    },
+    {
+     "hex": "#e8f3fb",
+     "count": 1
+    },
+    {
+     "hex": "#e9d6b5",
+     "count": 1
+    },
+    {
+     "hex": "#eaf6ea",
+     "count": 1
+    },
+    {
+     "hex": "#eef1ec",
+     "count": 1
+    },
+    {
+     "hex": "#eef1f4",
+     "count": 1
+    },
+    {
+     "hex": "#eef6d6",
+     "count": 1
+    },
+    {
+     "hex": "#eef7ee",
+     "count": 1
+    },
+    {
+     "hex": "#efe6d5",
+     "count": 1
+    },
+    {
+     "hex": "#f2ead9",
+     "count": 1
+    },
+    {
+     "hex": "#f3f5f1",
+     "count": 1
+    },
+    {
+     "hex": "#f4e6cf",
+     "count": 1
+    },
+    {
+     "hex": "#f4f1e8",
+     "count": 1
+    },
+    {
+     "hex": "#f6f0e4",
+     "count": 1
+    },
+    {
+     "hex": "#fbe5e2",
+     "count": 1
+    },
+    {
+     "hex": "#fbf0dc",
+     "count": 1
+    },
+    {
+     "hex": "#fdf1d8",
+     "count": 1
+    },
+    {
+     "hex": "#ff5a6e",
+     "count": 1
+    },
+    {
+     "hex": "#ffd76a",
+     "count": 1
+    },
+    {
+     "hex": "#fff6e0",
+     "count": 1
+    },
+    {
+     "hex": "#fffcf6",
+     "count": 1
+    }
+   ]
+  }
+ },
+ {
+  "url": "https://caonguyenmoc.vn/blog/",
+  "title": "Blog Cao Nguyên Mộc: cà phê, dinh dưỡng, làm đẹp, du lịch Gia Lai",
+  "text": "cao nguyên mộc\n\nBlog\n\nGóc bếp & kiến thức của Mộc\n\nCông thức từ cà phê rang mộc và hạt điều, cách chọn và pha cà phê, dinh dưỡng cho từng nhu cầu, cùng văn hoá, món ngon và điểm đến của Gia Lai.\n\nCà phêCông thứcHạt điềuDinh dưỡngTiểu đườngTiêu hoáGiảm cânTăng cânLàm đẹpGia Lai\n\nCà phê\n\nCà phê\n\nCà phê Robusta và Arabica khác nhau thế nào? Cách chọn theo khẩu vị\n\nSo sánh Robusta và Arabica: vùng trồng, hình dáng hạt, hàm lượng caffeine, vị đắng chua và cách pha hợp. Vì sao cà phê phin Việt Nam chủ yếu là Robusta.\n\nCà phê\n\nCác mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào\n\nRang sáng, rang vừa và rang đậm thay đổi màu hạt, độ chua, độ đắng và mùi thơm ra sao. Cách nhận biết mức rang bằng mắt và chọn mức rang hợp với phin.\n\nCà phê\n\nXay cà phê độ mịn nào? Bảng độ xay cho phin, pha máy, pha tay, cold brew\n\nĐộ xay quyết định cà phê đậm hay nhạt, chua hay đắng. Bảng độ xay cho phin, espresso, pha tay V60, French press, cold brew và cách nhận biết xay sai.\n\nCà phê\n\nBảo quản cà phê sau khi mở túi: giữ mùi thơm lâu, không ẩm, không ám mùi\n\nBốn kẻ thù của cà phê là không khí, ẩm, nhiệt và ánh sáng. Cách cất cà phê đã mở túi, có nên để tủ lạnh, van một chiều để làm gì và dùng trong bao lâu.\n\nCà phê\n\nMỗi ngày uống bao nhiêu cà phê là vừa? Mức caffeine khuyến nghị\n\nCơ quan an toàn thực phẩm Mỹ và châu Âu khuyến nghị người trưởng thành khỏe mạnh không quá khoảng 400mg caffeine mỗi ngày. Đổi ra ly cà phê và các lưu ý.\n\nCà phê\n\nTừ quả cà phê đến ly cà phê: chế biến khô, ướt và honey khác nhau ra sao\n\nQuả cà phê được hái, phơi, xát vỏ, phân loại rồi mới rang. So sánh ba cách chế biến khô, ướt, honey và vì sao hái chín, phơi giàn quyết định vị ly cà phê.\n\nCà phê\n\nVì sao cà phê bị chua hoặc đắng gắt? 8 nguyên nhân và cách sửa\n\nCà phê pha ra chua gắt, đắng khét hay nhạt nhẽo thường do nước, độ xay, lượng bột hoặc cà phê cũ. Bảng chẩn đoán nhanh và cách chỉnh cho ly phin ngon hơn.\n\nCà phê\n\nCách pha cà phê phin ngon với cà phê rang mộc\n\nHướng dẫn pha cà phê phin từng bước: lượng bột, nhiệt độ nước, thời gian ủ và cách chỉnh khi cà phê chảy quá nhanh hay quá chậm.\n\nCà phê\n\nCà phê túi lọc: cách pha nóng và cách ủ lạnh qua đêm\n\nCà phê túi lọc ngâm như túi trà. Hướng dẫn pha nóng trong 5 phút và ủ lạnh qua đêm để có cà phê cold brew tại nhà.\n\nCà phê\n\nCà phê rang mộc là gì? Cách phân biệt với cà phê tẩm\n\nCà phê rang mộc là cà phê chỉ rang hạt, không tẩm bơ, đường hay hương liệu. Vài dấu hiệu giúp bạn nhận biết khi mua và khi pha.\n\nCông thức\n\nCông thức\n\nCách làm cà phê muối tại nhà: công thức kem muối béo, không tách lớp\n\nCông thức cà phê muối 1 ly: pha cốt phin, đánh kem muối từ whipping cream và sữa đặc, tỉ lệ muối vừa đủ để cà phê dịu đắng mà không mặn.\n\nCông thức\n\nCách làm cà phê trứng tại nhà: lớp kem trứng bông mịn, không tanh\n\nCà phê trứng kiểu Hà Nội làm tại nhà: chọn trứng, đánh lòng đỏ với sữa đặc tới khi bông mịn, mẹo khử mùi tanh và giữ ly cà phê nóng.\n\nCông thức\n\nCách pha bạc xỉu và cà phê sữa đá bằng phin: tỉ lệ chuẩn, dễ nhớ\n\nBạc xỉu và cà phê sữa đá khác nhau ở tỉ lệ sữa và cà phê. Công thức pha phin cho từng loại, cách chỉnh ngọt và mẹo để ly không bị nhạt khi đá tan.\n\nCông thức\n\nCách làm cold brew 1 lít từ cà phê rang xay, ủ lạnh 12–18 giờ\n\nCold brew làm từ cà phê rang xay: tỉ lệ 1:8 để có cốt, xay thô, ủ trong tủ lạnh 12–18 giờ, cách lọc trong, bảo quản và pha uống mỗi ngày.\n\nCông thức\n\nCách làm cà phê cốt dừa đá xay mát lạnh tại nhà\n\nCông thức cà phê cốt dừa 2 ly: đá xay với nước cốt dừa và sữa đặc, rót cà phê phin đậm lên trên. Mẹo để lớp dừa mịn, không bị tách và không quá ngọt.\n\nCông thức\n\nTiramisu không cần lò, dùng cà phê phin và bánh sâm panh\n\nCông thức tiramisu cho hộp 18x18cm không cần lò nướng: kem mascarpone không trứng sống, bánh sâm panh nhúng cà phê phin, để tủ lạnh 6 giờ là ăn được.\n\nCông thức\n\nCách làm hạt điều rang mật ong giòn, không dính tay\n\nHạt điều rang mật ong làm bằng chảo hoặc lò: lượng mật ong cho 250g hạt, nhiệt độ, cách tách hạt khi nguội để giòn lâu, không dính thành cục.\n\nCông thức\n\nGà xào hạt điều: món cơm nhà 20 phút, thịt mềm, hạt giòn\n\nCông thức gà xào hạt điều cho 3–4 người: ướp ức gà cho mềm, pha nước sốt dầu hào, xào nhanh với ớt chuông, hành tây và cho hạt điều vào cuối để giữ độ giòn.\n\nCông thức\n\nCách làm bơ hạt điều tại nhà chỉ với máy xay và một nguyên liệu\n\nBơ hạt điều tự làm từ 300g hạt điều rang: thời gian xay, cách xử lý khi bơ bị vón, thêm mật ong hay muối và bảo quản để không bị hôi dầu.\n\nCông thức\n\nBánh quy hạt điều cà phê: giòn rụm, thơm mùi rang, làm 30 chiếc\n\nCông thức bánh quy hạt điều cà phê cho khoảng 30 chiếc: bơ, đường nâu, bột cà phê xay mịn và hạt điều rang. Nhiệt độ lò, thời gian nướng và cách giữ bánh giòn.\n\nCông thức\n\nCách làm sữa hạt điều tại nhà, béo ngậy không cần máy chuyên dụng\n\nCông thức sữa hạt điều 1 lít: lượng hạt, thời gian ngâm, cách xay, lọc và bảo quản. Dùng máy xay sinh tố thông thường.\n\nCông thức\n\nCách làm granola hạt và trái cây sấy bằng lò nướng tại nhà\n\nCông thức granola yến mạch, hạt mix, mật ong và trái cây sấy: nướng 20–25 phút, giòn lâu, ăn với sữa chua hoặc sữa hạt.\n\nHạt điều\n\nHạt điều\n\nTừ trái điều đến hạt điều: vì sao hạt điều phải qua nhiều công đoạn\n\nHạt điều mọc lơ lửng dưới trái điều, vỏ cứng chứa dầu gây bỏng da. Quy trình từ thu hái, phơi, hấp, tách vỏ, sấy, bóc vỏ lụa, phân loại đến rang muối.\n\nHạt điều\n\nHạt điều W180, W240, W320 là gì? Cách đọc ký hiệu phân loại hạt điều\n\nChữ W nghĩa là hạt nguyên trắng, con số là số hạt trên một pound. Bảng tra W180, W210, W240, W320, W450, hạt vỡ WS, LP và nên chọn loại nào để ăn, làm quà.\n\nHạt điều\n\nCách chọn hạt điều ngon và bảo quản để hạt giòn lâu, không hôi dầu\n\nNhìn màu, ngửi mùi, cắn thử để chọn hạt điều ngon; nhận biết hạt cũ, hạt ỉu, hạt hôi dầu. Cách bảo quản hạt điều đã mở túi và làm giòn lại hạt bị ỉu.\n\nDinh dưỡng\n\nDinh dưỡng\n\nMỗi ngày nên ăn bao nhiêu hạt? Khẩu phần dễ nhớ cho từng loại\n\nKhẩu phần hạt khoảng 30g mỗi ngày, tương đương bao nhiêu hạt điều, hạnh nhân, óc chó, macca, và vài lưu ý khi ăn hạt hằng ngày.\n\nTiểu đường\n\nTiểu đường\n\nNgười tiểu đường ăn hạt được không? Nên chọn loại nào, ăn bao nhiêu\n\nHạt ít tinh bột, giàu chất béo tốt và chất xơ nên là bữa phụ phù hợp cho người tiểu đường. Bảng lượng carb từng loại hạt và khẩu phần nên ăn.\n\nTiểu đường\n\nNgười tiểu đường có ăn được trái cây sấy không? Khẩu phần an toàn\n\nTrái cây sấy cô đặc đường nên người tiểu đường cần ăn ít và đúng cách: khoảng 2 thìa canh nho khô tương đương 15g carb, ăn kèm hạt, tránh loại tẩm đường.\n\nTiểu đường\n\nGạo lứt có tốt cho người tiểu đường? Ăn cơm gạo lứt, bột gạo lứt thế nào\n\nGạo lứt nhiều chất xơ hơn gạo trắng nhưng vẫn là tinh bột. Cách thay gạo trắng bằng gạo lứt, khẩu phần, và lưu ý khi dùng bột gạo lứt, trà gạo lứt.\n\nTiêu hoá\n\nTiêu hoá\n\nTáo bón nên ăn gì? Bổ sung chất xơ từ hạt, trái cây sấy và ngũ cốc\n\nNgười lớn cần khoảng 25–30g chất xơ mỗi ngày. Cách tăng chất xơ từ hạt, nho khô, ngũ cốc nguyên hạt, uống đủ nước và tăng từ từ để không đầy hơi.\n\nTiêu hoá\n\nBột chuối xanh là gì? Tinh bột kháng và cách dùng cho đường ruột\n\nBột chuối xanh giàu tinh bột kháng, một loại chất xơ nuôi lợi khuẩn đường ruột. Cách dùng đúng: bắt đầu 1 thìa cà phê, không nấu sôi, uống đủ nước.\n\nTiêu hoá\n\nHay đầy bụng, khó tiêu: ăn hạt và uống cà phê thế nào cho êm bụng\n\nMẹo ăn hạt và uống cà phê cho người hay đầy bụng, ợ chua: nhai kỹ, chia khẩu phần nhỏ, không uống cà phê lúc đói, chọn cà phê rang mộc không tẩm.\n\nGiảm cân\n\nGiảm cân\n\nĂn vặt khi giảm cân: chọn hạt và trái cây sấy thế nào để không tăng cân\n\nBảng năng lượng của hạt và trái cây sấy theo khẩu phần, cách chia khẩu phần 100–200 kcal cho bữa phụ và những món ăn vặt nên hạn chế khi giảm cân.\n\nGiảm cân\n\nUống cà phê đen khi giảm cân: nên uống thế nào, tránh những gì\n\nMột ly cà phê đen chỉ vài kcal, ly cà phê sữa đặc có thể 70–150 kcal. Cách uống cà phê khi giảm cân, lượng caffeine an toàn và những sai lầm thường gặp.\n\nGiảm cân\n\nThực đơn bữa phụ giảm cân 7 ngày, mỗi bữa dưới 200 kcal\n\n7 gợi ý bữa phụ giảm cân dễ làm với hạt, sữa chua, trái cây và gạo lứt, mỗi bữa khoảng 120–200 kcal, no lâu, chuẩn bị trong 5 phút.\n\nTăng cân\n\nTăng cân\n\nNgười gầy muốn tăng cân nên ăn gì? Cách thêm năng lượng lành mạnh\n\nMuốn tăng cân cần ăn dư khoảng 300–500 kcal mỗi ngày. Cách thêm năng lượng lành mạnh từ hạt, sữa hạt, ngũ cốc, kết hợp tập sức mạnh để tăng cơ.\n\nTăng cân\n\nSinh tố tăng cân từ hạt điều, chuối và bột ngũ cốc (khoảng 550 kcal)\n\nCông thức sinh tố tăng cân khoảng 550 kcal: sữa tươi, chuối, hạt điều, bột ngũ cốc và mật ong. Xay trong 3 phút, uống giữa các bữa ăn.\n\nTăng cân\n\nBữa phụ tăng cân mang theo được cho dân văn phòng, học sinh\n\nGợi ý bữa phụ giàu năng lượng, gọn nhẹ để mang theo: hạt mix, thanh gạo lứt, bánh hạt, trái cây sấy, mỗi phần 200–350 kcal, không cần tủ lạnh.\n\nLàm đẹp\n\nLàm đẹp\n\nTẩy tế bào chết bằng bã cà phê: cách làm và lưu ý cho da\n\nCách làm hỗn hợp tẩy tế bào chết từ bã cà phê rang mộc cho da body và da mặt, tần suất dùng hợp lý và những ai không nên dùng.\n\nLàm đẹp\n\nĂn gì để da sáng khoẻ? Sự thật về thực phẩm “làm trắng da”\n\nThực phẩm không làm trắng da, nhưng hạnh nhân, hạt bí, hạt điều, óc chó cung cấp vitamin E, kẽm, đồng, omega-3 cho làn da khoẻ. Kèm điều quan trọng nhất: chống nắng.\n\nLàm đẹp\n\nMặt nạ cacao, mật ong và sữa chua tự làm tại nhà\n\nCông thức mặt nạ từ bột cacao nguyên chất, mật ong và sữa chua: cách trộn, thời gian đắp, tần suất và lưu ý thử kích ứng trước khi dùng.\n\nGia Lai\n\nGia Lai\n\nTây Nguyên qua 9 khung hình: đất đỏ, thác nước, cồng chiêng và hoa cà phê\n\nChín bức ảnh kể về Tây Nguyên, nơi Cao Nguyên Mộc lớn lên: đất đỏ Gia Lai, thác Dray Nur, cồng chiêng, hoa cà phê, Biển Hồ, trái điều, dã quỳ và vườn của Mộc.\n\nGia Lai\n\nTỉnh Gia Lai mới sau sáp nhập: ở đâu, rộng bao nhiêu, có gì đặc sắc\n\nTừ 1/7/2025, Gia Lai và Bình Định hợp thành tỉnh Gia Lai mới, trải từ cao nguyên tới biển. Diện tích, dân số, trung tâm hành chính và nét đặc sắc.\n\nGia Lai\n\nLịch trình Pleiku 2 ngày 1 đêm: Biển Hồ, chùa Minh Thành, núi lửa Chư Đang Ya\n\nLịch trình Pleiku 2 ngày 1 đêm theo từng buổi: phở khô, Biển Hồ, chùa Minh Thành, núi lửa Chư Đang Ya, đồi chè, cà phê. Kèm mẹo đi lại và thời điểm đẹp.\n\nGia Lai\n\nMón ngon Gia Lai nên thử: phở khô hai tô, bún mắm cua, bò một nắng, muối kiến vàng\n\nMón ngon nên thử ở Gia Lai: phở khô hai tô, bún mắm cua, gà nướng cơm lam, bò một nắng chấm muối kiến vàng và cà phê phố núi. Ăn buổi nào, ăn thế nào.\n\nGia Lai\n\nMùa hoa cà phê Tây Nguyên: nở khi nào, ngắm ở đâu, chụp ảnh thế nào\n\nHoa cà phê nở trắng đồi Tây Nguyên vào khoảng đầu năm, mỗi đợt chỉ vài ngày. Khi nào nở, ngắm ở đâu tại Gia Lai, mẹo chụp ảnh và điều nên tránh.\n\nGia Lai\n\nKhông gian văn hoá Cồng chiêng Tây Nguyên: di sản UNESCO và đời sống ở Gia Lai\n\nCồng chiêng Tây Nguyên được UNESCO ghi danh năm 2005. Cồng khác chiêng thế nào, cồng chiêng xuất hiện trong lễ hội nào, xem biểu diễn ở đâu tại Gia Lai.\n\nGia Lai\n\nNhà rông Tây Nguyên: vì sao mái cao vút và là trái tim của buôn làng\n\nNhà rông là ngôi nhà chung của làng người Bahnar, Jrai, Xơ Đăng. Kiến trúc mái lưỡi rìu, nhà rông đực nhà rông cái, chức năng và phép lịch sự khi ghé thăm.\n\nGia Lai\n\nVì sao Tây Nguyên trồng cà phê ngon? Đất đỏ bazan, độ cao và hai mùa mưa nắng\n\nĐất đỏ bazan từ núi lửa cổ, độ cao vừa phải và hai mùa mưa nắng rõ rệt giúp Tây Nguyên thành vùng cà phê lớn nhất Việt Nam. Gia Lai, Đức Cơ ở đâu trong đó.\n\nGia Lai\n\nMua quà đặc sản Gia Lai mang về: cà phê, hạt điều, tiêu Chư Sê, muối kiến vàng\n\nQuà đặc sản Gia Lai dễ mang đi xa: cà phê, hạt điều, hồ tiêu Chư Sê, muối kiến vàng, bò một nắng, mật ong hoa cà phê. Cách chọn, bảo quản, đóng gói.\n\nGia Lai\n\nGia Lai mùa nào đẹp? Lịch 12 tháng: hoa cà phê, dã quỳ, mùa mưa, mùa biển\n\nLịch du lịch Gia Lai theo tháng: mùa khô, mùa mưa, mùa hoa cà phê, mùa dã quỳ, mùa thu hoạch cà phê và mùa biển Quy Nhơn. Chọn thời điểm hợp chuyến đi.\n\nGia Lai\n\nCao Nguyên Mộc là ai? Cà phê rang mộc và hạt điều từ một xưởng gia đình ở Đức Cơ\n\nCao Nguyên Mộc là thương hiệu nông sản gia đình ở Đức Cơ, Gia Lai: cà phê hái chín, phơi giàn, rang mộc không tẩm và hạt điều Tây Nguyên.\n\nDu lịch Gia Lai\n\nFestival Hoa dã quỳ – Núi lửa Chư Đang Ya 2026: lịch sự kiện và kinh nghiệm đi\n\nFestival Cồng chiêng – Tuần lễ Hoa dã quỳ – Núi lửa Chư Đang Ya diễn ra 30/10–8/11/2026 tại Gia Lai. Lịch hoạt động, đường đi, thời điểm ngắm hoa và lời nhắn giữ hoa cho núi đồi.\n\nDu lịch Gia Lai\n\nMột ngày ở Pleiku: Biển Hồ, đồi chè và hàng thông trăm tuổi\n\nLịch trình một ngày quanh Biển Hồ Pleiku: hồ T'Nưng, đồi chè Biển Hồ trồng từ năm 1919, hàng thông trăm tuổi, chùa Bửu Minh và các món nên ăn ở phố núi.\n\nDu lịch Gia Lai\n\nVề Đức Cơ, Gia Lai: vùng cà phê biên giới và cửa khẩu Lệ Thanh\n\nGia Lai có hơn 100 nghìn ha cà phê, xuất khẩu gần 1 tỷ USD trong 7 tháng đầu 2026. Gợi ý ghé Đức Cơ: Quốc môn Lệ Thanh, cây đa làng Ghè, thác Ia Kriêng và vườn cà phê vùng biên.",
+  "headings": [
+   "Góc bếp & kiến thức của Mộc",
+   "Cà phê",
+   "Cà phê Robusta và Arabica khác nhau thế nào? Cách chọn theo khẩu vị",
+   "Các mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào",
+   "Xay cà phê độ mịn nào? Bảng độ xay cho phin, pha máy, pha tay, cold brew",
+   "Bảo quản cà phê sau khi mở túi: giữ mùi thơm lâu, không ẩm, không ám mùi",
+   "Mỗi ngày uống bao nhiêu cà phê là vừa? Mức caffeine khuyến nghị",
+   "Từ quả cà phê đến ly cà phê: chế biến khô, ướt và honey khác nhau ra sao",
+   "Vì sao cà phê bị chua hoặc đắng gắt? 8 nguyên nhân và cách sửa",
+   "Cách pha cà phê phin ngon với cà phê rang mộc",
+   "Cà phê túi lọc: cách pha nóng và cách ủ lạnh qua đêm",
+   "Cà phê rang mộc là gì? Cách phân biệt với cà phê tẩm",
+   "Công thức",
+   "Cách làm cà phê muối tại nhà: công thức kem muối béo, không tách lớp",
+   "Cách làm cà phê trứng tại nhà: lớp kem trứng bông mịn, không tanh",
+   "Cách pha bạc xỉu và cà phê sữa đá bằng phin: tỉ lệ chuẩn, dễ nhớ",
+   "Cách làm cold brew 1 lít từ cà phê rang xay, ủ lạnh 12–18 giờ",
+   "Cách làm cà phê cốt dừa đá xay mát lạnh tại nhà",
+   "Tiramisu không cần lò, dùng cà phê phin và bánh sâm panh",
+   "Cách làm hạt điều rang mật ong giòn, không dính tay",
+   "Gà xào hạt điều: món cơm nhà 20 phút, thịt mềm, hạt giòn",
+   "Cách làm bơ hạt điều tại nhà chỉ với máy xay và một nguyên liệu",
+   "Bánh quy hạt điều cà phê: giòn rụm, thơm mùi rang, làm 30 chiếc",
+   "Cách làm sữa hạt điều tại nhà, béo ngậy không cần máy chuyên dụng",
+   "Cách làm granola hạt và trái cây sấy bằng lò nướng tại nhà",
+   "Hạt điều",
+   "Từ trái điều đến hạt điều: vì sao hạt điều phải qua nhiều công đoạn",
+   "Hạt điều W180, W240, W320 là gì? Cách đọc ký hiệu phân loại hạt điều",
+   "Cách chọn hạt điều ngon và bảo quản để hạt giòn lâu, không hôi dầu",
+   "Dinh dưỡng",
+   "Mỗi ngày nên ăn bao nhiêu hạt? Khẩu phần dễ nhớ cho từng loại",
+   "Tiểu đường",
+   "Người tiểu đường ăn hạt được không? Nên chọn loại nào, ăn bao nhiêu",
+   "Người tiểu đường có ăn được trái cây sấy không? Khẩu phần an toàn",
+   "Gạo lứt có tốt cho người tiểu đường? Ăn cơm gạo lứt, bột gạo lứt thế nào",
+   "Tiêu hoá",
+   "Táo bón nên ăn gì? Bổ sung chất xơ từ hạt, trái cây sấy và ngũ cốc",
+   "Bột chuối xanh là gì? Tinh bột kháng và cách dùng cho đường ruột",
+   "Hay đầy bụng, khó tiêu: ăn hạt và uống cà phê thế nào cho êm bụng",
+   "Giảm cân",
+   "Ăn vặt khi giảm cân: chọn hạt và trái cây sấy thế nào để không tăng cân",
+   "Uống cà phê đen khi giảm cân: nên uống thế nào, tránh những gì",
+   "Thực đơn bữa phụ giảm cân 7 ngày, mỗi bữa dưới 200 kcal",
+   "Tăng cân",
+   "Người gầy muốn tăng cân nên ăn gì? Cách thêm năng lượng lành mạnh",
+   "Sinh tố tăng cân từ hạt điều, chuối và bột ngũ cốc (khoảng 550 kcal)",
+   "Bữa phụ tăng cân mang theo được cho dân văn phòng, học sinh",
+   "Làm đẹp",
+   "Tẩy tế bào chết bằng bã cà phê: cách làm và lưu ý cho da",
+   "Ăn gì để da sáng khoẻ? Sự thật về thực phẩm “làm trắng da”",
+   "Mặt nạ cacao, mật ong và sữa chua tự làm tại nhà",
+   "Gia Lai",
+   "Tây Nguyên qua 9 khung hình: đất đỏ, thác nước, cồng chiêng và hoa cà phê",
+   "Tỉnh Gia Lai mới sau sáp nhập: ở đâu, rộng bao nhiêu, có gì đặc sắc",
+   "Lịch trình Pleiku 2 ngày 1 đêm: Biển Hồ, chùa Minh Thành, núi lửa Chư Đang Ya",
+   "Món ngon Gia Lai nên thử: phở khô hai tô, bún mắm cua, bò một nắng, muối kiến vàng",
+   "Mùa hoa cà phê Tây Nguyên: nở khi nào, ngắm ở đâu, chụp ảnh thế nào",
+   "Không gian văn hoá Cồng chiêng Tây Nguyên: di sản UNESCO và đời sống ở Gia Lai",
+   "Nhà rông Tây Nguyên: vì sao mái cao vút và là trái tim của buôn làng",
+   "Vì sao Tây Nguyên trồng cà phê ngon? Đất đỏ bazan, độ cao và hai mùa mưa nắng",
+   "Mua quà đặc sản Gia Lai mang về: cà phê, hạt điều, tiêu Chư Sê, muối kiến vàng",
+   "Gia Lai mùa nào đẹp? Lịch 12 tháng: hoa cà phê, dã quỳ, mùa mưa, mùa biển",
+   "Cao Nguyên Mộc là ai? Cà phê rang mộc và hạt điều từ một xưởng gia đình ở Đức Cơ",
+   "Festival Hoa dã quỳ – Núi lửa Chư Đang Ya 2026: lịch sự kiện và kinh nghiệm đi",
+   "Một ngày ở Pleiku: Biển Hồ, đồi chè và hàng thông trăm tuổi",
+   "Về Đức Cơ, Gia Lai: vùng cà phê biên giới và cửa khẩu Lệ Thanh"
+  ],
+  "html_meta": {
+   "og_site_name": null,
+   "og_image": "https://caonguyenmoc.vn/img/coffee_2.jpg",
+   "theme_color": null,
+   "logo_url": "https://caonguyenmoc.vn/img/b/cao-nguyen-moc-la-ai-xuong-rang-gia-dinh-duc-co-t.jpg",
+   "fonts": [
+    {
+     "family": "var(--display)",
+     "count": 2
+    },
+    {
+     "family": "Be Vietnam Pro",
+     "count": 1
+    },
+    {
+     "family": "Fraunces",
+     "count": 1
+    },
+    {
+     "family": "Lora",
+     "count": 1
+    },
+    {
+     "family": "var(--body)",
+     "count": 1
+    },
+    {
+     "family": "var(--script)",
+     "count": 1
+    }
+   ],
+   "colors": [
+    {
+     "hex": "#efe2c8",
+     "count": 4
+    },
+    {
+     "hex": "#f2b48f",
+     "count": 3
+    },
+    {
+     "hex": "#141a10",
+     "count": 2
+    },
+    {
+     "hex": "#1d2418",
+     "count": 2
+    },
+    {
+     "hex": "#222b1c",
+     "count": 2
+    },
+    {
+     "hex": "#252e1f",
+     "count": 2
+    },
+    {
+     "hex": "#2c3624",
+     "count": 2
+    },
+    {
+     "hex": "#33452a",
+     "count": 2
+    },
+    {
+     "hex": "#5c6b49",
+     "count": 2
+    },
+    {
+     "hex": "#c9bc9f",
+     "count": 2
+    },
+    {
+     "hex": "#ec9a6f",
+     "count": 2
+    },
+    {
+     "hex": "#f6ecd8",
+     "count": 2
+    },
+    {
+     "hex": "#55643f",
+     "count": 1
+    },
+    {
+     "hex": "#a9542f",
+     "count": 1
+    },
+    {
+     "hex": "#b89a6c",
+     "count": 1
+    },
+    {
+     "hex": "#dcc29b",
+     "count": 1
+    },
+    {
+     "hex": "#e9d6b5",
+     "count": 1
+    },
+    {
+     "hex": "#fff8ee",
+     "count": 1
+    },
+    {
+     "hex": "#fffaf0",
+     "count": 1
+    }
+   ]
+  }
+ },
+ {
+  "url": "https://caonguyenmoc.vn/blog/cao-nguyen-moc-la-ai-xuong-rang-gia-dinh-duc-co/",
+  "title": "Cao Nguyên Mộc: cà phê rang mộc từ Đức Cơ, Gia Lai | Cao Nguyên Mộc",
+  "text": "cao nguyên mộc\n\nTrang chủ › Blog › Gia Lai\n\nGia Lai\n\nCao Nguyên Mộc là ai? Cà phê rang mộc và hạt điều từ một xưởng gia đình ở Đức Cơ\n\nCao Nguyên Mộc · 14/11/2026 · 3 phút đọc\n\nTrả lời nhanhCao Nguyên Mộc là thương hiệu nông sản gia đình, có xưởng rang tại 672 Quang Trung, Đức Cơ, Gia Lai. Mộc bán cà phê rang mộc (nguyên hạt, rang xay, túi lọc) và hạt điều (rang muối, rang mộc). Cà phê là Robusta Đức Cơ, chỉ hái quả chín, phơi trên giàn, rang sáng và không tẩm bơ, đường hay hương liệu. Đơn online được gửi qua Viettel Post từ điểm giao nhận Hà Nội. Hotline, Zalo: 0395 050 669.\n\nTrong bài này\n\nMộc ở đâu?\n\nMộc bán gì?\n\n\"Rang mộc\" là gì?\n\nMộc chọn hạt thế nào?\n\nMộc cam kết gì với khách?\n\nMộc viết blog để làm gì?\n\n\"Mang Tây Nguyên Về Nhà\" là câu Mộc chọn làm khẩu hiệu. Mộc muốn ly cà phê mỗi sáng của bạn có vị của vùng đất đỏ Đức Cơ, nguyên như khi hạt cà phê rời giàn phơi.\n\nMộc ở đâu?\n\nXưởng rang gia đình: 672 Quang Trung, Đức Cơ, Gia Lai, vùng đất đỏ phía tây Gia Lai, sát biên giới.\n\nĐiểm giao nhận Hà Nội: C16 Nguyễn Quý Đức, Thanh Xuân, Hà Nội. Phần lớn khách của Mộc ở phía Bắc, nên Mộc đưa hàng ra Hà Nội rồi gửi qua Viettel Post để bạn nhận nhanh hơn, phí ship rẻ hơn.\n\nWebsite: caonguyenmoc.vn. Hotline, Zalo: 0395 050 669.\n\nMộc bán gì?\n\nSản phẩmQuy cách và giá------Cà phê rang mộc nguyên hạtTúi 250g 89.000đ, 500g 179.000đ, 1kg 359.000đCà phê rang xay (xay vừa cho phin)Túi 250g 89.000đ, 500g 179.000đ, 1kg 359.000đCà phê túi lọcHộp 10 gói × 12g, 119.000đHạt điều rang muốiTúi zip 250g 94.000đ, túi 500g 169.000đ, túi 1kg 339.000đHạt điều rang mộcTúi zip 250g 94.000đ, túi 500g 169.000đ, túi 1kg 339.000đ\n\nGiá trên là giá niêm yết trên caonguyenmoc.vn vào ngày đăng bài. Giá mới nhất luôn ở trang sản phẩm.\n\n\"Rang mộc\" là gì?\n\nRang mộc là rang hạt cà phê chỉ với lửa và thời gian. Không bơ, không đường, không nước mắm, không hương liệu, không pha trộn. Vì không có gì che vị, hạt phải tốt từ đầu. Đọc thêm cà phê rang mộc là gì.\n\nMộc chọn hạt thế nào?\n\nGiống: Robusta trồng ở Đức Cơ, Gia Lai.\n\nHái chín: chỉ hái quả cà phê chín.\n\nPhơi giàn: phơi trên giàn, không phơi trên nền đất, để hạt sạch, khô đều.\n\nRang sáng (light roast) tại xưởng gia đình ở Đức Cơ, để giữ mùi thơm và vị ngọt tự nhiên của hạt. Ly cà phê màu nâu cánh gián, đắng dịu, có chút chua thanh.\n\nHạt điều: hạt điều Việt Nam trồng trên đất đỏ bazan Tây Nguyên. Mộc đang tìm một nhóm hộ trồng cụ thể để sau này giới thiệu rõ hạt từ vườn nào, có tên, có ảnh.\n\nMộc cam kết gì với khách?\n\nGiá niêm yết công khai, như nhau cho mọi khách. Khách mới nhập mã MOCMOI giảm 20.000đ cho đơn từ 299.000đ.\n\nPhí ship: đơn từ 99.000đ Mộc hỗ trợ tối đa 15.000đ, đơn từ 500.000đ miễn phí ship.\n\nThanh toán: chuyển khoản vào tài khoản Cao Nguyên Mộc hiện trên đơn, hoặc trả tiền khi nhận hàng. Được kiểm tra hàng trước khi nhận.\n\nĐổi trả 7 ngày nếu hàng lỗi, hư hỏng, sai mô tả hoặc thiếu hàng.\n\nMộc viết blog để làm gì?\n\nBlog là nơi Mộc chia sẻ cách pha cà phê, công thức từ cà phê và hạt điều, kiến thức chọn và bảo quản nông sản, và những câu chuyện về Gia Lai: tỉnh Gia Lai mới, món ngon, cồng chiêng, mùa hoa cà phê. Mộc mong khi bạn uống một ly cà phê, bạn cũng biết thêm một chút về vùng đất nơi hạt cà phê lớn lên.\n\nSản phẩm của Mộc\n\nCà phê rang mộc nguyên hạttừ 89.000đ\n\nCà phê rang xaytừ 89.000đ\n\nCà phê túi lọc119.000đ\n\nHạt điều rang muốitừ 94.000đ\n\nHạt điều rang mộctừ 94.000đ\n\nXem bảng giá và đặt hàng\n\nCâu hỏi thường gặp\n\nCao Nguyên Mộc ở đâu?\n\nXưởng rang gia đình của Mộc ở 672 Quang Trung, Đức Cơ, Gia Lai. Đơn online được gửi từ điểm giao nhận Hà Nội ở C16 Nguyễn Quý Đức, Thanh Xuân.\n\nCà phê Mộc là Robusta hay Arabica, rang mức nào?\n\nRobusta trồng ở Đức Cơ, Gia Lai, rang sáng (light roast).\n\nCà phê của Mộc có tẩm không?\n\nKhông. Cà phê của Mộc là rang mộc: không bơ, không đường, không nước mắm, không hương liệu, không pha trộn.\n\nMua cà phê Mộc ở đâu?\n\nĐặt trực tiếp trên caonguyenmoc.vn, hoặc gọi, nhắn Zalo 0395 050 669.\n\nMộc có nhận đặt quà cho công ty không?\n\nCó. Bạn gửi số lượng, ngân sách mỗi phần và ngày cần hàng, Mộc báo giá riêng và hẹn lịch giao.\n\nBài viết khác\n\nGia Lai\n\nVì sao Tây Nguyên trồng cà phê ngon? Đất đỏ bazan, độ cao và hai mùa mưa nắng\n\nĐất đỏ bazan từ núi lửa cổ, độ cao vừa phải và hai mùa mưa nắng rõ rệt giúp Tây Nguyên thành vùng cà phê lớn nhất Việt Nam. Gia Lai, Đức Cơ ở đâu trong đó.\n\nGia Lai\n\nTây Nguyên qua 9 khung hình: đất đỏ, thác nước, cồng chiêng và hoa cà phê\n\nChín bức ảnh kể về Tây Nguyên, nơi Cao Nguyên Mộc lớn lên: đất đỏ Gia Lai, thác Dray Nur, cồng chiêng, hoa cà phê, Biển Hồ, trái điều, dã quỳ và vườn của Mộc.\n\nGia Lai\n\nTỉnh Gia Lai mới sau sáp nhập: ở đâu, rộng bao nhiêu, có gì đặc sắc\n\nTừ 1/7/2025, Gia Lai và Bình Định hợp thành tỉnh Gia Lai mới, trải từ cao nguyên tới biển. Diện tích, dân số, trung tâm hành chính và nét đặc sắc.",
+  "headings": [
+   "Cao Nguyên Mộc là ai? Cà phê rang mộc và hạt điều từ một xưởng gia đình ở Đức Cơ",
+   "Mộc ở đâu?",
+   "Mộc bán gì?",
+   "\"Rang mộc\" là gì?",
+   "Mộc chọn hạt thế nào?",
+   "Mộc cam kết gì với khách?",
+   "Mộc viết blog để làm gì?",
+   "Sản phẩm của Mộc",
+   "Câu hỏi thường gặp",
+   "Bài viết khác",
+   "Vì sao Tây Nguyên trồng cà phê ngon? Đất đỏ bazan, độ cao và hai mùa mưa nắng",
+   "Tây Nguyên qua 9 khung hình: đất đỏ, thác nước, cồng chiêng và hoa cà phê",
+   "Tỉnh Gia Lai mới sau sáp nhập: ở đâu, rộng bao nhiêu, có gì đặc sắc"
+  ],
+  "html_meta": {
+   "og_site_name": "Cao Nguyên Mộc",
+   "og_image": "https://caonguyenmoc.vn/img/b/cao-nguyen-moc-la-ai-xuong-rang-gia-dinh-duc-co.jpg",
+   "theme_color": null,
+   "logo_url": "https://caonguyenmoc.vn/img/b/cao-nguyen-moc-la-ai-xuong-rang-gia-dinh-duc-co.jpg",
+   "fonts": [
+    {
+     "family": "var(--display)",
+     "count": 2
+    },
+    {
+     "family": "Be Vietnam Pro",
+     "count": 1
+    },
+    {
+     "family": "Fraunces",
+     "count": 1
+    },
+    {
+     "family": "Lora",
+     "count": 1
+    },
+    {
+     "family": "var(--body)",
+     "count": 1
+    },
+    {
+     "family": "var(--script)",
+     "count": 1
+    }
+   ],
+   "colors": [
+    {
+     "hex": "#efe2c8",
+     "count": 4
+    },
+    {
+     "hex": "#f2b48f",
+     "count": 3
+    },
+    {
+     "hex": "#141a10",
+     "count": 2
+    },
+    {
+     "hex": "#1d2418",
+     "count": 2
+    },
+    {
+     "hex": "#222b1c",
+     "count": 2
+    },
+    {
+     "hex": "#252e1f",
+     "count": 2
+    },
+    {
+     "hex": "#2c3624",
+     "count": 2
+    },
+    {
+     "hex": "#33452a",
+     "count": 2
+    },
+    {
+     "hex": "#5c6b49",
+     "count": 2
+    },
+    {
+     "hex": "#c9bc9f",
+     "count": 2
+    },
+    {
+     "hex": "#ec9a6f",
+     "count": 2
+    },
+    {
+     "hex": "#f6ecd8",
+     "count": 2
+    },
+    {
+     "hex": "#55643f",
+     "count": 1
+    },
+    {
+     "hex": "#a9542f",
+     "count": 1
+    },
+    {
+     "hex": "#b89a6c",
+     "count": 1
+    },
+    {
+     "hex": "#dcc29b",
+     "count": 1
+    },
+    {
+     "hex": "#e9d6b5",
+     "count": 1
+    },
+    {
+     "hex": "#fff8ee",
+     "count": 1
+    },
+    {
+     "hex": "#fffaf0",
+     "count": 1
+    }
+   ]
+  }
+ },
+ {
+  "url": "https://caonguyenmoc.vn/blog/ca-phe-rang-moc-la-gi/",
+  "title": "Cà phê rang mộc là gì? Cách phân biệt với cà phê tẩm | Cao Nguyên Mộc",
+  "text": "cao nguyên mộc\n\nTrang chủ › Blog › Cà phê\n\nCà phê\n\nCà phê rang mộc là gì? Cách phân biệt với cà phê tẩm\n\nCao Nguyên Mộc · 29/10/2026 · 5 phút đọc\n\nCà phê rang mộc là cà phê chỉ có hạt cà phê được rang chín, không thêm bơ, đường, nước mắm, rượu, hương liệu hay chất tạo màu, và không trộn bắp, đậu hay vỏ cà phê. Vị thơm, đắng, hậu ngọt đến từ chính hạt và kỹ thuật rang.\n\nCà phê tẩm khác gì?\n\nCà phê tẩm được thêm các chất như bơ, đường, caramel hoặc hương liệu trong lúc rang. Cách này giúp hạt bóng, nước pha đen sánh, mùi thơm đậm. Một số loại còn trộn thêm hạt rang khác để giảm giá thành. Ở Việt Nam, rất nhiều cà phê bán theo ký ngoài chợ thuộc nhóm này.\n\nDấu hiệu tham khảo khi mua và pha\n\nHạt: rang mộc có màu nâu, bề mặt khô hoặc hơi dầu tự nhiên. Hạt đen bóng, sờ dính tay thường là đã tẩm.\n\nMùi: rang mộc thơm mùi rang, mùi khói nhẹ. Mùi vani, socola hay mùi bơ quá gắt thường là hương liệu.\n\nBột: rang mộc tơi, xốp. Bột vón cục, dính, nặng tay là dấu hiệu có đường hoặc bơ.\n\nNước pha: rang mộc có màu nâu cánh gián, trong. Nước đen đặc như mực, bọt nhiều và lâu tan thường có phụ gia.\n\nHậu vị: rang mộc đắng rồi ngọt hậu, không để lại vị khé ở cổ.\n\nĐây là các dấu hiệu tham khảo, không thay cho kiểm nghiệm. Cách chắc nhất là mua từ nơi minh bạch nguồn gốc và cách rang.\n\nCà phê rang mộc của Cao Nguyên Mộc\n\nMộc dùng Robusta trồng ở Đức Cơ, Gia Lai, chỉ hái quả chín, phơi trên giàn, rang sáng (light roast) để giữ mùi thơm và vị ngọt tự nhiên của hạt. Cà phê làm theo công thức và tiêu chuẩn của Cao Nguyên Mộc, rang tại xưởng đối tác đạt chuẩn an toàn thực phẩm. Không hương liệu, không tẩm ướp, không pha trộn. Có loại nguyên hạt để tự xay, rang xay sẵn cho phin, và túi lọc ngâm như trà.\n\nXem thêm sản phẩm\n\nXem bảng giá và đặt hàng\n\nCâu hỏi thường gặp\n\nCà phê rang mộc có đắng hơn cà phê tẩm không?\n\nRobusta rang mộc có vị đắng rõ, nhưng sạch vị và có hậu ngọt. Cà phê tẩm thường che vị đắng bằng đường, bơ, caramel nên uống thấy béo và ngọt hơn.\n\nVì sao cà phê rang mộc thường đắt hơn cà phê chợ?\n\nVì toàn bộ khối lượng là hạt cà phê thật, không có đường, bơ hay hạt khác độn vào. Cùng 500g nhưng lượng cà phê thật nhiều hơn.\n\nRang mộc hợp với cách pha nào?\n\nPha phin, pha máy, ủ lạnh đều được. Robusta rang mộc pha phin hoặc làm cà phê sữa đá rất hợp khẩu vị người Việt.\n\nBài viết khác\n\nCà phê\n\nCách pha cà phê phin ngon với cà phê rang mộc\n\nHướng dẫn pha cà phê phin từng bước: lượng bột, nhiệt độ nước, thời gian ủ và cách chỉnh khi cà phê chảy quá nhanh hay quá chậm.\n\nCà phê\n\nCà phê túi lọc: cách pha nóng và cách ủ lạnh qua đêm\n\nCà phê túi lọc ngâm như túi trà. Hướng dẫn pha nóng trong 5 phút và ủ lạnh qua đêm để có cà phê cold brew tại nhà.\n\nCông thức\n\nCách làm sữa hạt điều tại nhà, béo ngậy không cần máy chuyên dụng\n\nCông thức sữa hạt điều 1 lít: lượng hạt, thời gian ngâm, cách xay, lọc và bảo quản. Dùng máy xay sinh tố thông thường.",
+  "headings": [
+   "Cà phê rang mộc là gì? Cách phân biệt với cà phê tẩm",
+   "Cà phê tẩm khác gì?",
+   "Dấu hiệu tham khảo khi mua và pha",
+   "Cà phê rang mộc của Cao Nguyên Mộc",
+   "Xem thêm sản phẩm",
+   "Câu hỏi thường gặp",
+   "Bài viết khác",
+   "Cách pha cà phê phin ngon với cà phê rang mộc",
+   "Cà phê túi lọc: cách pha nóng và cách ủ lạnh qua đêm",
+   "Cách làm sữa hạt điều tại nhà, béo ngậy không cần máy chuyên dụng"
+  ],
+  "html_meta": {
+   "og_site_name": null,
+   "og_image": "https://caonguyenmoc.vn/img/coffee_2.jpg",
+   "theme_color": null,
+   "logo_url": null,
+   "fonts": [
+    {
+     "family": "var(--display)",
+     "count": 2
+    },
+    {
+     "family": "Be Vietnam Pro",
+     "count": 1
+    },
+    {
+     "family": "Fraunces",
+     "count": 1
+    },
+    {
+     "family": "Lora",
+     "count": 1
+    },
+    {
+     "family": "var(--body)",
+     "count": 1
+    },
+    {
+     "family": "var(--script)",
+     "count": 1
+    }
+   ],
+   "colors": [
+    {
+     "hex": "#efe2c8",
+     "count": 4
+    },
+    {
+     "hex": "#f2b48f",
+     "count": 3
+    },
+    {
+     "hex": "#141a10",
+     "count": 2
+    },
+    {
+     "hex": "#1d2418",
+     "count": 2
+    },
+    {
+     "hex": "#222b1c",
+     "count": 2
+    },
+    {
+     "hex": "#252e1f",
+     "count": 2
+    },
+    {
+     "hex": "#2c3624",
+     "count": 2
+    },
+    {
+     "hex": "#33452a",
+     "count": 2
+    },
+    {
+     "hex": "#5c6b49",
+     "count": 2
+    },
+    {
+     "hex": "#c9bc9f",
+     "count": 2
+    },
+    {
+     "hex": "#ec9a6f",
+     "count": 2
+    },
+    {
+     "hex": "#f6ecd8",
+     "count": 2
+    },
+    {
+     "hex": "#55643f",
+     "count": 1
+    },
+    {
+     "hex": "#a9542f",
+     "count": 1
+    },
+    {
+     "hex": "#b89a6c",
+     "count": 1
+    },
+    {
+     "hex": "#dcc29b",
+     "count": 1
+    },
+    {
+     "hex": "#e9d6b5",
+     "count": 1
+    },
+    {
+     "hex": "#fff8ee",
+     "count": 1
+    },
+    {
+     "hex": "#fffaf0",
+     "count": 1
+    }
+   ]
+  }
+ },
+ {
+  "url": "https://caonguyenmoc.vn/blog/bao-quan-ca-phe-sau-khi-mo-tui/",
+  "title": "Bảo quản cà phê sau khi mở túi để giữ mùi thơm lâu | Cao Nguyên Mộc",
+  "text": "cao nguyên mộc\n\nTrang chủ › Blog › Cà phê\n\nCà phê\n\nBảo quản cà phê sau khi mở túi: giữ mùi thơm lâu, không ẩm, không ám mùi\n\nCao Nguyên Mộc · 14/11/2026 · 3 phút đọc\n\nTrả lời nhanhSau khi mở túi, gấp kín miệng túi có van một chiều hoặc chuyển sang hũ kín, để nơi khô, mát, tối, tránh xa bếp và cửa sổ nắng. Không cất cà phê đang dùng hằng ngày trong tủ lạnh vì cà phê hút ẩm và ám mùi. Cà phê xay nên dùng trong 2–4 tuần, nguyên hạt giữ mùi lâu hơn.\n\nTrong bài này\n\nBốn thứ làm cà phê mất mùi\n\nCách cất đúng\n\nCó nên để cà phê trong tủ lạnh?\n\nVan một chiều trên túi cà phê để làm gì?\n\nCà phê để được bao lâu?\n\nCà phê có mốc hay mùi lạ thì sao?\n\nMùi thơm của cà phê đến từ những hợp chất rất dễ bay hơi. Từ lúc mở túi, mùi thơm bắt đầu giảm dần. Cà phê không \"hỏng\" ngay, nhưng ly cà phê sẽ phẳng, nhạt mùi và có thể có vị cũ nếu bảo quản sai.\n\nBốn thứ làm cà phê mất mùi\n\nKhông khí: oxy làm dầu trong cà phê bị oxy hoá, sinh mùi cũ.\n\nĐộ ẩm: cà phê hút ẩm rất nhanh, nhất là cà phê xay. Ẩm làm cà phê vón cục và dễ mốc.\n\nNhiệt: để gần bếp, nóc tủ lạnh hay trong ô tô làm mùi bay nhanh hơn.\n\nÁnh sáng: nắng chiếu trực tiếp cũng làm cà phê xuống mùi.\n\nCách cất đúng\n\nÉp bớt không khí rồi gấp kín miệng túi, kẹp chặt. Túi có van một chiều thì giữ nguyên túi.\n\nHoặc chuyển cà phê sang hũ thủy tinh tối màu, hũ sứ hay hộp kim loại có nắp kín.\n\nĐể trong tủ bếp khô, mát, tránh xa bếp nấu, máy rửa bát và cửa sổ nắng.\n\nDùng thìa khô để xúc cà phê.\n\nCó nên để cà phê trong tủ lạnh?\n\nVới cà phê đang dùng hằng ngày, câu trả lời là không. Mỗi lần lấy ra, hơi lạnh gặp không khí ấm sẽ đọng thành nước trên bột. Tủ lạnh cũng có nhiều mùi thức ăn mà cà phê sẽ hút vào.\n\nNếu bạn mua nhiều và muốn để lâu, có thể chia nhỏ phần chưa dùng thành từng túi kín, cất ngăn đá. Mỗi lần chỉ lấy một túi, để túi về nhiệt độ phòng rồi mới mở.\n\nVan một chiều trên túi cà phê để làm gì?\n\nCà phê mới rang vẫn tiếp tục nhả khí CO2 trong nhiều ngày. Van một chiều cho khí thoát ra ngoài nhưng không cho không khí lọt vào, để túi không phồng và cà phê ít tiếp xúc với oxy.\n\nCà phê để được bao lâu?\n\nLoạiSau khi mở túi, ngon nhất trong------Cà phê nguyên hạtKhoảng 3–6 tuầnCà phê rang xayKhoảng 2–4 tuầnCà phê túi lọc (gói kín)Theo hạn in trên hộp, mở gói nào pha gói đó\n\nVì vậy, nên mua vừa đủ uống trong 2–4 tuần. Uống 1 ly mỗi ngày, túi 250g là hợp; nhà 2 người uống, túi 500g là vừa.\n\nCà phê có mốc hay mùi lạ thì sao?\n\nCà phê có đốm mốc, mùi hôi, mùi chua lạ thì bỏ đi, không pha. Cà phê chỉ nhạt mùi thì vẫn pha được, có thể dùng làm cold brew hoặc làm bánh.\n\nDùng trong bài\n\nCà phê rang mộc nguyên hạttừ 89.000đ\n\nCà phê rang xaytừ 89.000đ\n\nCà phê túi lọc119.000đ\n\nXem bảng giá và đặt hàng\n\nCâu hỏi thường gặp\n\nCà phê hết hạn có uống được không?\n\nCà phê khô ít khi hỏng nếu bảo quản đúng, nhưng sẽ mất mùi. Nếu có mốc, mùi lạ hoặc vón cục ẩm thì không dùng.\n\nCó nên mua cà phê túi 1kg không?\n\nChỉ nên mua 1kg nếu nhà hoặc văn phòng uống nhiều, dùng hết trong khoảng 1 tháng. Uống ít thì chọn túi 250g để cà phê luôn thơm.\n\nHũ nhựa có đựng cà phê được không?\n\nĐược nếu hũ kín và không có mùi. Hũ thủy tinh, sứ hoặc kim loại tốt hơn vì ít ám mùi.\n\nCà phê bị ẩm có rang lại được không?\n\nKhông nên. Cà phê đã ẩm sẽ có vị cũ, rang lại dễ cháy và đắng. Tốt nhất là dùng bã để khử mùi.\n\nBài viết khác\n\nCà phê\n\nXay cà phê độ mịn nào? Bảng độ xay cho phin, pha máy, pha tay, cold brew\n\nĐộ xay quyết định cà phê đậm hay nhạt, chua hay đắng. Bảng độ xay cho phin, espresso, pha tay V60, French press, cold brew và cách nhận biết xay sai.\n\nCà phê\n\nCác mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào\n\nRang sáng, rang vừa và rang đậm thay đổi màu hạt, độ chua, độ đắng và mùi thơm ra sao. Cách nhận biết mức rang bằng mắt và chọn mức rang hợp với phin.\n\nCà phê\n\nMỗi ngày uống bao nhiêu cà phê là vừa? Mức caffeine khuyến nghị\n\nCơ quan an toàn thực phẩm Mỹ và châu Âu khuyến nghị người trưởng thành khỏe mạnh không quá khoảng 400mg caffeine mỗi ngày. Đổi ra ly cà phê và các lưu ý.",
+  "headings": [
+   "Bảo quản cà phê sau khi mở túi: giữ mùi thơm lâu, không ẩm, không ám mùi",
+   "Bốn thứ làm cà phê mất mùi",
+   "Cách cất đúng",
+   "Có nên để cà phê trong tủ lạnh?",
+   "Van một chiều trên túi cà phê để làm gì?",
+   "Cà phê để được bao lâu?",
+   "Cà phê có mốc hay mùi lạ thì sao?",
+   "Dùng trong bài",
+   "Câu hỏi thường gặp",
+   "Bài viết khác",
+   "Xay cà phê độ mịn nào? Bảng độ xay cho phin, pha máy, pha tay, cold brew",
+   "Các mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào",
+   "Mỗi ngày uống bao nhiêu cà phê là vừa? Mức caffeine khuyến nghị"
+  ],
+  "html_meta": {
+   "og_site_name": "Cao Nguyên Mộc",
+   "og_image": "https://caonguyenmoc.vn/img/b/bao-quan-ca-phe-sau-khi-mo-tui.jpg",
+   "theme_color": null,
+   "logo_url": null,
+   "fonts": [
+    {
+     "family": "var(--display)",
+     "count": 2
+    },
+    {
+     "family": "Be Vietnam Pro",
+     "count": 1
+    },
+    {
+     "family": "Fraunces",
+     "count": 1
+    },
+    {
+     "family": "Lora",
+     "count": 1
+    },
+    {
+     "family": "var(--body)",
+     "count": 1
+    },
+    {
+     "family": "var(--script)",
+     "count": 1
+    }
+   ],
+   "colors": [
+    {
+     "hex": "#efe2c8",
+     "count": 4
+    },
+    {
+     "hex": "#f2b48f",
+     "count": 3
+    },
+    {
+     "hex": "#141a10",
+     "count": 2
+    },
+    {
+     "hex": "#1d2418",
+     "count": 2
+    },
+    {
+     "hex": "#222b1c",
+     "count": 2
+    },
+    {
+     "hex": "#252e1f",
+     "count": 2
+    },
+    {
+     "hex": "#2c3624",
+     "count": 2
+    },
+    {
+     "hex": "#33452a",
+     "count": 2
+    },
+    {
+     "hex": "#5c6b49",
+     "count": 2
+    },
+    {
+     "hex": "#c9bc9f",
+     "count": 2
+    },
+    {
+     "hex": "#ec9a6f",
+     "count": 2
+    },
+    {
+     "hex": "#f6ecd8",
+     "count": 2
+    },
+    {
+     "hex": "#55643f",
+     "count": 1
+    },
+    {
+     "hex": "#a9542f",
+     "count": 1
+    },
+    {
+     "hex": "#b89a6c",
+     "count": 1
+    },
+    {
+     "hex": "#dcc29b",
+     "count": 1
+    },
+    {
+     "hex": "#e9d6b5",
+     "count": 1
+    },
+    {
+     "hex": "#fff8ee",
+     "count": 1
+    },
+    {
+     "hex": "#fffaf0",
+     "count": 1
+    }
+   ]
+  }
+ },
+ {
+  "url": "https://caonguyenmoc.vn/blog/cach-pha-ca-phe-phin-rang-moc/",
+  "title": "Cách pha cà phê phin ngon với cà phê rang mộc | Cao Nguyên Mộc",
+  "text": "cao nguyên mộc\n\nTrang chủ › Blog › Cà phê\n\nCà phê\n\nCách pha cà phê phin ngon với cà phê rang mộc\n\nCao Nguyên Mộc · 29/10/2026 · 5 phút đọc\n\nCà phê rang mộc chỉ có hạt cà phê rang, không bơ, không đường, không hương liệu. Vì vậy vị ngon trong ly phụ thuộc nhiều vào cách pha. Dưới đây là cách pha phin Mộc dùng hằng ngày cho cà phê Robusta Đức Cơ rang sáng, xay vừa. Hạt rang sáng cần nước đủ nóng (94–96°C) và bước ủ khoảng 45 giây để chiết đủ vị.\n\nChuẩn bị\n\nCà phê: 20–25g bột xay vừa (khoảng 3 thìa canh đầy). Muốn đậm thì tăng lên 25g.\n\nNước: nước sôi để nguội khoảng 30 giây, tức khoảng 90–96°C. Nước sôi sùng sục dễ làm cà phê đắng gắt.\n\nPhin: phin nhôm hoặc inox cỡ vừa, tráng qua nước nóng trước khi pha.\n\nCác bước pha\n\nTráng phin và ly bằng nước nóng để giữ nhiệt.\n\nCho bột vào phin, lắc nhẹ cho mặt bột phẳng. Đặt nắp gài lên, ấn nhẹ, không nén quá chặt.\n\nỦ: rót khoảng 20–30ml nước, đủ thấm ướt bột. Chờ 30–45 giây để bột nở.\n\nRót tiếp nước đến gần đầy phin (khoảng 70–100ml tổng), đậy nắp.\n\nCà phê nhỏ giọt trong khoảng 4–6 phút là vừa.\n\nUống đen, hoặc thêm 20–30ml sữa đặc để có ly cà phê sữa, thêm đá nếu thích.\n\nChỉnh theo tốc độ nhỏ giọt\n\nChảy quá nhanh (dưới 3 phút), nước nhạt: ấn nắp gài chặt hơn một chút, hoặc nhắn Mộc xay mịn hơn.\n\nChảy quá chậm (trên 8 phút), ly đắng gắt: nới nắp gài, bớt bột, hoặc xay thô hơn.\n\nBảo quản cà phê sau khi mở túi\n\nGấp kín miệng túi, để nơi khô mát, tránh nắng và tránh để gần bếp. Cà phê xay ngon nhất trong vài tuần đầu sau khi mở. Nếu uống ít, chọn túi 250g hoặc mua cà phê nguyên hạt rồi xay mỗi lần pha.\n\nXem thêm sản phẩm\n\nXem bảng giá và đặt hàng\n\nCâu hỏi thường gặp\n\nVì sao cà phê rang mộc pha ra ít bọt và màu nhạt hơn cà phê ngoài hàng?\n\nNhiều loại cà phê được tẩm bơ, caramel hoặc trộn thêm phụ gia để nước đen, sánh và nhiều bọt. Cà phê rang mộc không có các chất này nên nước có màu nâu cánh gián, bọt ít và tan nhanh. Đó là màu tự nhiên của cà phê rang.\n\nPha phin bao nhiêu gram cà phê là vừa?\n\nKhoảng 20–25g bột cho một ly, với 70–100ml nước. Uống nhạt thì giảm còn 18g, uống đậm thì giữ 25g.\n\nCó cần xay riêng cho phin không?\n\nCà phê rang xay của Mộc đã xay vừa cho phin. Nếu bạn pha máy espresso hoặc ủ lạnh, hãy nhắn Mộc để xay mịn hoặc thô theo cách pha.\n\nBài viết khác\n\nCà phê\n\nCà phê túi lọc: cách pha nóng và cách ủ lạnh qua đêm\n\nCà phê túi lọc ngâm như túi trà. Hướng dẫn pha nóng trong 5 phút và ủ lạnh qua đêm để có cà phê cold brew tại nhà.\n\nCà phê\n\nCà phê rang mộc là gì? Cách phân biệt với cà phê tẩm\n\nCà phê rang mộc là cà phê chỉ rang hạt, không tẩm bơ, đường hay hương liệu. Vài dấu hiệu giúp bạn nhận biết khi mua và khi pha.\n\nCông thức\n\nCách làm sữa hạt điều tại nhà, béo ngậy không cần máy chuyên dụng\n\nCông thức sữa hạt điều 1 lít: lượng hạt, thời gian ngâm, cách xay, lọc và bảo quản. Dùng máy xay sinh tố thông thường.",
+  "headings": [
+   "Cách pha cà phê phin ngon với cà phê rang mộc",
+   "Chuẩn bị",
+   "Các bước pha",
+   "Chỉnh theo tốc độ nhỏ giọt",
+   "Bảo quản cà phê sau khi mở túi",
+   "Xem thêm sản phẩm",
+   "Câu hỏi thường gặp",
+   "Bài viết khác",
+   "Cà phê túi lọc: cách pha nóng và cách ủ lạnh qua đêm",
+   "Cà phê rang mộc là gì? Cách phân biệt với cà phê tẩm",
+   "Cách làm sữa hạt điều tại nhà, béo ngậy không cần máy chuyên dụng"
+  ],
+  "html_meta": {
+   "og_site_name": null,
+   "og_image": "https://caonguyenmoc.vn/img/ground_0.jpg",
+   "theme_color": null,
+   "logo_url": null,
+   "fonts": [
+    {
+     "family": "var(--display)",
+     "count": 2
+    },
+    {
+     "family": "Be Vietnam Pro",
+     "count": 1
+    },
+    {
+     "family": "Fraunces",
+     "count": 1
+    },
+    {
+     "family": "Lora",
+     "count": 1
+    },
+    {
+     "family": "var(--body)",
+     "count": 1
+    },
+    {
+     "family": "var(--script)",
+     "count": 1
+    }
+   ],
+   "colors": [
+    {
+     "hex": "#efe2c8",
+     "count": 4
+    },
+    {
+     "hex": "#f2b48f",
+     "count": 3
+    },
+    {
+     "hex": "#141a10",
+     "count": 2
+    },
+    {
+     "hex": "#1d2418",
+     "count": 2
+    },
+    {
+     "hex": "#222b1c",
+     "count": 2
+    },
+    {
+     "hex": "#252e1f",
+     "count": 2
+    },
+    {
+     "hex": "#2c3624",
+     "count": 2
+    },
+    {
+     "hex": "#33452a",
+     "count": 2
+    },
+    {
+     "hex": "#5c6b49",
+     "count": 2
+    },
+    {
+     "hex": "#c9bc9f",
+     "count": 2
+    },
+    {
+     "hex": "#ec9a6f",
+     "count": 2
+    },
+    {
+     "hex": "#f6ecd8",
+     "count": 2
+    },
+    {
+     "hex": "#55643f",
+     "count": 1
+    },
+    {
+     "hex": "#a9542f",
+     "count": 1
+    },
+    {
+     "hex": "#b89a6c",
+     "count": 1
+    },
+    {
+     "hex": "#dcc29b",
+     "count": 1
+    },
+    {
+     "hex": "#e9d6b5",
+     "count": 1
+    },
+    {
+     "hex": "#fff8ee",
+     "count": 1
+    },
+    {
+     "hex": "#fffaf0",
+     "count": 1
+    }
+   ]
+  }
+ },
+ {
+  "url": "https://caonguyenmoc.vn/blog/cac-muc-rang-ca-phe-rang-sang-vua-dam/",
+  "title": "Các mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào",
+  "text": "cao nguyên mộc\n\nTrang chủ › Blog › Cà phê\n\nCà phê\n\nCác mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào\n\nCao Nguyên Mộc · 14/11/2026 · 3 phút đọc\n\nTrả lời nhanhRang sáng giữ nhiều vị chua và mùi hoa quả, hạt màu nâu nhạt, mặt khô. Rang vừa cân bằng giữa chua, ngọt và đắng, hạt nâu đều, gần như không có dầu. Rang đậm cho vị đắng, mùi khói và socola rõ, hạt nâu sẫm và thường bóng dầu. Pha phin, pha sữa hợp rang vừa đến đậm; pha tay uống đen hợp rang sáng đến vừa.\n\nTrong bài này\n\nChuyện gì xảy ra khi rang cà phê?\n\nSo sánh ba mức rang\n\nRang đậm có phải là \"cà phê mạnh\" hơn?\n\nHạt bóng dầu có phải cà phê tẩm bơ?\n\nNên chọn mức rang nào cho phin?\n\nCà phê của Mộc rang mức nào?\n\nHạt cà phê nhân có màu xanh, cứng, mùi như cỏ khô. Chỉ khi rang, hàng trăm hợp chất tạo mùi thơm mới hình thành. Cùng một loại hạt, rang ở mức khác nhau sẽ cho ly cà phê rất khác nhau.\n\nChuyện gì xảy ra khi rang cà phê?\n\nGiai đoạn sấy: hạt mất nước, chuyển từ xanh sang vàng, có mùi bánh mì.\n\nPhản ứng tạo màu và mùi: đường và đạm trong hạt phản ứng với nhau, hạt chuyển nâu, mùi thơm hình thành.\n\nNổ lần một: hạt nở ra, kêu lách tách như bỏng ngô. Từ đây cà phê bắt đầu uống được, đó là mức rang sáng.\n\nNổ lần hai: tiếng nổ nhỏ, dồn dập hơn, dầu bắt đầu ra mặt hạt. Rang tới đây là rang đậm.\n\nSo sánh ba mức rang\n\nRang sángRang vừaRang đậm------------Màu hạtNâu nhạt, mặt khôNâu đều, mặt khô hoặc hơi bóngNâu sẫm, thường bóng dầuVị chuaRõVừaÍtVị đắngNhẹVừaRõMùiHoa quả, tràCaramel, hạt rangKhói, socola đắngPha hợpPha tay, uống đenPhin, espresso, cold brewPhin, cà phê sữa\n\nRang đậm có phải là \"cà phê mạnh\" hơn?\n\nKhông hẳn. Rang đậm cho vị đắng rõ hơn, nhưng lượng caffeine thay đổi không đáng kể giữa các mức rang. Cảm giác \"mạnh\" chủ yếu đến từ vị đắng và lượng bột bạn dùng mỗi ly.\n\nHạt bóng dầu có phải cà phê tẩm bơ?\n\nHạt rang đậm có thể tự ra dầu trên mặt, sau vài ngày lại càng rõ hơn. Đây là dầu tự nhiên của hạt. Còn cà phê tẩm bơ, đường hay caramel thường có mặt hạt bóng đều kèm mùi ngọt, mùi bơ hoặc mùi vani rất rõ khi mở túi. Đọc thêm: cà phê rang mộc là gì.\n\nNên chọn mức rang nào cho phin?\n\nNgười quen cà phê đậm, pha sữa đặc thường chọn rang vừa đến đậm. Rang sáng cũng pha phin ngon, chỉ cần chỉnh một chút vì hạt rang sáng cứng và đặc hơn, khó chiết hơn:\n\nDùng nước nóng hơn, khoảng 94–96°C (nước vừa sôi, nghỉ 10–15 giây).\n\nỦ lâu hơn: rót 20–30ml nước cho bột nở 45 giây rồi mới rót tiếp.\n\nĐể nước nhỏ giọt khoảng 5–6 phút. Chảy nhanh quá thì ấn nắp gài chặt hơn.\n\nPha như vậy, ly cà phê sẽ có vị chua nhẹ dễ chịu, thơm, hậu ngọt, không chua gắt.\n\nCà phê của Mộc rang mức nào?\n\nCà phê của Mộc là Robusta Đức Cơ rang sáng (light roast). Mộc chọn rang sáng để giữ mùi thơm và vị ngọt tự nhiên của hạt hái chín, phơi giàn. Ly cà phê có màu nâu cánh gián, thân vị Robusta đậm nhưng đắng dịu, có chút chua thanh. Nếu quen cà phê rang đậm, bạn có thể pha đậm hơn (25g bột) hoặc thêm sữa.\n\nDùng trong bài\n\nCà phê rang mộc nguyên hạttừ 89.000đ\n\nCà phê rang xaytừ 89.000đ\n\nXem bảng giá và đặt hàng\n\nCâu hỏi thường gặp\n\nCà phê Cao Nguyên Mộc rang mức nào?\n\nCà phê của Mộc là Robusta Đức Cơ rang sáng (light roast). Pha phin nên dùng nước 94–96°C và ủ 45 giây để chiết đủ vị.\n\nRang đậm có nhiều caffeine hơn không?\n\nKhông đáng kể. Caffeine khá bền với nhiệt, nên lượng caffeine giữa các mức rang gần như tương đương. Rang đậm chỉ cho vị đắng rõ hơn.\n\nCà phê rang xong bao lâu thì uống ngon nhất?\n\nCà phê cần vài ngày để thoát bớt khí CO2 sau khi rang. Phần lớn cà phê ngon nhất trong khoảng vài ngày đến vài tuần sau ngày rang.\n\nLàm sao biết mức rang khi mua?\n\nXem màu hạt, độ bóng và mùi khi mở túi. Cách chắc chắn nhất là hỏi người bán về mức rang và ngày rang.\n\nRang mộc là một mức rang à?\n\nKhông. Rang mộc nghĩa là chỉ rang hạt, không tẩm bơ, đường hay hương liệu. Cà phê rang mộc có thể rang sáng, vừa hoặc đậm.\n\nBài viết khác\n\nCà phê\n\nCà phê Robusta và Arabica khác nhau thế nào? Cách chọn theo khẩu vị\n\nSo sánh Robusta và Arabica: vùng trồng, hình dáng hạt, hàm lượng caffeine, vị đắng chua và cách pha hợp. Vì sao cà phê phin Việt Nam chủ yếu là Robusta.\n\nCà phê\n\nVì sao cà phê bị chua hoặc đắng gắt? 8 nguyên nhân và cách sửa\n\nCà phê pha ra chua gắt, đắng khét hay nhạt nhẽo thường do nước, độ xay, lượng bột hoặc cà phê cũ. Bảng chẩn đoán nhanh và cách chỉnh cho ly phin ngon hơn.\n\nCà phê\n\nXay cà phê độ mịn nào? Bảng độ xay cho phin, pha máy, pha tay, cold brew\n\nĐộ xay quyết định cà phê đậm hay nhạt, chua hay đắng. Bảng độ xay cho phin, espresso, pha tay V60, French press, cold brew và cách nhận biết xay sai.",
+  "headings": [
+   "Các mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào",
+   "Chuyện gì xảy ra khi rang cà phê?",
+   "So sánh ba mức rang",
+   "Rang đậm có phải là \"cà phê mạnh\" hơn?",
+   "Hạt bóng dầu có phải cà phê tẩm bơ?",
+   "Nên chọn mức rang nào cho phin?",
+   "Cà phê của Mộc rang mức nào?",
+   "Dùng trong bài",
+   "Câu hỏi thường gặp",
+   "Bài viết khác",
+   "Cà phê Robusta và Arabica khác nhau thế nào? Cách chọn theo khẩu vị",
+   "Vì sao cà phê bị chua hoặc đắng gắt? 8 nguyên nhân và cách sửa",
+   "Xay cà phê độ mịn nào? Bảng độ xay cho phin, pha máy, pha tay, cold brew"
+  ],
+  "html_meta": {
+   "og_site_name": "Cao Nguyên Mộc",
+   "og_image": "https://caonguyenmoc.vn/img/b/cac-muc-rang-ca-phe-rang-sang-vua-dam.jpg",
+   "theme_color": null,
+   "logo_url": null,
+   "fonts": [
+    {
+     "family": "var(--display)",
+     "count": 2
+    },
+    {
+     "family": "Be Vietnam Pro",
+     "count": 1
+    },
+    {
+     "family": "Fraunces",
+     "count": 1
+    },
+    {
+     "family": "Lora",
+     "count": 1
+    },
+    {
+     "family": "var(--body)",
+     "count": 1
+    },
+    {
+     "family": "var(--script)",
+     "count": 1
+    }
+   ],
+   "colors": [
+    {
+     "hex": "#efe2c8",
+     "count": 4
+    },
+    {
+     "hex": "#f2b48f",
+     "count": 3
+    },
+    {
+     "hex": "#141a10",
+     "count": 2
+    },
+    {
+     "hex": "#1d2418",
+     "count": 2
+    },
+    {
+     "hex": "#222b1c",
+     "count": 2
+    },
+    {
+     "hex": "#252e1f",
+     "count": 2
+    },
+    {
+     "hex": "#2c3624",
+     "count": 2
+    },
+    {
+     "hex": "#33452a",
+     "count": 2
+    },
+    {
+     "hex": "#5c6b49",
+     "count": 2
+    },
+    {
+     "hex": "#c9bc9f",
+     "count": 2
+    },
+    {
+     "hex": "#ec9a6f",
+     "count": 2
+    },
+    {
+     "hex": "#f6ecd8",
+     "count": 2
+    },
+    {
+     "hex": "#55643f",
+     "count": 1
+    },
+    {
+     "hex": "#a9542f",
+     "count": 1
+    },
+    {
+     "hex": "#b89a6c",
+     "count": 1
+    },
+    {
+     "hex": "#dcc29b",
+     "count": 1
+    },
+    {
+     "hex": "#e9d6b5",
+     "count": 1
+    },
+    {
+     "hex": "#fff8ee",
+     "count": 1
+    },
+    {
+     "hex": "#fffaf0",
+     "count": 1
+    }
+   ]
+  }
+ },
+ {
+  "url": "https://caonguyenmoc.vn/blog/ca-phe-robusta-va-arabica-khac-nhau-the-nao/",
+  "title": "Cà phê Robusta và Arabica khác nhau thế nào? Cách chọn theo khẩu vị",
+  "text": "cao nguyên mộc\n\nTrang chủ › Blog › Cà phê\n\nCà phê\n\nCà phê Robusta và Arabica khác nhau thế nào? Cách chọn theo khẩu vị\n\nCao Nguyên Mộc · 14/11/2026 · 3 phút đọc\n\nTrả lời nhanhRobusta (Coffea canephora) trồng ở vùng thấp và nóng hơn, hạt tròn nhỏ, vị đắng đậm, ít chua và có lượng caffeine thường gần gấp đôi Arabica. Arabica (Coffea arabica) cần vùng cao mát, hạt dài, vị chua thanh và hương thơm phức tạp hơn. Người thích cà phê phin đậm, pha sữa thường hợp Robusta; người thích vị chua thơm, uống đen hoặc pha máy thường chọn Arabica.\n\nTrong bài này\n\nSo sánh nhanh Robusta và Arabica\n\nVì sao Robusta đắng hơn?\n\nVì sao Việt Nam trồng nhiều Robusta?\n\nChọn thế nào cho đúng khẩu vị?\n\nRobusta có phải \"cà phê kém\" không?\n\nCà phê của Mộc là loại gì?\n\nHai loài cà phê được trồng nhiều nhất thế giới là Arabica và Robusta. Việt Nam trồng chủ yếu Robusta, tập trung ở Tây Nguyên, nơi có đất đỏ bazan và mùa khô rõ rệt. Arabica được trồng ít hơn, ở những vùng cao như Cầu Đất (Lâm Đồng) hay Sơn La.\n\nHiểu sự khác nhau giữa hai loại giúp bạn chọn đúng cà phê cho cách pha và khẩu vị của mình.\n\nSo sánh nhanh Robusta và Arabica\n\nRobustaArabica---------Tên khoa họcCoffea canephoraCoffea arabicaĐộ cao trồngVùng thấp đến trung bình, khí hậu nóngVùng cao, mátHình dáng hạtTròn, nhỏ, rãnh giữa thẳngDài, dẹt hơn, rãnh giữa congCaffeineCao, thường gần gấp đôi ArabicaThấp hơnVịĐắng đậm, ít chua, hậu dàyChua thanh, thơm hoa quả, đắng nhẹHợp vớiPhin, cà phê sữa, cà phê muối, cold brew đậmPha tay, espresso, uống đen\n\nVì sao Robusta đắng hơn?\n\nRobusta có nhiều caffeine và nhiều hợp chất tạo vị đắng hơn, trong khi Arabica có nhiều đường và chất béo tự nhiên hơn. Khi rang, Arabica cho nhiều hương thơm và vị chua dễ chịu, còn Robusta cho vị đậm, dày và hậu kéo dài. Đây là lý do cà phê sữa đá Việt Nam ngon với Robusta: vị đắng đủ mạnh để không bị sữa đặc lấn át.\n\nVì sao Việt Nam trồng nhiều Robusta?\n\nRobusta khỏe, chịu nóng, ít sâu bệnh hơn và cho năng suất cao ở độ cao vừa phải. Phần lớn diện tích Tây Nguyên phù hợp với điều kiện này. Arabica cần vùng cao hơn, mát hơn và dễ bị bệnh gỉ sắt, nên chỉ hợp ở một số vùng núi cao.\n\nChọn thế nào cho đúng khẩu vị?\n\nThích đậm, uống với sữa: chọn Robusta hoặc phối trộn nhiều Robusta.\n\nThích chua thanh, mùi trái cây: chọn Arabica rang sáng, hoặc Robusta rang sáng nếu vẫn muốn thân vị đậm.\n\nMới tập uống cà phê đen: thử cà phê phối, hoặc Robusta rang vừa pha loãng hơn.\n\nRobusta có phải \"cà phê kém\" không?\n\nKhông. Robusta trồng tốt, hái chín, phơi kỹ và rang đúng cho ly cà phê đậm, ngọt hậu, rất đặc trưng. Thứ làm cà phê kém thường là hạt hái xanh, phơi đất ẩm mốc, hoặc tẩm nhiều phụ gia để che lỗi. Bạn có thể đọc thêm về cà phê rang mộc và cách quả cà phê được chế biến.\n\nCà phê của Mộc là loại gì?\n\nCà phê của Mộc là Robusta trồng ở Đức Cơ, Gia Lai, rang sáng (light roast). Robusta cho thân vị dày và hậu ngọt; rang sáng giữ lại vị chua nhẹ kiểu trái cây và mùi thơm của hạt, thay vì vị đắng khét của rang đậm. Đây là cách Mộc muốn bạn nếm được vị thật của vùng đất đỏ. Xem các mức rang khác nhau thế nào.\n\nDùng trong bài\n\nCà phê rang mộc nguyên hạttừ 89.000đ\n\nCà phê rang xaytừ 89.000đ\n\nCà phê túi lọc119.000đ\n\nXem bảng giá và đặt hàng\n\nCâu hỏi thường gặp\n\nCà phê Cao Nguyên Mộc là Robusta hay Arabica?\n\nCà phê của Mộc là Robusta trồng ở Đức Cơ, Gia Lai, rang sáng (light roast), rang mộc không tẩm.\n\nRobusta có nhiều caffeine hơn Arabica không?\n\nCó. Hạt Robusta thường có lượng caffeine gần gấp đôi hạt Arabica, nên ly Robusta đậm và tỉnh táo hơn.\n\nCà phê phin Việt Nam là Robusta hay Arabica?\n\nPhần lớn cà phê phin ở Việt Nam là Robusta hoặc phối trộn nhiều Robusta, vì Việt Nam trồng chủ yếu Robusta ở Tây Nguyên.\n\nUống Arabica có đỡ mất ngủ hơn không?\n\nArabica có ít caffeine hơn nên người nhạy cảm có thể thấy dễ chịu hơn. Nhưng lượng caffeine trong ly còn phụ thuộc lượng bột và cách pha.\n\nLàm sao phân biệt hạt Robusta và Arabica?\n\nHạt Robusta tròn và nhỏ, đường rãnh giữa thẳng. Hạt Arabica dài, dẹt hơn và đường rãnh cong hình chữ S.\n\nNguồn tham khảo\n\nWikipedia: Coffea canephora (Robusta)\n\nWikipedia: Coffea arabica\n\nBài viết khác\n\nCà phê\n\nCác mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào\n\nRang sáng, rang vừa và rang đậm thay đổi màu hạt, độ chua, độ đắng và mùi thơm ra sao. Cách nhận biết mức rang bằng mắt và chọn mức rang hợp với phin.\n\nGia Lai\n\nVì sao Tây Nguyên trồng cà phê ngon? Đất đỏ bazan, độ cao và hai mùa mưa nắng\n\nĐất đỏ bazan từ núi lửa cổ, độ cao vừa phải và hai mùa mưa nắng rõ rệt giúp Tây Nguyên thành vùng cà phê lớn nhất Việt Nam. Gia Lai, Đức Cơ ở đâu trong đó.\n\nCà phê\n\nTừ quả cà phê đến ly cà phê: chế biến khô, ướt và honey khác nhau ra sao\n\nQuả cà phê được hái, phơi, xát vỏ, phân loại rồi mới rang. So sánh ba cách chế biến khô, ướt, honey và vì sao hái chín, phơi giàn quyết định vị ly cà phê.",
+  "headings": [
+   "Cà phê Robusta và Arabica khác nhau thế nào? Cách chọn theo khẩu vị",
+   "So sánh nhanh Robusta và Arabica",
+   "Vì sao Robusta đắng hơn?",
+   "Vì sao Việt Nam trồng nhiều Robusta?",
+   "Chọn thế nào cho đúng khẩu vị?",
+   "Robusta có phải \"cà phê kém\" không?",
+   "Cà phê của Mộc là loại gì?",
+   "Dùng trong bài",
+   "Câu hỏi thường gặp",
+   "Bài viết khác",
+   "Các mức rang cà phê: rang sáng, rang vừa, rang đậm khác nhau thế nào",
+   "Vì sao Tây Nguyên trồng cà phê ngon? Đất đỏ bazan, độ cao và hai mùa mưa nắng",
+   "Từ quả cà phê đến ly cà phê: chế biến khô, ướt và honey khác nhau ra sao"
+  ],
+  "html_meta": {
+   "og_site_name": "Cao Nguyên Mộc",
+   "og_image": "https://caonguyenmoc.vn/img/b/ca-phe-robusta-va-arabica-khac-nhau-the-nao.jpg",
+   "theme_color": null,
+   "logo_url": null,
+   "fonts": [
+    {
+     "family": "var(--display)",
+     "count": 2
+    },
+    {
+     "family": "Be Vietnam Pro",
+     "count": 1
+    },
+    {
+     "family": "Fraunces",
+     "count": 1
+    },
+    {
+     "family": "Lora",
+     "count": 1
+    },
+    {
+     "family": "var(--body)",
+     "count": 1
+    },
+    {
+     "family": "var(--script)",
+     "count": 1
+    }
+   ],
+   "colors": [
+    {
+     "hex": "#efe2c8",
+     "count": 4
+    },
+    {
+     "hex": "#f2b48f",
+     "count": 3
+    },
+    {
+     "hex": "#141a10",
+     "count": 2
+    },
+    {
+     "hex": "#1d2418",
+     "count": 2
+    },
+    {
+     "hex": "#222b1c",
+     "count": 2
+    },
+    {
+     "hex": "#252e1f",
+     "count": 2
+    },
+    {
+     "hex": "#2c3624",
+     "count": 2
+    },
+    {
+     "hex": "#33452a",
+     "count": 2
+    },
+    {
+     "hex": "#5c6b49",
+     "count": 2
+    },
+    {
+     "hex": "#c9bc9f",
+     "count": 2
+    },
+    {
+     "hex": "#ec9a6f",
+     "count": 2
+    },
+    {
+     "hex": "#f6ecd8",
+     "count": 2
+    },
+    {
+     "hex": "#55643f",
+     "count": 1
+    },
+    {
+     "hex": "#a9542f",
+     "count": 1
+    },
+    {
+     "hex": "#b89a6c",
+     "count": 1
+    },
+    {
+     "hex": "#dcc29b",
+     "count": 1
+    },
+    {
+     "hex": "#e9d6b5",
+     "count": 1
+    },
+    {
+     "hex": "#fff8ee",
+     "count": 1
+    },
+    {
+     "hex": "#fffaf0",
+     "count": 1
+    }
+   ]
+  }
+ },
+ {
+  "url": "https://caonguyenmoc.vn/blog/cach-chon-hat-dieu-ngon-va-bao-quan/",
+  "title": "Cách chọn hạt điều ngon và bảo quản để hạt giòn lâu, không hôi dầu",
+  "text": "cao nguyên mộc\n\nTrang chủ › Blog › Hạt điều\n\nHạt điều\n\nCách chọn hạt điều ngon và bảo quản để hạt giòn lâu, không hôi dầu\n\nCao Nguyên Mộc · 14/11/2026 · 3 phút đọc\n\nTrả lời nhanhHạt điều ngon có màu trắng ngà hoặc vàng nhạt đều, hạt chắc, căng, mùi thơm bùi; cắn giòn, ngậy, hậu ngọt. Tránh hạt có mùi dầu cũ, vị đắng, hạt mềm dai, có đốm đen hoặc mốc. Sau khi mở túi, đóng kín, để nơi khô mát và ăn trong vài tuần. Hạt bị ỉu có thể rang lại 5–7 phút ở 140–150°C.\n\nTrong bài này\n\nNăm bước chọn hạt điều ngon\n\nPhân biệt hạt ỉu và hạt hôi dầu\n\nBảo quản hạt điều đã mở túi\n\nLàm giòn lại hạt bị ỉu\n\nĂn bao nhiêu là vừa?\n\nHạt điều giàu chất béo tự nhiên, nên rất ngon khi còn tươi nhưng cũng dễ bị ỉu và hôi dầu nếu để lâu hoặc bảo quản sai. Biết cách chọn và cất hạt giúp bạn ăn ngon tới hạt cuối cùng.\n\nNăm bước chọn hạt điều ngon\n\nNhìn màu: trắng ngà đến vàng nhạt, đều màu. Hạt rang có màu vàng nâu đều, không có vệt cháy đen.\n\nNhìn hình: hạt căng, chắc, ít nứt. Hạt teo, nhăn hoặc có đốm đen là hạt kém.\n\nNgửi: mùi thơm bùi. Mùi dầu cũ, mùi ôi, mùi mốc là dấu hiệu hạt cũ.\n\nCắn thử: giòn, ngậy, hậu ngọt nhẹ. Hạt dai, mềm là đã hút ẩm; vị đắng, cay khé là hạt đã bị oxy hoá.\n\nXem bao bì: túi kín, có ngày sản xuất, hạn dùng, nơi đóng gói và thông tin liên hệ rõ ràng.\n\nPhân biệt hạt ỉu và hạt hôi dầu\n\nHạt ỉuHạt hôi dầu---------Nguyên nhânHút ẩmChất béo bị oxy hoá do để lâu, nóng, nắngDấu hiệuMềm, dai, mất giònMùi dầu cũ, vị đắng, khé cổXử lýRang lại cho giònBỏ đi, không ăn\n\nBảo quản hạt điều đã mở túi\n\nKéo kín khoá zip, ép bớt không khí. Hoặc chia sang hũ thủy tinh nắp kín.\n\nĐể nơi khô, mát, tránh nắng và tránh gần bếp.\n\nTrời nồm ẩm, thêm gói hút ẩm thực phẩm vào hũ.\n\nĂn trong vài tuần sau khi mở. Mua nhiều thì chia nhỏ, phần chưa dùng đóng kín cất ngăn mát tủ lạnh.\n\nLuôn dùng tay khô, thìa khô để lấy hạt.\n\nLàm giòn lại hạt bị ỉu\n\nTrải hạt một lớp trên khay, nướng ở 140–150°C khoảng 5–7 phút, hoặc sao trên chảo khô lửa nhỏ, đảo liên tục. Để nguội hẳn rồi mới cho vào hũ. Không áp dụng với hạt đã có mùi dầu cũ.\n\nĂn bao nhiêu là vừa?\n\nHạt điều nhiều năng lượng, một nắm nhỏ khoảng 28–30g mỗi ngày là khẩu phần hợp lý cho người trưởng thành. Loại rang muối có muối, người cần ăn nhạt nên chú ý. Xem thêm mỗi ngày nên ăn bao nhiêu hạt.\n\nHạt điều của Mộc\n\nHạt điều rang muốitừ 94.000đ\n\nXem bảng giá và đặt hàng\n\nCâu hỏi thường gặp\n\nHạt điều để được bao lâu?\n\nPhụ thuộc hạn in trên bao bì và cách bảo quản. Sau khi mở túi, nên ăn trong vài tuần để hạt còn giòn và thơm.\n\nCó nên để hạt điều trong tủ lạnh?\n\nCó thể, nhất là khi mua nhiều hoặc trời nóng ẩm. Đóng hũ thật kín để hạt không hút ẩm và ám mùi.\n\nHạt điều có vị đắng có ăn được không?\n\nKhông nên. Vị đắng, khé cổ thường là dấu hiệu chất béo trong hạt đã bị oxy hoá.\n\nHạt điều rang muối có quá mặn không?\n\nHạt điều rang muối của Mộc mặn nhẹ vừa vị. Người cần ăn nhạt nên ăn lượng nhỏ hoặc hỏi Mộc trước khi chọn.\n\nBài viết khác\n\nCông thức\n\nCách làm hạt điều rang mật ong giòn, không dính tay\n\nHạt điều rang mật ong làm bằng chảo hoặc lò: lượng mật ong cho 250g hạt, nhiệt độ, cách tách hạt khi nguội để giòn lâu, không dính thành cục.\n\nHạt điều\n\nHạt điều W180, W240, W320 là gì? Cách đọc ký hiệu phân loại hạt điều\n\nChữ W nghĩa là hạt nguyên trắng, con số là số hạt trên một pound. Bảng tra W180, W210, W240, W320, W450, hạt vỡ WS, LP và nên chọn loại nào để ăn, làm quà.\n\nHạt điều\n\nTừ trái điều đến hạt điều: vì sao hạt điều phải qua nhiều công đoạn\n\nHạt điều mọc lơ lửng dưới trái điều, vỏ cứng chứa dầu gây bỏng da. Quy trình từ thu hái, phơi, hấp, tách vỏ, sấy, bóc vỏ lụa, phân loại đến rang muối.",
+  "headings": [
+   "Cách chọn hạt điều ngon và bảo quản để hạt giòn lâu, không hôi dầu",
+   "Năm bước chọn hạt điều ngon",
+   "Phân biệt hạt ỉu và hạt hôi dầu",
+   "Bảo quản hạt điều đã mở túi",
+   "Làm giòn lại hạt bị ỉu",
+   "Ăn bao nhiêu là vừa?",
+   "Hạt điều của Mộc",
+   "Câu hỏi thường gặp",
+   "Bài viết khác",
+   "Cách làm hạt điều rang mật ong giòn, không dính tay",
+   "Hạt điều W180, W240, W320 là gì? Cách đọc ký hiệu phân loại hạt điều",
+   "Từ trái điều đến hạt điều: vì sao hạt điều phải qua nhiều công đoạn"
+  ],
+  "html_meta": {
+   "og_site_name": "Cao Nguyên Mộc",
+   "og_image": "https://caonguyenmoc.vn/img/b/cach-chon-hat-dieu-ngon-va-bao-quan.jpg",
+   "theme_color": null,
+   "logo_url": null,
+   "fonts": [
+    {
+     "family": "var(--display)",
+     "count": 2
+    },
+    {
+     "family": "Be Vietnam Pro",
+     "count": 1
+    },
+    {
+     "family": "Fraunces",
+     "count": 1
+    },
+    {
+     "family": "Lora",
+     "count": 1
+    },
+    {
+     "family": "var(--body)",
+     "count": 1
+    },
+    {
+     "family": "var(--script)",
+     "count": 1
+    }
+   ],
+   "colors": [
+    {
+     "hex": "#efe2c8",
+     "count": 4
+    },
+    {
+     "hex": "#f2b48f",
+     "count": 3
+    },
+    {
+     "hex": "#141a10",
+     "count": 2
+    },
+    {
+     "hex": "#1d2418",
+     "count": 2
+    },
+    {
+     "hex": "#222b1c",
+     "count": 2
+    },
+    {
+     "hex": "#252e1f",
+     "count": 2
+    },
+    {
+     "hex": "#2c3624",
+     "count": 2
+    },
+    {
+     "hex": "#33452a",
+     "count": 2
+    },
+    {
+     "hex": "#5c6b49",
+     "count": 2
+    },
+    {
+     "hex": "#c9bc9f",
+     "count": 2
+    },
+    {
+     "hex": "#ec9a6f",
+     "count": 2
+    },
+    {
+     "hex": "#f6ecd8",
+     "count": 2
+    },
+    {
+     "hex": "#55643f",
+     "count": 1
+    },
+    {
+     "hex": "#a9542f",
+     "count": 1
+    },
+    {
+     "hex": "#b89a6c",
+     "count": 1
+    },
+    {
+     "hex": "#dcc29b",
+     "count": 1
+    },
+    {
+     "hex": "#e9d6b5",
+     "count": 1
+    },
+    {
+     "hex": "#fff8ee",
+     "count": 1
+    },
+    {
+     "hex": "#fffaf0",
+     "count": 1
+    }
+   ]
+  }
+ }
+]

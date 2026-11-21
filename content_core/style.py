@@ -38,6 +38,17 @@ from .linter import split_sentences
 #: metric is considered divergent — the classic "mixed authors" signal.
 DIVERGENCE_CV = 0.35
 
+#: CV is meaningless when a metric's mean is near zero (calibration F2):
+#: first-person rates of [0, 0, 0, 0, 0.1] have CV 2.0 and triggered a
+#: "possibly mixed authors" warning on five posts by ONE author. Below
+#: this mean (rates are per 100 words; sentence metrics are word counts
+#: and never land here in practice), divergence is judged on the
+#: ABSOLUTE spread instead: the samples warn only when their pstdev
+#: exceeds DIVERGENCE_ABS_PSTDEV — real disagreement, not division by
+#: almost-nothing.
+DIVERGENCE_MIN_MEAN = 0.5
+DIVERGENCE_ABS_PSTDEV = 0.5
+
 #: Below this many total sample words a fingerprint is shaky.
 MIN_RELIABLE_WORDS = 800
 
@@ -191,10 +202,30 @@ def analyze_samples(samples: list[str]) -> dict:
     probably do not come from one voice.
     """
     samples = [s for s in samples if s and s.strip()]
+    # Dedupe (evaluation R4): the same text pasted three times is ONE
+    # sample, not three — duplicates used to inflate the sample count
+    # and word total while adding zero voice information. Exact and
+    # whitespace-normalised duplicates are dropped and the drop is
+    # reported, never silent.
+    seen: set[str] = set()
+    unique: list[str] = []
+    dropped = 0
+    for s in samples:
+        key = " ".join(s.split())
+        if key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        unique.append(s)
+    samples = unique
     per_sample = [fingerprint(s) for s in samples]
     aggregate = fingerprint("\n\n".join(samples)) if samples else fingerprint("")
 
     warnings: list[str] = []
+    if dropped:
+        warnings.append(
+            f"{dropped} duplicate sample(s) dropped — a repeated text is "
+            f"one sample, not independent evidence of the voice")
     if len(samples) < 3:
         warnings.append(
             f"only {len(samples)} sample(s) — {RECOMMENDED_SAMPLES} samples "
@@ -211,13 +242,21 @@ def analyze_samples(samples: list[str]) -> dict:
             values = [_metric(fp, name) for fp in per_sample]
             mean = statistics.fmean(values)
             if mean > 0:
-                cv = statistics.pstdev(values) / mean
-                divergence[name] = _round(cv)
-                if cv > DIVERGENCE_CV:
+                divergence[name] = _round(statistics.pstdev(values) / mean)
+            if mean >= DIVERGENCE_MIN_MEAN:
+                if divergence.get(name, 0.0) > DIVERGENCE_CV:
                     warnings.append(
                         f"samples diverge on {name} "
                         f"(CV {divergence[name]} > {DIVERGENCE_CV}) — "
                         f"possibly mixed authors")
+            elif statistics.pstdev(values) > DIVERGENCE_ABS_PSTDEV:
+                # Near-zero mean: CV would explode on agreement (F2), so
+                # only an absolute spread this large counts as divergence.
+                warnings.append(
+                    f"samples diverge on {name} "
+                    f"(spread {round(statistics.pstdev(values), 2)} with "
+                    f"near-zero mean {round(mean, 2)}) — "
+                    f"possibly mixed authors")
 
     return {"sample_count": len(samples),
             "per_sample": per_sample,
@@ -339,13 +378,44 @@ def build_profile(name: str, samples: list[str], qualitative: dict | None = None
 # style_match — how close is a draft to the profile voice?
 # ---------------------------------------------------------------------------
 
-def _within(metric: str, profile_value: float, draft_value: float) -> bool:
+#: Below this many words, per-100-word DENSITY metrics swing wildly on
+#: honest writing (calibration R6: at 149 words, "bạn" x2 read as a
+#: reader_rate of 1.34 against a 0.20 profile). Density metrics on such
+#: texts are marked low-reliability and judged with widened ranges;
+#: sentence-shape metrics (median, stdev, shares) are length-stable and
+#: keep their normal ranges at any length — the calibration trial's
+#: stdev miss (3.2 vs 10.44) was real signal and still fails.
+SHORT_TEXT_WORDS = 300
+
+#: The per-100-word density metrics (unstable on short texts).
+_DENSITY_METRICS = {"first_person_rate", "reader_rate", "number_density"}
+
+
+def _within(metric: str, profile_value: float, draft_value: float,
+            relaxed: bool = False, n_sentences: int | None = None) -> bool:
     """Range rule per metric (documented, symmetric):
     - sentence_median: within ±35% of profile OR ±3 words, whichever larger.
     - sentence_stdev (burstiness): draft/profile ratio within [0.5, 2.0];
       a zero profile stdev requires a near-zero draft stdev (<= 0.5).
     - shares (0-1 fractions): within ±50% OR 0.05 absolute, whichever larger.
     - rates (per 100 words): within ±50% OR 0.5 absolute, whichever larger.
+    - RELAXED rates (short texts only, density metrics): within ±100% OR
+      1.5 absolute, whichever larger — counting noise at < 300 words is
+      larger than the normal band, so the band honestly widens instead
+      of failing honest short copy on arithmetic.
+    - punctuation rates (per 100 SENTENCES — question/exclamation,
+      evaluation R4): within ±60% OR 12 per-100-sentences OR twice the
+      sampling granularity (200 / sentence count), whichever largest.
+      The band is deliberately wide: a single text legitimately asks
+      more or fewer questions than the sample average, and a rate
+      estimated from n sentences moves in steps of 100/n — an 8-sentence
+      section with zero questions is weak evidence against a profile
+      rate of ~23, not a voice swap (the CNM writer-trial regression:
+      85 -> 77 without the granularity term). What the metric catches
+      is a wholesale swap — a 0-rate profile against a text that ends
+      every sentence with '!' (rate ~100) — which the matcher
+      previously could not see at all (a draft with every '.' replaced
+      by '!' scored a perfect 100 against its own profile).
     """
     if metric == "sentence_median":
         return abs(draft_value - profile_value) <= max(0.35 * profile_value, 3.0)
@@ -355,6 +425,12 @@ def _within(metric: str, profile_value: float, draft_value: float) -> bool:
         return 0.5 <= draft_value / profile_value <= 2.0
     if metric == "short_sentence_share":
         return abs(draft_value - profile_value) <= max(0.5 * profile_value, 0.05)
+    if metric in ("question_rate", "exclamation_rate"):
+        granularity = 200.0 / n_sentences if n_sentences else 0.0
+        return abs(draft_value - profile_value) <= max(
+            0.6 * profile_value, 12.0, granularity)
+    if relaxed:
+        return abs(draft_value - profile_value) <= max(1.0 * profile_value, 1.5)
     return abs(draft_value - profile_value) <= max(0.5 * profile_value, 0.5)
 
 
@@ -391,11 +467,32 @@ _ADVICE = {
                       "and measurable details"
                       if d < p else
                       "more numbers than the sample voice: drop some figures")),
+    "question_rate": (
+        lambda p, d: ("the sample voice asks the reader more questions: "
+                      "let some statements become genuine questions"
+                      if d < p else
+                      "more questions than the sample voice: turn some "
+                      "back into statements")),
+    "exclamation_rate": (
+        lambda p, d: ("the sample voice exclaims more than this draft does"
+                      if d < p else
+                      "exclamation marks are not this voice: the samples "
+                      "stay level — remove the '!' endings")),
 }
 
 _MATCH_METRICS = ["sentence_median", "sentence_stdev", "short_sentence_share",
-                  "first_person_rate", "reader_rate", "number_density"]
+                  "first_person_rate", "reader_rate", "number_density",
+                  "question_rate", "exclamation_rate"]
 _KEY_MATCH = {"sentence_median", "sentence_stdev"}
+
+#: Short-text confidence ceiling (evaluation R4): when a short text
+#: passes TWO OR MORE density metrics only because their ranges were
+#: widened, the match rests on widened evidence — the score is capped
+#: here instead of saturating at 100. (The Đỉnh Cao hype fixture scored
+#: a perfect 100 against the Mộc Brew profile on exactly this stack of
+#: relaxations.) Texts passing on their normal ranges, and long texts,
+#: are never capped.
+SHORT_TEXT_SCORE_CAP = 88.0
 
 
 def style_match(text: str, profile: dict) -> dict:
@@ -405,17 +502,61 @@ def style_match(text: str, profile: dict) -> dict:
     sentence stdev/burstiness), −8 per other out-of-range metric, floor 0.
     Advisory signal — it measures closeness to the sample voice, it does
     not judge whether the draft is good.
+
+    Short texts (< SHORT_TEXT_WORDS words): the per-100-word density
+    metrics are marked "reliability": "low" and judged with the widened
+    relaxed ranges (see _within); the result then carries a
+    `reliability_note` saying so. Sentence-shape metrics always carry
+    "reliability": "normal" and their usual ranges.
+
+    The matcher also scores question_rate and exclamation_rate
+    (evaluation R4 — previously invisible, so a draft with every '.'
+    swapped for '!' scored 100 against its own profile), and caps a
+    short text's score at SHORT_TEXT_SCORE_CAP when two or more density
+    metrics passed only on the widened ranges.
     """
     draft_fp = fingerprint(text)
     prof_fp = profile.get("fingerprint", {})
+    word_count = draft_fp["word_count"]
+    short_text = word_count < SHORT_TEXT_WORDS
     metrics, advice, score = [], [], 100.0
+    relaxed_only_passes = 0
     for name in _MATCH_METRICS:
-        pv = _metric(prof_fp, name) if prof_fp else 0.0
+        if prof_fp:
+            try:
+                pv = _metric(prof_fp, name)
+            except (KeyError, TypeError):
+                continue  # partial/hand-built profile: metric not carried
+        else:
+            pv = 0.0
         dv = _metric(draft_fp, name)
-        ok = _within(name, pv, dv)
+        relaxed = short_text and name in _DENSITY_METRICS
+        n_sent = draft_fp.get("sentence_count") or None
+        ok = _within(name, pv, dv, relaxed=relaxed, n_sentences=n_sent)
+        if relaxed and ok and not _within(name, pv, dv, relaxed=False,
+                                          n_sentences=n_sent):
+            relaxed_only_passes += 1  # passed ONLY on the widened range
         metrics.append({"metric": name, "profile_value": pv,
-                        "draft_value": dv, "within_range": ok})
+                        "draft_value": dv, "within_range": ok,
+                        "reliability": "low" if relaxed else "normal"})
         if not ok:
             score -= 15 if name in _KEY_MATCH else 8
             advice.append(_ADVICE[name](pv, dv))
-    return {"score": max(0.0, score), "metrics": metrics, "advice": advice}
+    score = max(0.0, score)
+    capped = short_text and relaxed_only_passes >= 2 and score > SHORT_TEXT_SCORE_CAP
+    if capped:
+        score = SHORT_TEXT_SCORE_CAP
+    result: dict = {"score": score, "metrics": metrics, "advice": advice}
+    if short_text:
+        result["reliability_note"] = (
+            f"short text ({word_count} words < {SHORT_TEXT_WORDS}): "
+            f"per-100-word density metrics (first_person_rate, "
+            f"reader_rate, number_density) swing wildly at this length, "
+            f"so they are marked reliability='low' and judged with "
+            f"widened ranges; sentence-shape metrics keep normal ranges")
+        if capped:
+            result["reliability_note"] += (
+                f"; {relaxed_only_passes} density metrics passed only on "
+                f"the widened ranges, so the score is capped at "
+                f"{SHORT_TEXT_SCORE_CAP} (low-confidence match)")
+    return result

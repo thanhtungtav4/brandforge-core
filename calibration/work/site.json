@@ -1,0 +1,489 @@
+{
+  "root": "https://caonguyenmoc.vn",
+  "pages": [
+    {
+      "url": "https://caonguyenmoc.vn",
+      "title": "Cao Nguyên Mộc · Cà phê Robusta rang light, hạt điều rang",
+      "text": "",
+      "headings": [],
+      "html_meta": {
+        "og_site_name": null,
+        "og_image": "https://caonguyenmoc.vn/og.jpg",
+        "theme_color": null,
+        "logo_url": null,
+        "fonts": [
+          {
+            "family": "var(--f-head)",
+            "count": 3
+          },
+          {
+            "family": "Lora",
+            "count": 2
+          },
+          {
+            "family": "var(--f-ui)",
+            "count": 2
+          },
+          {
+            "family": "Be Vietnam Pro",
+            "count": 1
+          }
+        ],
+        "colors": [
+          {
+            "hex": "#ffffff",
+            "count": 26
+          },
+          {
+            "hex": "#000000",
+            "count": 9
+          },
+          {
+            "hex": "#18221b",
+            "count": 4
+          },
+          {
+            "hex": "#1d6a43",
+            "count": 4
+          },
+          {
+            "hex": "#1f3227",
+            "count": 4
+          },
+          {
+            "hex": "#e9b155",
+            "count": 4
+          },
+          {
+            "hex": "#1d2b22",
+            "count": 3
+          },
+          {
+            "hex": "#241a06",
+            "count": 3
+          },
+          {
+            "hex": "#e2efe6",
+            "count": 3
+          },
+          {
+            "hex": "#08130c",
+            "count": 2
+          },
+          {
+            "hex": "#0f1a12",
+            "count": 2
+          },
+          {
+            "hex": "#111613",
+            "count": 2
+          },
+          {
+            "hex": "#16120e",
+            "count": 2
+          },
+          {
+            "hex": "#1a211c",
+            "count": 2
+          },
+          {
+            "hex": "#1b1b1b",
+            "count": 2
+          },
+          {
+            "hex": "#1d3442",
+            "count": 2
+          },
+          {
+            "hex": "#201a14",
+            "count": 2
+          },
+          {
+            "hex": "#222b25",
+            "count": 2
+          },
+          {
+            "hex": "#22382a",
+            "count": 2
+          },
+          {
+            "hex": "#23301f",
+            "count": 2
+          },
+          {
+            "hex": "#24456b",
+            "count": 2
+          },
+          {
+            "hex": "#264a24",
+            "count": 2
+          },
+          {
+            "hex": "#2a2018",
+            "count": 2
+          },
+          {
+            "hex": "#2a221a",
+            "count": 2
+          },
+          {
+            "hex": "#2f3a32",
+            "count": 2
+          },
+          {
+            "hex": "#2f5a2c",
+            "count": 2
+          },
+          {
+            "hex": "#3a2c18",
+            "count": 2
+          },
+          {
+            "hex": "#3a2e18",
+            "count": 2
+          },
+          {
+            "hex": "#3a2f14",
+            "count": 2
+          },
+          {
+            "hex": "#3a2f24",
+            "count": 2
+          },
+          {
+            "hex": "#3d1f1c",
+            "count": 2
+          },
+          {
+            "hex": "#4fb07d",
+            "count": 2
+          },
+          {
+            "hex": "#6fd09c",
+            "count": 2
+          },
+          {
+            "hex": "#86b994",
+            "count": 2
+          },
+          {
+            "hex": "#9c3b26",
+            "count": 2
+          },
+          {
+            "hex": "#a3afa6",
+            "count": 2
+          },
+          {
+            "hex": "#b4a692",
+            "count": 2
+          },
+          {
+            "hex": "#b8401f",
+            "count": 2
+          },
+          {
+            "hex": "#c9d8ee",
+            "count": 2
+          },
+          {
+            "hex": "#d8b48c",
+            "count": 2
+          },
+          {
+            "hex": "#d9a35a",
+            "count": 2
+          },
+          {
+            "hex": "#e0704f",
+            "count": 2
+          },
+          {
+            "hex": "#e8eee9",
+            "count": 2
+          },
+          {
+            "hex": "#eef3fb",
+            "count": 2
+          },
+          {
+            "hex": "#efe6d8",
+            "count": 2
+          },
+          {
+            "hex": "#f08b6a",
+            "count": 2
+          },
+          {
+            "hex": "#f2c060",
+            "count": 2
+          },
+          {
+            "hex": "#f3cf86",
+            "count": 2
+          },
+          {
+            "hex": "#f6c76b",
+            "count": 2
+          },
+          {
+            "hex": "#ff8a65",
+            "count": 2
+          },
+          {
+            "hex": "#ff8f84",
+            "count": 2
+          },
+          {
+            "hex": "#0f3d29",
+            "count": 1
+          },
+          {
+            "hex": "#14425e",
+            "count": 1
+          },
+          {
+            "hex": "#17573a",
+            "count": 1
+          },
+          {
+            "hex": "#18231c",
+            "count": 1
+          },
+          {
+            "hex": "#1b1f1c",
+            "count": 1
+          },
+          {
+            "hex": "#1d2a3a",
+            "count": 1
+          },
+          {
+            "hex": "#221910",
+            "count": 1
+          },
+          {
+            "hex": "#26331a",
+            "count": 1
+          },
+          {
+            "hex": "#26382c",
+            "count": 1
+          },
+          {
+            "hex": "#2c2016",
+            "count": 1
+          },
+          {
+            "hex": "#2e7d32",
+            "count": 1
+          },
+          {
+            "hex": "#2f5b3c",
+            "count": 1
+          },
+          {
+            "hex": "#2f8a5a",
+            "count": 1
+          },
+          {
+            "hex": "#34506f",
+            "count": 1
+          },
+          {
+            "hex": "#3b2a1c",
+            "count": 1
+          },
+          {
+            "hex": "#5a3b24",
+            "count": 1
+          },
+          {
+            "hex": "#5a665d",
+            "count": 1
+          },
+          {
+            "hex": "#6d5f50",
+            "count": 1
+          },
+          {
+            "hex": "#6fa85c",
+            "count": 1
+          },
+          {
+            "hex": "#888888",
+            "count": 1
+          },
+          {
+            "hex": "#8a5a00",
+            "count": 1
+          },
+          {
+            "hex": "#8a958d",
+            "count": 1
+          },
+          {
+            "hex": "#8fc27a",
+            "count": 1
+          },
+          {
+            "hex": "#9a8f82",
+            "count": 1
+          },
+          {
+            "hex": "#9fbf4a",
+            "count": 1
+          },
+          {
+            "hex": "#a3381f",
+            "count": 1
+          },
+          {
+            "hex": "#a76a00",
+            "count": 1
+          },
+          {
+            "hex": "#b3322a",
+            "count": 1
+          },
+          {
+            "hex": "#b5772f",
+            "count": 1
+          },
+          {
+            "hex": "#b8321f",
+            "count": 1
+          },
+          {
+            "hex": "#c4472b",
+            "count": 1
+          },
+          {
+            "hex": "#c9a227",
+            "count": 1
+          },
+          {
+            "hex": "#cfe9f5",
+            "count": 1
+          },
+          {
+            "hex": "#d6b47a",
+            "count": 1
+          },
+          {
+            "hex": "#d8962b",
+            "count": 1
+          },
+          {
+            "hex": "#d9b27a",
+            "count": 1
+          },
+          {
+            "hex": "#dbe7f7",
+            "count": 1
+          },
+          {
+            "hex": "#dde3da",
+            "count": 1
+          },
+          {
+            "hex": "#e0a526",
+            "count": 1
+          },
+          {
+            "hex": "#e5ebdd",
+            "count": 1
+          },
+          {
+            "hex": "#e6dac6",
+            "count": 1
+          },
+          {
+            "hex": "#e6f0fb",
+            "count": 1
+          },
+          {
+            "hex": "#e8f3fb",
+            "count": 1
+          },
+          {
+            "hex": "#e9d6b5",
+            "count": 1
+          },
+          {
+            "hex": "#eaf6ea",
+            "count": 1
+          },
+          {
+            "hex": "#eef1ec",
+            "count": 1
+          },
+          {
+            "hex": "#eef1f4",
+            "count": 1
+          },
+          {
+            "hex": "#eef6d6",
+            "count": 1
+          },
+          {
+            "hex": "#eef7ee",
+            "count": 1
+          },
+          {
+            "hex": "#efe6d5",
+            "count": 1
+          },
+          {
+            "hex": "#f2ead9",
+            "count": 1
+          },
+          {
+            "hex": "#f3f5f1",
+            "count": 1
+          },
+          {
+            "hex": "#f4e6cf",
+            "count": 1
+          },
+          {
+            "hex": "#f4f1e8",
+            "count": 1
+          },
+          {
+            "hex": "#f6f0e4",
+            "count": 1
+          },
+          {
+            "hex": "#fbe5e2",
+            "count": 1
+          },
+          {
+            "hex": "#fbf0dc",
+            "count": 1
+          },
+          {
+            "hex": "#fdf1d8",
+            "count": 1
+          },
+          {
+            "hex": "#ff5a6e",
+            "count": 1
+          },
+          {
+            "hex": "#ffd76a",
+            "count": 1
+          },
+          {
+            "hex": "#fff6e0",
+            "count": 1
+          },
+          {
+            "hex": "#fffcf6",
+            "count": 1
+          }
+        ]
+      }
+    }
+  ]
+}

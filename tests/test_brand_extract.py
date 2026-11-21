@@ -154,7 +154,11 @@ def test_own_site_draft_shape(som_pages):
     assert draft["brand"]["id"] == "som-coffee"
     assert draft["voice"]["banned_terms"] == []        # cannot be inferred
     assert draft["voice"]["traits"] == QUAL["tone_traits"]
-    assert draft["voice"]["prohibited_claims"]         # house defaults present
+    # F3 (calibration fix round): a draft must NOT inherit the house
+    # brand's prohibited_claims — prohibitions are per-brand decisions.
+    assert draft["voice"]["prohibited_claims"] == []
+    assert draft["claims_and_guardrails"]["prohibited_claims"] == []
+    assert any("prohibited_claims" in n for n in draft["review_notes"])
     assert any("banned_terms" in n for n in draft["review_notes"])
     assert "competitor_warning" not in draft
     assert all("reference_only" not in e for e in draft["examples"])

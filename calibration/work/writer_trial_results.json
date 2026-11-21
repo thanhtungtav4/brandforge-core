@@ -1,0 +1,195 @@
+{
+ "brand_check": {
+  "score": 90.0,
+  "violations": [
+   {
+    "section_id": "s1",
+    "type": "median_sentence_length",
+    "detail": "median 18.0 words, target 11-17"
+   }
+  ]
+ },
+ "craft": {
+  "score": 90.0,
+  "violations": [
+   {
+    "type": "no_sensory_detail",
+    "detail": "no glossary sensory term used in a blog text"
+   }
+  ],
+  "metrics": {
+   "word_count": 17,
+   "sentence_count": 8,
+   "rhythm_stdev": 3.42,
+   "weak_words_found": [],
+   "filler_found": [],
+   "sensory_terms_used": []
+  }
+ },
+ "style_match": {
+  "score": 69.0,
+  "metrics": [
+   {
+    "metric": "sentence_median",
+    "profile_value": 14.0,
+    "draft_value": 18.0,
+    "within_range": true
+   },
+   {
+    "metric": "sentence_stdev",
+    "profile_value": 10.44,
+    "draft_value": 3.2,
+    "within_range": false
+   },
+   {
+    "metric": "short_sentence_share",
+    "profile_value": 0.05,
+    "draft_value": 0.0,
+    "within_range": true
+   },
+   {
+    "metric": "first_person_rate",
+    "profile_value": 0.02,
+    "draft_value": 0.0,
+    "within_range": true
+   },
+   {
+    "metric": "reader_rate",
+    "profile_value": 0.2,
+    "draft_value": 1.34,
+    "within_range": false
+   },
+   {
+    "metric": "number_density",
+    "profile_value": 1.67,
+    "draft_value": 2.68,
+    "within_range": false
+   }
+  ],
+  "advice": [
+   "draft sentences too uniform: mix in short 3-6 word sentences and some longer ones — burstiness is the sample voice's human signature",
+   "you address 'bạn' more than the samples do: ease off",
+   "more numbers than the sample voice: drop some figures"
+  ]
+ },
+ "quality": {
+  "profile_id": "preset-blog",
+  "format": "blog",
+  "axes": [
+   {
+    "axis": "facts",
+    "label": "Sự thật & bằng chứng",
+    "weight": 18,
+    "floor": 70,
+    "score": 70.0,
+    "source": "measured",
+    "detail": {
+     "unflagged_issues": 1,
+     "flagged_claims": 0
+    },
+    "below_floor": false
+   },
+   {
+    "axis": "voice",
+    "label": "Giọng brand & văn phong",
+    "weight": 14,
+    "floor": 60,
+    "score": 79.5,
+    "source": "measured",
+    "detail": {
+     "brand_score": 90.0,
+     "style_score": 69.0,
+     "style_profile_id": "cao-nguyen-moc-blog-voice-dd5678"
+    },
+    "below_floor": false
+   },
+   {
+    "axis": "clarity",
+    "label": "Dễ hiểu",
+    "weight": 14,
+    "floor": 60,
+    "score": 90.0,
+    "source": "measured",
+    "detail": {},
+    "below_floor": false
+   },
+   {
+    "axis": "coherence",
+    "label": "Mạch lạc & cấu trúc",
+    "weight": 14,
+    "floor": 60,
+    "score": 95.0,
+    "source": "judged",
+    "grade": 2,
+    "detail": {},
+    "below_floor": false
+   },
+   {
+    "axis": "seo",
+    "label": "SEO / được tìm thấy",
+    "weight": 22,
+    "floor": 55,
+    "score": 100.0,
+    "source": "measured",
+    "detail": {
+     "keyword_in_title": true,
+     "headings_ok": true,
+     "meta_ok": true,
+     "title_present": true,
+     "seo": {
+      "title": "bảo quản cà phê rang mộc",
+      "meta_description": "Trả lời nhanh: mở túi xong, bạn gấp kín miệng túi có van một chiều, hoặc chuyển cà phê sang hũ kín. Để hũ",
+      "keyword": "bảo quản cà phê rang mộc",
+      "keyword_in_title": true,
+      "headings": [
+       "Bảo quản cà phê rang mộc tại nhà"
+      ],
+      "headings_ok": true,
+      "meta_length": 105,
+      "meta_ok": true
+     }
+    },
+    "below_floor": false
+   },
+   {
+    "axis": "persuasion",
+    "label": "Thuyết phục & CTA",
+    "weight": 8,
+    "floor": 55,
+    "score": 60.0,
+    "source": "judged",
+    "grade": 1,
+    "detail": {},
+    "below_floor": false
+   },
+   {
+    "axis": "depth",
+    "label": "Độ gốc & chiều sâu",
+    "weight": 10,
+    "floor": 60,
+    "score": 60.0,
+    "source": "judged",
+    "grade": 1,
+    "detail": {},
+    "below_floor": false
+   }
+  ],
+  "weighted_total": 82.43,
+  "pass_total": 70,
+  "floors_failed": [],
+  "quality_pass": true,
+  "measured_axes": [
+   "facts",
+   "voice",
+   "clarity",
+   "seo"
+  ],
+  "judged_axes": [
+   "coherence",
+   "persuasion",
+   "depth"
+  ],
+  "missing_axes": []
+ },
+ "gate_passed": false
+}

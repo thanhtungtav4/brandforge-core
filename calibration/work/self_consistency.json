@@ -1,0 +1,476 @@
+{
+ "ca-phe-rang-moc-la-gi": {
+  "craft_score": 84.0,
+  "craft_violations": [
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "repeated_openings",
+    "detail": "'cà' x6, 'cách' x3"
+   }
+  ],
+  "style_match_score": 92.0,
+  "style_match_detail": [
+   {
+    "metric": "sentence_median",
+    "profile_value": 14.0,
+    "draft_value": 14.0,
+    "within_range": true
+   },
+   {
+    "metric": "sentence_stdev",
+    "profile_value": 10.44,
+    "draft_value": 10.44,
+    "within_range": true
+   },
+   {
+    "metric": "short_sentence_share",
+    "profile_value": 0.05,
+    "draft_value": 0.05,
+    "within_range": true
+   },
+   {
+    "metric": "first_person_rate",
+    "profile_value": 0.02,
+    "draft_value": 0.0,
+    "within_range": true
+   },
+   {
+    "metric": "reader_rate",
+    "profile_value": 0.2,
+    "draft_value": 0.0,
+    "within_range": true
+   },
+   {
+    "metric": "number_density",
+    "profile_value": 1.67,
+    "draft_value": 0.79,
+    "within_range": false
+   }
+  ],
+  "brand_score": 92.0,
+  "brand_violation_count": 4,
+  "brand_violation_types": {
+   "sentence_too_long": 4
+  },
+  "brand_violations": [
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "53 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "39 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "44 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "34 words > 25"
+   }
+  ]
+ },
+ "bao-quan-ca-phe-sau-khi-mo-tui": {
+  "craft_score": 74.0,
+  "craft_violations": [
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "repeated_openings",
+    "detail": "'cà' x14, 'van' x3"
+   },
+   {
+    "type": "no_sensory_detail",
+    "detail": "no glossary sensory term used in a blog text"
+   }
+  ],
+  "style_match_score": 100.0,
+  "style_match_detail": [
+   {
+    "metric": "sentence_median",
+    "profile_value": 14.0,
+    "draft_value": 14.0,
+    "within_range": true
+   },
+   {
+    "metric": "sentence_stdev",
+    "profile_value": 10.44,
+    "draft_value": 10.55,
+    "within_range": true
+   },
+   {
+    "metric": "short_sentence_share",
+    "profile_value": 0.05,
+    "draft_value": 0.05,
+    "within_range": true
+   },
+   {
+    "metric": "first_person_rate",
+    "profile_value": 0.02,
+    "draft_value": 0.0,
+    "within_range": true
+   },
+   {
+    "metric": "reader_rate",
+    "profile_value": 0.2,
+    "draft_value": 0.11,
+    "within_range": true
+   },
+   {
+    "metric": "number_density",
+    "profile_value": 1.67,
+    "draft_value": 2.25,
+    "within_range": true
+   }
+  ],
+  "brand_score": 88.0,
+  "brand_violation_count": 6,
+  "brand_violation_types": {
+   "sentence_too_long": 6
+  },
+  "brand_violations": [
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "69 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "27 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "42 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "37 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "37 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "28 words > 25"
+   }
+  ]
+ },
+ "cach-pha-ca-phe-phin-rang-moc": {
+  "craft_score": 72.0,
+  "craft_violations": [
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "repeated_openings",
+    "detail": "'cà' x5"
+   }
+  ],
+  "style_match_score": 92.0,
+  "style_match_detail": [
+   {
+    "metric": "sentence_median",
+    "profile_value": 14.0,
+    "draft_value": 12.0,
+    "within_range": true
+   },
+   {
+    "metric": "sentence_stdev",
+    "profile_value": 10.44,
+    "draft_value": 8.8,
+    "within_range": true
+   },
+   {
+    "metric": "short_sentence_share",
+    "profile_value": 0.05,
+    "draft_value": 0.05,
+    "within_range": true
+   },
+   {
+    "metric": "first_person_rate",
+    "profile_value": 0.02,
+    "draft_value": 0.0,
+    "within_range": true
+   },
+   {
+    "metric": "reader_rate",
+    "profile_value": 0.2,
+    "draft_value": 0.32,
+    "within_range": true
+   },
+   {
+    "metric": "number_density",
+    "profile_value": 1.67,
+    "draft_value": 3.73,
+    "within_range": false
+   }
+  ],
+  "brand_score": 90.0,
+  "brand_violation_count": 5,
+  "brand_violation_types": {
+   "sentence_too_long": 5
+  },
+  "brand_violations": [
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "49 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "27 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "32 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "26 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "34 words > 25"
+   }
+  ]
+ },
+ "cac-muc-rang-ca-phe-rang-sang-vua-dam": {
+  "craft_score": 66.0,
+  "craft_violations": [
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "repeated_openings",
+    "detail": "'bảng' x3, 'cà' x9, 'hạt' x4, 'không' x3, 'pha' x3, 'rang' x9"
+   }
+  ],
+  "style_match_score": 100.0,
+  "style_match_detail": [
+   {
+    "metric": "sentence_median",
+    "profile_value": 14.0,
+    "draft_value": 13.0,
+    "within_range": true
+   },
+   {
+    "metric": "sentence_stdev",
+    "profile_value": 10.44,
+    "draft_value": 9.3,
+    "within_range": true
+   },
+   {
+    "metric": "short_sentence_share",
+    "profile_value": 0.05,
+    "draft_value": 0.06,
+    "within_range": true
+   },
+   {
+    "metric": "first_person_rate",
+    "profile_value": 0.02,
+    "draft_value": 0.0,
+    "within_range": true
+   },
+   {
+    "metric": "reader_rate",
+    "profile_value": 0.2,
+    "draft_value": 0.21,
+    "within_range": true
+   },
+   {
+    "metric": "number_density",
+    "profile_value": 1.67,
+    "draft_value": 1.55,
+    "within_range": true
+   }
+  ],
+  "brand_score": 88.0,
+  "brand_violation_count": 6,
+  "brand_violation_types": {
+   "sentence_too_long": 6
+  },
+  "brand_violations": [
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "54 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "50 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "27 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "34 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "33 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "28 words > 25"
+   }
+  ]
+ },
+ "ca-phe-robusta-va-arabica-khac-nhau-the-nao": {
+  "craft_score": 78.0,
+  "craft_violations": [
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "weak_word",
+    "detail": "ngon",
+    "replace_with": "nói rõ vị cụ thể: chua sáng, hậu cacao, khói nhẹ"
+   },
+   {
+    "type": "repeated_openings",
+    "detail": "'arabica' x4, 'cà' x6, 'hạt' x3, 'robusta' x7"
+   }
+  ],
+  "style_match_score": 92.0,
+  "style_match_detail": [
+   {
+    "metric": "sentence_median",
+    "profile_value": 14.0,
+    "draft_value": 16.0,
+    "within_range": true
+   },
+   {
+    "metric": "sentence_stdev",
+    "profile_value": 10.44,
+    "draft_value": 12.25,
+    "within_range": true
+   },
+   {
+    "metric": "short_sentence_share",
+    "profile_value": 0.05,
+    "draft_value": 0.04,
+    "within_range": true
+   },
+   {
+    "metric": "first_person_rate",
+    "profile_value": 0.02,
+    "draft_value": 0.1,
+    "within_range": true
+   },
+   {
+    "metric": "reader_rate",
+    "profile_value": 0.2,
+    "draft_value": 0.31,
+    "within_range": true
+   },
+   {
+    "metric": "number_density",
+    "profile_value": 1.67,
+    "draft_value": 0.51,
+    "within_range": false
+   }
+  ],
+  "brand_score": 86.0,
+  "brand_violation_count": 7,
+  "brand_violation_types": {
+   "sentence_too_long": 7
+  },
+  "brand_violations": [
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "43 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "69 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "31 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "38 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "50 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "39 words > 25"
+   },
+   {
+    "section_id": "post",
+    "type": "sentence_too_long",
+    "detail": "33 words > 25"
+   }
+  ]
+ }
+}

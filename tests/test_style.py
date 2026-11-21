@@ -5,7 +5,9 @@ Discrimination fixtures, measured against the shipped default profile
 first-person 3.5/100w, reader 1.93/100w, number density 0.36/100w):
 - SAME_VOICE: another conversational Mộc Brew text -> style_match 100.
 - MONOTONE: uniform ~14-word sentences, no first person, no 'bạn', no
-  numbers -> 61, with sentence_stdev flagged out of range.
+  numbers -> 77 (sentence_stdev + short_sentence_share flagged; at 115
+  words its density metrics are low-reliability/widened since the
+  calibration fix round — before that it scored 61 on density noise).
 """
 from __future__ import annotations
 
@@ -199,7 +201,9 @@ def test_mcp_style_roundtrip(tmp_path, monkeypatch):
 
     match = srv.style_match(text=CONV1, profile_id=pid)
     assert match["profile_id"] == pid
-    assert 0 <= match["score"] <= 100 and len(match["metrics"]) == 6
+    # 8 metrics since backlog item 5a (question_rate + exclamation_rate
+    # joined the original 6).
+    assert 0 <= match["score"] <= 100 and len(match["metrics"]) == 8
 
     missing = srv.get_style_profile("khong-ton-tai")
     assert "error" in missing
@@ -214,7 +218,11 @@ def test_assemble_context_with_style_profile_8_parts():
                      "facts_triggered", "exemplar", "task", "post_history_reminder"]
     assert with_profile["style_profile"]["id"] == "mocbrew-blog-voice"
     style_part = next(o for o in with_profile["ordered_context"] if o["part"] == "style_profile")
-    assert "NEVER" in style_part["content"] and "median" in style_part["content"]
+    # Backlog item 8: ordered_context carries metadata only (order/part/
+    # chars) — the part's content lives in context_text, its single
+    # representation.
+    assert style_part["chars"] > 0
+    assert "NEVER" in with_profile["context_text"] and "median" in with_profile["context_text"]
 
     without = srv.assemble_context(brief)
     assert [o["part"] for o in without["ordered_context"]] == [

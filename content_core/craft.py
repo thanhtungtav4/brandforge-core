@@ -64,6 +64,64 @@ FILLER_PHRASES = [
 
 _SENSORY_FORMATS = {"product", "blog"}
 
+# ---------------------------------------------------------------------------
+# Generic glossary — the brand-neutral fallback (calibration F8)
+# ---------------------------------------------------------------------------
+# The shipped data/domain_glossary.json is MỘC BREW's glossary (its own
+# file says brand_id "moc-brew"): its weak-word list bans ordinary words
+# like "ngon" and its sensory terms are Arabica-coffee vocabulary. Using
+# it to judge OTHER brands made the craft layer cry wolf (11 false
+# "ngon" hits on one real brand's posts; a storage guide failed the
+# sensory check for lacking coffee-tasting terms). So:
+# - the DEFAULT path (no glossary, no brand_id) is unchanged: the
+#   shipped glossary — this is the Mộc Brew path the golden sets pin;
+# - an explicit `glossary` argument always wins;
+# - a `brand_id` that is NOT the shipped glossary's brand resolves to
+#   GENERIC_GLOSSARY below: a small, documented, brand-neutral
+#   Vietnamese set — cross-domain vague praise words (no ordinary
+#   vocabulary like "ngon") and broad sensory words any food/drink/
+#   product copy can use. Per-brand glossaries remain the long-term
+#   answer; the generic set is the honest fallback, not a new judge.
+
+GENERIC_WEAK_WORDS = [
+    "tuyệt vời", "hoàn hảo", "xuất sắc", "đẳng cấp", "chất lượng cao",
+    "hảo hạng", "cao cấp", "sang trọng", "tinh tế", "độc đáo",
+    "đặc biệt", "không thể cưỡng lại", "mê hoặc", "giá rẻ bất ngờ",
+]
+
+GENERIC_SENSORY_TERMS = [
+    "mùi thơm", "hương thơm", "thơm", "vị chua", "vị ngọt", "vị đắng",
+    "béo", "mềm", "giòn", "mịn", "mượt", "đậm đà", "dịu", "nồng",
+]
+
+_GENERIC_REPLACEMENT = "thay bằng chi tiết cụ thể, đo được thay cho tính từ chung chung"
+
+GENERIC_GLOSSARY: dict = {
+    "brand_id": None,
+    "generic": True,
+    "name": "Generic Vietnamese craft glossary (brand-neutral fallback)",
+    "weak_words": [{"word": w, "replace_with": _GENERIC_REPLACEMENT}
+                   for w in GENERIC_WEAK_WORDS],
+    "groups": {"sensory": {"terms": [{"term": t} for t in GENERIC_SENSORY_TERMS]}},
+    "sensory_groups": ["sensory"],
+}
+
+
+def resolve_glossary(glossary: dict | None = None,
+                     brand_id: str | None = None) -> dict:
+    """Pick the glossary a craft check judges with (see F8 note above):
+    explicit glossary > per-brand rule (the shipped glossary only for
+    its own brand; GENERIC_GLOSSARY for any other brand) > shipped
+    glossary (the default Mộc Brew path)."""
+    if glossary is not None:
+        return glossary
+    if brand_id:
+        shipped = load_domain_glossary()
+        if brand_id != shipped.get("brand_id"):
+            return GENERIC_GLOSSARY
+        return shipped
+    return load_domain_glossary()
+
 
 # --------------------------------------------------------------------------
 # Loaders (thin wrappers so MCP tools never duplicate logic)
@@ -108,6 +166,50 @@ def sensory_terms(glossary: dict | None = None) -> list[str]:
 # Technique-card retrieval (lorebook-style: dormant until triggered)
 # --------------------------------------------------------------------------
 
+# Keyword triggers match on NORMALIZED TOKEN BOUNDARIES (evaluation
+# R3): the old raw-substring match fired the "vị" (taste) trigger inside
+# "vị trí" (position) and "giá" inside "đánh giá" (to evaluate). Text is
+# split into syllable tokens and a keyword fires only when its own token
+# sequence appears contiguously. A small documented list of COMPOUNDS
+# whose first syllable is a keyword syllable with a different meaning
+# ("vị trí" = position, "đánh giá" = evaluate, "giá trị" = value,
+# "vị thế" = standing) is masked out of the token stream first, so the
+# syllable inside them cannot fire a taste/price trigger either.
+_COMPOUND_MASKS = ["vị trí", "đánh giá", "giá trị", "vị thế"]
+_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+
+
+def _match_tokens(text: str) -> list[str]:
+    tokens = _TOKEN_RE.findall((text or "").lower())
+    compounds = [c.split() for c in _COMPOUND_MASKS]
+    masked: list[str] = []
+    i = 0
+    while i < len(tokens):
+        hit = next((c for c in compounds if tokens[i:i + len(c)] == c), None)
+        if hit:
+            masked.append("\x00compound")
+            i += len(hit)
+        else:
+            masked.append(tokens[i])
+            i += 1
+    return masked
+
+
+def _keyword_hits(keywords: list[str], tokens: list[str]) -> list[tuple[str, float]]:
+    """[(keyword, centre position)] for each keyword whose token
+    sequence appears contiguously in the (compound-masked) token stream."""
+    hits: list[tuple[str, float]] = []
+    for kw in keywords:
+        kt = _TOKEN_RE.findall(kw.lower())
+        if not kt:
+            continue
+        for j in range(len(tokens) - len(kt) + 1):
+            if tokens[j:j + len(kt)] == kt:
+                hits.append((kw, j + (len(kt) - 1) / 2))
+                break
+    return hits
+
+
 def retrieve_cards(fmt: str = "", intent: str = "", text: str = "",
                    library: dict | None = None) -> list[dict]:
     """Return at most MAX_CARDS_PER_CALL technique cards for a writing task.
@@ -121,16 +223,24 @@ def retrieve_cards(fmt: str = "", intent: str = "", text: str = "",
       card declaring intents/keywords still needs one of them to fire.
       (Callers that want format filtering must pass a real format.)
       A card declaring neither intents nor keywords triggers on format alone.
-    Triggered cards are ranked by match strength (intent+keyword > intent >
-    keyword > format-only), ties keep library order.
+
+    Ranking (evaluation R3): triggered cards are ranked by TRIGGER
+    STRENGTH = 2 per intent match + 1 per DISTINCT keyword hit (the old
+    boolean keyword hit let three equally-"hit" cards tie and library
+    order silently decided — the domain-vocabulary card lost its own
+    canonical product call that way). Ties break by the earliest average
+    position of the matched keywords in the query (the query's leading
+    topic wins), then library order. The core card keeps its slot, but
+    the most relevant triggered card can no longer be crowded out by a
+    weaker one.
     """
     data = library if library is not None else load_craft_library()
     cards = data.get("cards", [])
-    low_text = (text or "").lower()
+    tokens = _match_tokens(text or "")
     low_intent = (intent or "").lower()
 
     core = [c for c in cards if c.get("core")][:MAX_CORE_CARDS]
-    scored: list[tuple[int, int, dict]] = []
+    scored: list[tuple[float, float, int, dict]] = []
     for idx, card in enumerate(cards):
         if card.get("core"):
             continue
@@ -141,13 +251,15 @@ def retrieve_cards(fmt: str = "", intent: str = "", text: str = "",
         intents = [str(i).lower() for i in trig.get("intents", [])]
         keywords = [str(k).lower() for k in trig.get("keywords", [])]
         intent_hit = bool(low_intent and low_intent in intents)
-        keyword_hit = any(k in low_text for k in keywords) if keywords else False
-        if (intents or keywords) and not (intent_hit or keyword_hit):
+        hits = _keyword_hits(keywords, tokens) if keywords else []
+        if (intents or keywords) and not (intent_hit or hits):
             continue  # dormant: declared triggers but none fired
-        strength = (2 if intent_hit else 0) + (2 if keyword_hit else 0) + (0 if (intents or keywords) else 1)
-        scored.append((-strength, idx, card))
-    scored.sort(key=lambda t: (t[0], t[1]))
-    triggered = [c for _, _, c in scored]
+        strength = (2 if intent_hit else 0) + len(hits) \
+            + (1 if not (intents or keywords) else 0)
+        centre = (sum(pos for _kw, pos in hits) / len(hits)) if hits else float("inf")
+        scored.append((-strength, centre, idx, card))
+    scored.sort(key=lambda t: (t[0], t[1], t[2]))
+    triggered = [c for _, _, _, c in scored]
     return (core + triggered)[:MAX_CARDS_PER_CALL]
 
 
@@ -172,7 +284,33 @@ def _find_phrase_hits(low_text: str, phrases: list[str]) -> list[dict]:
     return hits
 
 
-def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None) -> dict:
+# A sensory mention inside a negated clause is an ABSENCE, not detail
+# (evaluation R3): "không có mùi cacao" used to COUNT as sensory
+# richness. Bounded rule: an occurrence is negated when the text right
+# before it in its sentence ends with không/chẳng/chưa (+ có/hề/thấy)
+# (+ mùi/hương/vị) — "không có mùi cacao", "chẳng có hương hoa".
+_SENSORY_NEGATION_RE = re.compile(
+    r"(không|chẳng|chưa)\s+(có|hề|thấy)?\s*(mùi|hương|vị)?\s*$")
+
+
+def _sensory_terms_used(low_text: str, terms: list[str]) -> list[str]:
+    """Distinct sensory terms ACTUALLY used: longest-match counting (a
+    "hậu cacao" mention counts once, as "hậu cacao" — the old substring
+    set also counted its part "cacao" separately, inflating the metric),
+    and negated mentions excluded (see _SENSORY_NEGATION_RE)."""
+    used: set[str] = set()
+    for sentence in split_sentences(low_text):
+        s_low = sentence.lower()
+        for hit in _find_phrase_hits(s_low, terms):
+            if _SENSORY_NEGATION_RE.search(s_low[:hit["index"]]):
+                continue
+            used.add(hit["term"])
+    return sorted(used)
+
+
+def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
+                brand_id: str | None = None,
+                max_sentence_words: int | None = None) -> dict:
     """Score prose QUALITY 0-100 (not brand compliance — see linter.py).
 
     Scoring (documented, deterministic):
@@ -182,6 +320,12 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None) -> d
       monotone rhythm  -15  (>=4 sentences and stdev of sentence lengths < 2.0)
       repeated opening -10  (same first word opens >=3 sentences)
       no sensory term  -10  (product/blog only: 0 glossary sensory terms used)
+
+    The weak-word and sensory vocabularies come from the ACTIVE
+    glossary (resolve_glossary): an explicit `glossary` wins; a
+    `brand_id` other than the shipped glossary's own brand judges with
+    the generic brand-neutral set; the default (neither given) is the
+    shipped Mộc Brew glossary — the path the golden sets pin.
 
     Too-short guard: text under MIN_WORDS_TO_JUDGE words is not judged
     at all — it returns score 0 with a too_short_to_judge violation.
@@ -203,7 +347,7 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None) -> d
                 "sensory_terms_used": [],
             },
         }
-    data = glossary if glossary is not None else load_domain_glossary()
+    data = resolve_glossary(glossary, brand_id)
     low = text.lower()
     violations: list[dict] = []
     score = 100.0
@@ -223,12 +367,19 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None) -> d
         violations.append({"type": "filler_phrase", "detail": hit["term"]})
     score -= min(12.0, 4.0 * len(filler_hits))
 
-    # Rhythm: sentence-length variation.
+    # Rhythm: sentence-length variation. When the caller supplies the
+    # brand's max sentence length, over-long sentences are EXCLUDED
+    # from the stdev (monotonicity fix, evaluation R5 — the same rule
+    # the linter's median now follows): an appended over-long sentence
+    # is already fined by the linter and must not also "fix" a monotone
+    # rhythm by inflating the spread.
     lengths = _sentence_lengths(text)
-    stdev = statistics.stdev(lengths) if len(lengths) >= 2 else 0.0
-    if len(lengths) >= 4 and stdev < 2.0:
+    rhythm_lengths = [ln for ln in lengths
+                      if max_sentence_words is None or ln <= max_sentence_words]
+    stdev = statistics.stdev(rhythm_lengths) if len(rhythm_lengths) >= 2 else 0.0
+    if len(rhythm_lengths) >= 4 and stdev < 2.0:
         violations.append({"type": "monotone_rhythm",
-                           "detail": f"stdev {round(stdev, 2)} < 2.0 over {len(lengths)} sentences"})
+                           "detail": f"stdev {round(stdev, 2)} < 2.0 over {len(rhythm_lengths)} sentences"})
         score -= 15
 
     # Repeated sentence openings.
@@ -245,9 +396,10 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None) -> d
                            "detail": ", ".join(f"'{w}' x{n}" for w, n in sorted(repeated.items()))})
         score -= 10
 
-    # Sensory detail (product/blog only).
+    # Sensory detail (product/blog only): longest-match counting,
+    # negated mentions excluded (see _sensory_terms_used).
     terms = sensory_terms(data)
-    sensory_found = sorted({t for t in terms if t in low})
+    sensory_found = _sensory_terms_used(low, terms)
     if fmt in _SENSORY_FORMATS and not sensory_found:
         violations.append({"type": "no_sensory_detail",
                            "detail": f"no glossary sensory term used in a {fmt} text"})
@@ -268,22 +420,33 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None) -> d
 
 
 def craft_check_sections(sections: list[dict], fmt: str,
-                         glossary: dict | None = None) -> dict:
+                         glossary: dict | None = None,
+                         brand_id: str | None = None,
+                         max_sentence_words: int | None = None) -> dict:
     """craft_check over a whole draft: worst section score wins (same rule as
-    the brand linter), violations carry their section_id."""
+    the brand linter), violations carry their section_id. `glossary` /
+    `brand_id` select the judging vocabulary exactly as in craft_check.
+
+    `failing_sections` is SCORE-based (evaluation R8): a section fails
+    only when its own score is below CRAFT_PASS_SCORE — the old rule
+    (any violation = failing) put every section of a draft on the
+    rewrite list whenever one section dragged the worst score under
+    the bar, because even good sections carry a violation or two."""
     if not sections:
-        result = craft_check("", fmt, glossary)
+        result = craft_check("", fmt, glossary, brand_id,
+                             max_sentence_words=max_sentence_words)
         return {**result, "failing_sections": []}
     all_violations: list[dict] = []
     worst = 100.0
     failing: list[str] = []
     total_metrics = {"sentence_count": 0, "weak_words_found": [], "sensory_terms_used": []}
     for sec in sections:
-        r = craft_check(sec.get("text", ""), fmt, glossary)
+        r = craft_check(sec.get("text", ""), fmt, glossary, brand_id,
+                        max_sentence_words=max_sentence_words)
         for v in r["violations"]:
             all_violations.append({**v, "section_id": sec.get("id", "")})
         worst = min(worst, r["score"])
-        if r["violations"]:
+        if r["score"] < CRAFT_PASS_SCORE:
             failing.append(sec.get("id", ""))
         total_metrics["sentence_count"] += r["metrics"]["sentence_count"]
         total_metrics["weak_words_found"].extend(r["metrics"]["weak_words_found"])

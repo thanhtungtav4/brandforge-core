@@ -1,0 +1,122 @@
+{
+ "corpus": {
+  "page_count": 0,
+  "total_words": 0,
+  "per_page": []
+ },
+ "fingerprint": {
+  "word_count": 0,
+  "sentence_count": 0,
+  "sentence_len": {
+   "median": 0.0,
+   "mean": 0.0,
+   "stdev": 0.0
+  },
+  "short_sentence_share": 0.0,
+  "long_sentence_share": 0.0,
+  "paragraph_len_median": 0.0,
+  "question_rate": 0.0,
+  "exclamation_rate": 0.0,
+  "first_person_rate": 0.0,
+  "reader_rate": 0.0,
+  "number_density": 0.0,
+  "transition_freq": [],
+  "type_token_ratio": 0.0,
+  "top_words": []
+ },
+ "brand_kit": {
+  "brand_name": {
+   "value": "Cao Nguyên Mộc",
+   "source_url": "https://caonguyenmoc.vn"
+  },
+  "logo_url": {
+   "value": null,
+   "source_url": ""
+  },
+  "theme_color": {
+   "value": null,
+   "source_url": ""
+  },
+  "og_image": {
+   "value": "https://caonguyenmoc.vn/og.jpg",
+   "source_url": "https://caonguyenmoc.vn"
+  },
+  "colors": [
+   {
+    "hex": "#ffffff",
+    "count": 26
+   },
+   {
+    "hex": "#000000",
+    "count": 9
+   },
+   {
+    "hex": "#18221b",
+    "count": 4
+   },
+   {
+    "hex": "#1d6a43",
+    "count": 4
+   },
+   {
+    "hex": "#1f3227",
+    "count": 4
+   },
+   {
+    "hex": "#e9b155",
+    "count": 4
+   }
+  ],
+  "fonts": [
+   {
+    "family": "var(--f-head)",
+    "count": 3
+   },
+   {
+    "family": "Lora",
+    "count": 2
+   },
+   {
+    "family": "var(--f-ui)",
+    "count": 2
+   }
+  ]
+ },
+ "voice_suggestions": {
+  "sentence_rules": {
+   "median_words_default": [
+    11,
+    14
+   ],
+   "max_sentence_words": 25
+  },
+  "pov": "third-person",
+  "pov_note": "first person is rare in the site copy (0.0/100 words) — the brand speaks about itself in third person / by name",
+  "reader_address": null,
+  "formatting_notes": [
+   "corpus is small (0 words) — these suggestions are a rough starting point, not a measurement to trust blindly",
+   "first person is rare in the site copy (0.0/100 words) — the brand speaks about itself in third person / by name"
+  ],
+  "fingerprint_summary": {
+   "sentence_median": 0.0,
+   "sentence_stdev": 0.0,
+   "first_person_rate": 0.0,
+   "reader_rate": 0.0,
+   "exclamation_rate": 0.0,
+   "question_rate": 0.0,
+   "number_density": 0.0,
+   "word_count": 0
+  }
+ },
+ "vocabulary": {
+  "use": [],
+  "exact": [
+   "Cao Nguyên Mộc"
+  ],
+  "glossary_candidates": []
+ },
+ "site_claims": [],
+ "warnings": [
+  "corpus is small (0 words from 0 page(s)) — fetch more pages (blog/product) for a trustworthy profile"
+ ]
+}

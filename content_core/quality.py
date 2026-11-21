@@ -266,11 +266,23 @@ def evaluate_quality(draft, fmt: str, profile: dict, judged: dict | None,
     sections = _as_sections(draft)
     weights, floors = profile["weights"], profile["floors"]
 
+    # Clarity judges with the ACTIVE brand's glossary + sentence cap
+    # (evaluation R3-S4 — same wiring as gates.evaluate_gate: judging
+    # another brand with Mộc Brew's vocabulary was the calibration F8
+    # false positive, here inside the quality layer).
+    brand_id = (brand.get("brand") or {}).get("id")
+    try:
+        max_sentence_words = int(
+            brand["voice"]["sentence_rules"]["max_sentence_words"])
+    except (KeyError, TypeError, ValueError):
+        max_sentence_words = None
     measured: dict[str, tuple[float, dict]] = {
         "facts": _facts_score(sections, facts, brand),
         "voice": _voice_score(sections, fmt, brand, style_profile),
         "clarity": (float(craft_check(
-            "\n\n".join(s.get("text", "") for s in sections), fmt)["score"]), {}),
+            "\n\n".join(s.get("text", "") for s in sections), fmt,
+            brand_id=brand_id,
+            max_sentence_words=max_sentence_words)["score"]), {}),
         "seo": _seo_score(sections, brief),
     }
 

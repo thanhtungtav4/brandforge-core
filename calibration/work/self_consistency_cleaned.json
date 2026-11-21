@@ -1,0 +1,72 @@
+{
+ "ca-phe-rang-moc-la-gi": {
+  "brand_score": 92.0,
+  "violations": 4,
+  "types": {
+   "sentence_too_long": 4
+  },
+  "craft": 84.0,
+  "n_long_sentences": 4,
+  "long_examples": [
+   "Cà phê rang mộc là cà phê chỉ có hạt cà phê được rang chín, không thêm bơ, đường, nước mắm, rượu, hương liệu hay chất tạo màu, và ",
+   "Cà phê rang mộc của Cao Nguyên Mộc  Mộc dùng Robusta trồng ở Đức Cơ, Gia Lai, chỉ hái quả chín, phơi trên giàn, rang sáng (light r",
+   "Bài viết khác  Cà phê  Cách pha cà phê phin ngon với cà phê rang mộc  Hướng dẫn pha cà phê phin từng bước: lượng bột, nhiệt độ nướ"
+  ]
+ },
+ "bao-quan-ca-phe-sau-khi-mo-tui": {
+  "brand_score": 88.0,
+  "violations": 6,
+  "types": {
+   "sentence_too_long": 6
+  },
+  "craft": 74.0,
+  "n_long_sentences": 6,
+  "long_examples": [
+   "Trả lời nhanhSau khi mở túi, gấp kín miệng túi có van một chiều hoặc chuyển sang hũ kín, để nơi khô, mát, tối, tránh xa bếp và cửa",
+   "Van một chiều cho khí thoát ra ngoài nhưng không cho không khí lọt vào, để túi không phồng và cà phê ít tiếp xúc với oxy",
+   "LoạiSau khi mở túi, ngon nhất trong------Cà phê nguyên hạtKhoảng 3–6 tuầnCà phê rang xayKhoảng 2–4 tuầnCà phê túi lọc (gói kín)The"
+  ]
+ },
+ "cach-pha-ca-phe-phin-rang-moc": {
+  "brand_score": 92.0,
+  "violations": 4,
+  "types": {
+   "sentence_too_long": 4
+  },
+  "craft": 78.0,
+  "n_long_sentences": 4,
+  "long_examples": [
+   "Chỉnh theo tốc độ nhỏ giọt  Chảy quá nhanh (dưới 3 phút), nước nhạt: ấn nắp gài chặt hơn một chút, hoặc nhắn Mộc xay mịn hơn",
+   "Xem thêm sản phẩm  Xem bảng giá và đặt hàng  Câu hỏi thường gặp  Vì sao cà phê rang mộc pha ra ít bọt và màu nhạt hơn cà phê ngoài",
+   "Bài viết khác  Cà phê  Cà phê túi lọc: cách pha nóng và cách ủ lạnh qua đêm  Cà phê túi lọc ngâm như túi trà"
+  ]
+ },
+ "cac-muc-rang-ca-phe-rang-sang-vua-dam": {
+  "brand_score": 90.0,
+  "violations": 5,
+  "types": {
+   "sentence_too_long": 5
+  },
+  "craft": 66.0,
+  "n_long_sentences": 5,
+  "long_examples": [
+   "So sánh ba mức rang  Rang sángRang vừaRang đậm------------Màu hạtNâu nhạt, mặt khôNâu đều, mặt khô hoặc hơi bóngNâu sẫm, thường bó",
+   "Còn cà phê tẩm bơ, đường hay caramel thường có mặt hạt bóng đều kèm mùi ngọt, mùi bơ hoặc mùi vani rất rõ khi mở túi",
+   "Rang sáng cũng pha phin ngon, chỉ cần chỉnh một chút vì hạt rang sáng cứng và đặc hơn, khó chiết hơn:  Dùng nước nóng hơn, khoảng "
+  ]
+ },
+ "ca-phe-robusta-va-arabica-khac-nhau-the-nao": {
+  "brand_score": 86.0,
+  "violations": 7,
+  "types": {
+   "sentence_too_long": 7
+  },
+  "craft": 78.0,
+  "n_long_sentences": 7,
+  "long_examples": [
+   "Trả lời nhanhRobusta (Coffea canephora) trồng ở vùng thấp và nóng hơn, hạt tròn nhỏ, vị đắng đậm, ít chua và có lượng caffeine thư",
+   "So sánh nhanh Robusta và Arabica  RobustaArabica---------Tên khoa họcCoffea canephoraCoffea arabicaĐộ cao trồngVùng thấp đến trung",
+   "Robusta cho thân vị dày và hậu ngọt; rang sáng giữ lại vị chua nhẹ kiểu trái cây và mùi thơm của hạt, thay vì vị đắng khét của ran"
+  ]
+ }
+}

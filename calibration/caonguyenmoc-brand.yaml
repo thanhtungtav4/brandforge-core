@@ -1,0 +1,166 @@
+brand:
+  id: cao-nguyen-moc
+  name: Cao Nguyên Mộc
+  simulated: false
+  version: 1
+voice:
+  traits:
+  - dimension: xưng hô
+    position: brand tự xưng 'Mộc', gọi người đọc là 'bạn'
+    do: Xưng 'Mộc' như một người quen; gọi người đọc là 'bạn'
+    dont: Không 'chúng tôi' / 'quý khách' kiểu doanh nghiệp
+  - dimension: mức độ quảng cáo
+    position: thấp — hướng dẫn và kể quy trình, ít hô hào
+    do: 'Nêu quy trình cụ thể: hái chín, phơi giàn, rang sáng, không tẩm'
+    dont: Không dùng siêu cấp tự khen ('ngon nhất', 'tốt nhất') cho sản phẩm của mình
+  - dimension: minh bạch
+    position: công khai giá, địa chỉ xưởng, chính sách ship/đổi trả ngay trong bài
+    do: Ghi giá + quy cách + ngày giá; nêu rõ điều kiện đổi trả
+    dont: Không giấu giá sau 'inbox để biết giá'
+  - dimension: cấu trúc bài blog
+    position: mở đầu bằng mục 'Trả lời nhanh' + mục lục 'Trong bài này'
+    do: Tóm tắt câu trả lời ngay đầu bài, sau đó mới giải thích
+    dont: Không mở bài bằng giới thiệu dài dòng
+  pov: 'brand-as-person: tự xưng ''Mộc'', gọi người đọc là ''bạn'''
+  reader_address: bạn
+  sentence_rules:
+    median_words_default:
+    - 11
+    - 17
+    median_words_by_format: {}
+    max_sentence_words: 25
+  formatting_rules:
+  - Mở bài blog bằng mục 'Trả lời nhanh' tóm tắt đáp án
+  - Tiêu đề mục thường đặt dạng câu hỏi
+  - Không dùng dấu chấm than trong blog
+  banned_terms:
+  - ngon nhất việt nam
+  - tốt nhất việt nam
+  - số 1
+  - đẳng cấp thế giới
+  - thần dược
+  prohibited_claims:
+  - chữa mất ngủ
+  - trị bệnh
+  - chữa tiểu đường
+  - đẳng cấp thế giới
+  - tốt nhất việt nam
+vocabulary:
+  use:
+  - term: cà phê
+    count: 303
+    instead_of: ''
+  - term: hạt điều
+    count: 70
+    instead_of: ''
+  - term: gia lai
+    count: 57
+    instead_of: ''
+  - term: phê rang
+    count: 47
+    instead_of: ''
+  - term: rang mộc
+    count: 47
+    instead_of: ''
+  - term: công thức
+    count: 32
+    instead_of: ''
+  - term: cao nguyên
+    count: 28
+    instead_of: ''
+  - term: nguyên mộc
+    count: 28
+    instead_of: ''
+  exact:
+  - Cao Nguyên Mộc
+  - Gia Lai
+  - Tây Nguyên
+  - Tỉnh Gia Lai
+  - Biển Hồ
+  - Minh Thành
+  - Chư Đang Ya
+  - W240
+  - W320
+  banned: []
+  glossary:
+  - term: cách
+    count: 90
+  - term: pha
+    count: 68
+  - term: mùi
+    count: 61
+  - term: robusta
+    count: 52
+  - term: vị
+    count: 52
+  - term: túi
+    count: 52
+  - term: xay
+    count: 49
+  - term: phin
+    count: 45
+  - term: đắng
+    count: 40
+  - term: đậm
+    count: 39
+examples:
+- format: blog
+  text: Trả lời nhanh Sau khi mở túi, gấp kín miệng túi có van một chiều hoặc chuyển
+    sang hũ kín, để nơi khô, mát, tối, tránh xa bếp và cửa sổ nắng. Không cất cà phê
+    đang dùng hằng ngày trong tủ lạnh vì cà phê hút ẩm và ám mùi. Cà phê xay nên dùng
+    trong 2–4 tuần, nguyên hạt giữ mùi lâu hơn.
+  why_it_works: đoạn 'Trả lời nhanh' mở đầu bài — reviewer thay cho đoạn boilerplate
+    trang danh mục blog mà bộ trích xuất chọn nhầm
+- format: site_copy
+  text: 'Trả lời nhanhCao Nguyên Mộc là thương hiệu nông sản gia đình, có xưởng rang
+    tại 672 Quang Trung, Đức Cơ, Gia Lai. Mộc bán cà phê rang mộc (nguyên hạt, rang
+    xay, túi lọc) và hạt điều (rang muối, rang mộc). Cà phê là Robusta Đức Cơ, chỉ
+    hái quả chín, phơi trên giàn, rang sáng và không tẩm bơ, đường hay hương liệu.
+    Đơn online được gửi qua Viettel Post từ điểm giao nhận Hà Nội. Hotline, Zalo:
+    0395 050 669.'
+  why_it_works: đoạn mẫu lấy từ chính site — user duyệt trước khi dùng
+- format: site_copy
+  text: Cà phê rang mộc là cà phê chỉ có hạt cà phê được rang chín, không thêm bơ,
+    đường, nước mắm, rượu, hương liệu hay chất tạo màu, và không trộn bắp, đậu hay
+    vỏ cà phê. Vị thơm, đắng, hậu ngọt đến từ chính hạt và kỹ thuật rang.
+  why_it_works: đoạn mẫu lấy từ chính site — user duyệt trước khi dùng
+anti_examples: []
+claims_and_guardrails:
+  requires_evidence:
+  - mọi số liệu
+  - mọi khẳng định về sức khỏe
+  - mọi so sánh với đối thủ
+  unsupported_claim_marker: '[NEEDS SOURCE]'
+brand_kit:
+  brand_name:
+    value: Cao Nguyên Mộc
+    source_url: https://caonguyenmoc.vn/blog/cao-nguyen-moc-la-ai-xuong-rang-gia-dinh-duc-co/
+  logo_url:
+    value: https://caonguyenmoc.vn/img/b/cao-nguyen-moc-la-ai-xuong-rang-gia-dinh-duc-co-t.jpg
+    source_url: https://caonguyenmoc.vn/blog/
+  theme_color:
+    value: null
+    source_url: ''
+  og_image:
+    value: https://caonguyenmoc.vn/og.jpg
+    source_url: https://caonguyenmoc.vn/
+  colors:
+  - hex: '#efe2c8'
+    count: 32
+  - hex: '#ffffff'
+    count: 26
+  - hex: '#f2b48f'
+    count: 24
+  - hex: '#141a10'
+    count: 16
+  - hex: '#1d2418'
+    count: 16
+  - hex: '#222b1c'
+    count: 16
+  fonts:
+  - family: var(--display)
+    count: 16
+  - family: Lora
+    count: 10
+  - family: Be Vietnam Pro
+    count: 9

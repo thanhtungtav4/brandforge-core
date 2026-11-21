@@ -1,0 +1,147 @@
+{
+  "derived_max_sentence_words": 39,
+  "derived_pov": "third-person",
+  "posts": {
+    "ca-phe-rang-moc-la-gi": {
+      "craft_before": 84.0,
+      "craft_after": 90.0,
+      "craft_after_violations": [
+        "repeated_openings:'cà' x6, 'cách' x3"
+      ],
+      "brand_before": 92.0,
+      "brand_after": 96.0,
+      "brand_violations_before": 4,
+      "brand_violations_after": 2,
+      "brand_violation_types_after": [
+        "sentence_too_long"
+      ],
+      "style_match_before": 92.0,
+      "style_match_after": 92.0
+    },
+    "bao-quan-ca-phe-sau-khi-mo-tui": {
+      "craft_before": 74.0,
+      "craft_after": 90.0,
+      "craft_after_violations": [
+        "repeated_openings:'cà' x14, 'van' x3"
+      ],
+      "brand_before": 88.0,
+      "brand_after": 96.0,
+      "brand_violations_before": 6,
+      "brand_violations_after": 2,
+      "brand_violation_types_after": [
+        "sentence_too_long"
+      ],
+      "style_match_before": 100.0,
+      "style_match_after": 100.0
+    },
+    "cach-pha-ca-phe-phin-rang-moc": {
+      "craft_before": 72.0,
+      "craft_after": 90.0,
+      "craft_after_violations": [
+        "repeated_openings:'cà' x5"
+      ],
+      "brand_before": 90.0,
+      "brand_after": 98.0,
+      "brand_violations_before": 5,
+      "brand_violations_after": 1,
+      "brand_violation_types_after": [
+        "sentence_too_long"
+      ],
+      "style_match_before": 92.0,
+      "style_match_after": 92.0
+    },
+    "cac-muc-rang-ca-phe-rang-sang-vua-dam": {
+      "craft_before": 66.0,
+      "craft_after": 90.0,
+      "craft_after_violations": [
+        "repeated_openings:'bảng' x3, 'cà' x9, 'hạt' x4, 'không' x3, 'pha' x3, 'rang' x9"
+      ],
+      "brand_before": 88.0,
+      "brand_after": 96.0,
+      "brand_violations_before": 6,
+      "brand_violations_after": 2,
+      "brand_violation_types_after": [
+        "sentence_too_long"
+      ],
+      "style_match_before": 100.0,
+      "style_match_after": 100.0
+    },
+    "ca-phe-robusta-va-arabica-khac-nhau-the-nao": {
+      "craft_before": 78.0,
+      "craft_after": 90.0,
+      "craft_after_violations": [
+        "repeated_openings:'arabica' x4, 'cà' x6, 'hạt' x3, 'robusta' x7"
+      ],
+      "brand_before": 86.0,
+      "brand_after": 94.0,
+      "brand_violations_before": 7,
+      "brand_violations_after": 3,
+      "brand_violation_types_after": [
+        "sentence_too_long"
+      ],
+      "style_match_before": 92.0,
+      "style_match_after": 92.0
+    }
+  },
+  "writer_trial": {
+    "craft_before": 90.0,
+    "craft_after": 100.0,
+    "craft_after_violations": [],
+    "brand_before": 90.0,
+    "brand_after": 90.0,
+    "brand_after_violations": [
+      "median_sentence_length"
+    ],
+    "style_match_before": 69.0,
+    "style_match_after": 85.0,
+    "style_match_reliability_note": "short text (149 words < 300): per-100-word density metrics (first_person_rate, reader_rate, number_density) swing wildly at this length, so they are marked reliability='low' and judged with widened ranges; sentence-shape metrics keep normal ranges",
+    "style_match_metrics_after": [
+      {
+        "metric": "sentence_median",
+        "profile_value": 14.0,
+        "draft_value": 18.0,
+        "within_range": true,
+        "reliability": "normal"
+      },
+      {
+        "metric": "sentence_stdev",
+        "profile_value": 10.44,
+        "draft_value": 3.2,
+        "within_range": false,
+        "reliability": "normal"
+      },
+      {
+        "metric": "short_sentence_share",
+        "profile_value": 0.05,
+        "draft_value": 0.0,
+        "within_range": true,
+        "reliability": "normal"
+      },
+      {
+        "metric": "first_person_rate",
+        "profile_value": 0.02,
+        "draft_value": 0.0,
+        "within_range": true,
+        "reliability": "low"
+      },
+      {
+        "metric": "reader_rate",
+        "profile_value": 0.2,
+        "draft_value": 1.34,
+        "within_range": true,
+        "reliability": "low"
+      },
+      {
+        "metric": "number_density",
+        "profile_value": 1.67,
+        "draft_value": 2.68,
+        "within_range": true,
+        "reliability": "low"
+      }
+    ]
+  },
+  "style_analysis_warnings_after": [],
+  "style_analysis_warnings_before": [
+    "samples diverge on first_person_rate (CV 2.0 > 0.35) — possibly mixed authors"
+  ]
+}

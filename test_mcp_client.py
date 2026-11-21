@@ -216,7 +216,8 @@ async def main() -> int:
             match = _parse(await session.call_tool(
                 "style_match", {"text": STYLE_SAMPLE_A, "profile_id": saved["id"]}))
             check("style_match", match.get("profile_id") == saved["id"]
-                  and 0 <= match["score"] <= 100 and len(match["metrics"]) == 6,
+                  # 8 metrics since backlog item 5a (question/exclamation rates)
+                  and 0 <= match["score"] <= 100 and len(match["metrics"]) == 8,
                   f"score={match.get('score')}")
 
             # Brand Builder flow: analyze -> save draft -> get -> compare.

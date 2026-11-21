@@ -473,6 +473,45 @@ own pages.
 - **hype punctuation is flagged, not copied.** A high exclamation rate
   becomes a review note ("decide deliberately"), never a formatting rule.
 
+### Calibration fixes (from the caonguyenmoc.vn run — report in `calibration/`)
+
+The first real-site calibration (findings F1–F9) produced these changes;
+the Smith-approved thresholds (craft bar 70, quality floors, exclamation
+rule) did not move:
+
+- **Fetch hardening (F1).** Pages carry `js_shell_suspected`
+  (fetch_sample.detect_js_shell: tiny extracted text + ≥50% of bytes in
+  `<script>`, or a large page with no text at all). When a homepage
+  yields < 3 links or < 100 words, `fetch_site` falls back to sitemap
+  discovery (robots.txt `Sitemap:` lines, then `/sitemap.xml`, sitemap
+  indexes one level deep). Text inside `<script type="application/ld+json">`
+  blocks (headline/description/articleBody fields) is extracted; plain
+  script data is still skipped.
+- **Per-brand max sentence (F6/R3).** `suggest_voice_rules` DERIVES
+  `max_sentence_words` from the corpus (90th percentile of observed
+  sentence lengths, clamped [25, 45]) instead of always writing 25;
+  the linter already read the cap from the brand file, and now also
+  excludes table-like segments (≥ 2 `|`) from its median/max statistics.
+- **Craft glossary per brand (F8).** `craft_check`/`craft_check_sections`
+  (and the MCP `craft_check` tool) accept `brand_id`: the shipped
+  glossary is Mộc Brew's, so any other brand is judged with a generic
+  brand-neutral Vietnamese weak-word/sensory set (`GENERIC_GLOSSARY`
+  in craft.py). The default path is unchanged.
+- **Style tolerances (F2/R6).** The mixed-authors divergence warning no
+  longer uses CV when a metric's mean is near zero (absolute spread
+  instead). `style_match` on texts < 300 words marks the per-100-word
+  density metrics `reliability: "low"`, widens their ranges, and adds a
+  `reliability_note`; sentence-shape metrics are unchanged.
+- **Builder trust leaks (F3/F4/F5/F9).** Drafts no longer inherit the
+  house brand's `prohibited_claims` (they start empty, with a review
+  note). Logo detection requires a positive signal ('logo' in src or
+  class/id, or in alt inside a `<header>`). CSS `var(--…)` values and
+  generic families are filtered from font rankings. Conversion keeps
+  each example's `source_url` and sanitizes the brand kit (var fonts
+  dropped; a logo URL with no 'logo' in its path is nulled). POV
+  suggestion detects brand-name-as-speaker ("first-person (as brand
+  name)").
+
 ### Competitor rules
 
 A competitor's site is for **analysis only** — their traits, positioning
@@ -603,7 +642,7 @@ any host app's model can be the writer; the core stays the referee.
 | `get_exemplars(format)` | Layer 4: exemplar passage(s) for the format (few-shot style anchors) |
 | `get_domain_glossary(group?)` | Layer 4: coffee glossary groups + weak words with replacements |
 | `craft_check(text?, format?, draft_id?)` | Layer 4: deterministic prose-QUALITY score (weak words, rhythm, sensory detail) — reports only; the blocking decision lives in `final_gate` |
-| `assemble_context(brief, format?, style_profile_id?)` | Ordered prompt context the writer must follow: 1 persona → 2 brand rules → 3 craft cards (triggered) → 4 triggered facts → 5 exemplar (matching format) → 6 task → 7 post-history reminder. With `style_profile_id`, a `style_profile` part (fingerprint targets + qualitative do/don't + never_do) is inserted after craft cards — 8 parts total |
+| `assemble_context(brief, format?, style_profile_id?)` | Ordered prompt context the writer must follow: 1 persona → 2 brand rules → 3 craft cards (triggered) → 4 triggered facts → 5 exemplar (matching format) → 6 task → 7 post-history reminder. With `style_profile_id`, a `style_profile` part (fingerprint targets + qualitative do/don't + never_do) is inserted after craft cards — 8 parts total. **Response shape (backlog item 8):** the rendered `context_text` is the single representation of the context; alongside it the tool returns only lightweight metadata — `counts` (sources / craft_cards / exemplars), `style_profile` as `{id, name}`, `ordered_context` as `[{order, part, chars}]` (no content), and `truncated_parts`. A documented soft budget caps each part (persona 8000, brand_rules 6000, craft_cards 4000, style_profile 4000, facts_triggered 3000, exemplar 3000, task 1000, post_history_reminder 4000 chars; brand examples ≤ 8 entries, fact entries ≤ 12, exemplars ≤ 2); an over-budget part is truncated with an explicit `[truncated: …]` marker and named in `truncated_parts`, never silently |
 | `analyze_style(samples)` | Style Extraction: per-sample + aggregate deterministic fingerprint and consistency warnings (too few samples/words, mixed-authors divergence) |
 | `save_style_profile(name, samples, qualitative, store_excerpts=false, brand_id?)` | Style Extraction: build + persist a Style Profile from samples and the model-filled qualitative schema. Excerpts stored only when `store_excerpts=True` (user's own/licensed samples) |
 | `get_style_profile(profile_id?)` | Style Extraction: one stored profile by id (`default` → `mocbrew-blog-voice`); with no id, the profile list + the default |

@@ -1,0 +1,555 @@
+{
+ "sample_count": 5,
+ "per_sample": [
+  {
+   "word_count": 629,
+   "sentence_count": 37,
+   "sentence_len": {
+    "median": 14.0,
+    "mean": 17.0,
+    "stdev": 10.44
+   },
+   "short_sentence_share": 0.05,
+   "long_sentence_share": 0.24,
+   "paragraph_len_median": 12.5,
+   "question_rate": 13.51,
+   "exclamation_rate": 0.0,
+   "first_person_rate": 0.0,
+   "reader_rate": 0.0,
+   "number_density": 0.79,
+   "transition_freq": [
+    {
+     "term": "nhưng",
+     "count": 2
+    },
+    {
+     "term": "nhất là",
+     "count": 1
+    }
+   ],
+   "type_token_ratio": 0.41,
+   "top_words": [
+    {
+     "word": "cà",
+     "count": 30
+    },
+    {
+     "word": "phê",
+     "count": 30
+    },
+    {
+     "word": "rang",
+     "count": 23
+    },
+    {
+     "word": "mộc",
+     "count": 19
+    },
+    {
+     "word": "hạt",
+     "count": 13
+    },
+    {
+     "word": "pha",
+     "count": 12
+    },
+    {
+     "word": "cách",
+     "count": 11
+    },
+    {
+     "word": "vị",
+     "count": 8
+    },
+    {
+     "word": "tẩm",
+     "count": 7
+    },
+    {
+     "word": "mùi",
+     "count": 7
+    },
+    {
+     "word": "thường",
+     "count": 7
+    },
+    {
+     "word": "bơ",
+     "count": 6
+    },
+    {
+     "word": "nguyên",
+     "count": 5
+    },
+    {
+     "word": "đường",
+     "count": 5
+    },
+    {
+     "word": "nước",
+     "count": 5
+    }
+   ]
+  },
+  {
+   "word_count": 889,
+   "sentence_count": 56,
+   "sentence_len": {
+    "median": 14.0,
+    "mean": 15.88,
+    "stdev": 10.55
+   },
+   "short_sentence_share": 0.05,
+   "long_sentence_share": 0.2,
+   "paragraph_len_median": 9.0,
+   "question_rate": 25.0,
+   "exclamation_rate": 0.0,
+   "first_person_rate": 0.0,
+   "reader_rate": 0.11,
+   "number_density": 2.25,
+   "transition_freq": [
+    {
+     "term": "nhưng",
+     "count": 3
+    },
+    {
+     "term": "nhất là",
+     "count": 2
+    },
+    {
+     "term": "vì vậy",
+     "count": 1
+    }
+   ],
+   "type_token_ratio": 0.33,
+   "top_words": [
+    {
+     "word": "phê",
+     "count": 53
+    },
+    {
+     "word": "cà",
+     "count": 51
+    },
+    {
+     "word": "mùi",
+     "count": 24
+    },
+    {
+     "word": "túi",
+     "count": 20
+    },
+    {
+     "word": "rang",
+     "count": 15
+    },
+    {
+     "word": "dùng",
+     "count": 10
+    },
+    {
+     "word": "ẩm",
+     "count": 8
+    },
+    {
+     "word": "độ",
+     "count": 8
+    },
+    {
+     "word": "kín",
+     "count": 7
+    },
+    {
+     "word": "xay",
+     "count": 7
+    },
+    {
+     "word": "uống",
+     "count": 7
+    },
+    {
+     "word": "nguyên",
+     "count": 6
+    },
+    {
+     "word": "mở",
+     "count": 6
+    },
+    {
+     "word": "hũ",
+     "count": 6
+    },
+    {
+     "word": "ngày",
+     "count": 6
+    }
+   ]
+  },
+  {
+   "word_count": 616,
+   "sentence_count": 39,
+   "sentence_len": {
+    "median": 12.0,
+    "mean": 15.79,
+    "stdev": 8.8
+   },
+   "short_sentence_share": 0.05,
+   "long_sentence_share": 0.28,
+   "paragraph_len_median": 12.0,
+   "question_rate": 10.26,
+   "exclamation_rate": 0.0,
+   "first_person_rate": 0.0,
+   "reader_rate": 0.32,
+   "number_density": 3.73,
+   "transition_freq": [
+    {
+     "term": "vì vậy",
+     "count": 1
+    }
+   ],
+   "type_token_ratio": 0.42,
+   "top_words": [
+    {
+     "word": "cà",
+     "count": 30
+    },
+    {
+     "word": "phê",
+     "count": 30
+    },
+    {
+     "word": "pha",
+     "count": 13
+    },
+    {
+     "word": "mộc",
+     "count": 12
+    },
+    {
+     "word": "rang",
+     "count": 12
+    },
+    {
+     "word": "xay",
+     "count": 12
+    },
+    {
+     "word": "nước",
+     "count": 12
+    },
+    {
+     "word": "phin",
+     "count": 10
+    },
+    {
+     "word": "cách",
+     "count": 9
+    },
+    {
+     "word": "khoảng",
+     "count": 8
+    },
+    {
+     "word": "hạt",
+     "count": 7
+    },
+    {
+     "word": "bột",
+     "count": 7
+    },
+    {
+     "word": "vừa",
+     "count": 6
+    },
+    {
+     "word": "túi",
+     "count": 6
+    },
+    {
+     "word": "phút",
+     "count": 5
+    }
+   ]
+  },
+  {
+   "word_count": 968,
+   "sentence_count": 66,
+   "sentence_len": {
+    "median": 13.0,
+    "mean": 14.67,
+    "stdev": 9.3
+   },
+   "short_sentence_share": 0.06,
+   "long_sentence_share": 0.14,
+   "paragraph_len_median": 9.0,
+   "question_rate": 27.27,
+   "exclamation_rate": 0.0,
+   "first_person_rate": 0.0,
+   "reader_rate": 0.21,
+   "number_density": 1.55,
+   "transition_freq": [
+    {
+     "term": "nhưng",
+     "count": 2
+    },
+    {
+     "term": "nhất là",
+     "count": 1
+    }
+   ],
+   "type_token_ratio": 0.33,
+   "top_words": [
+    {
+     "word": "rang",
+     "count": 53
+    },
+    {
+     "word": "cà",
+     "count": 40
+    },
+    {
+     "word": "phê",
+     "count": 40
+    },
+    {
+     "word": "hạt",
+     "count": 21
+    },
+    {
+     "word": "đậm",
+     "count": 18
+    },
+    {
+     "word": "mức",
+     "count": 15
+    },
+    {
+     "word": "mộc",
+     "count": 13
+    },
+    {
+     "word": "pha",
+     "count": 13
+    },
+    {
+     "word": "mùi",
+     "count": 12
+    },
+    {
+     "word": "vị",
+     "count": 11
+    },
+    {
+     "word": "sáng",
+     "count": 10
+    },
+    {
+     "word": "đắng",
+     "count": 10
+    },
+    {
+     "word": "chua",
+     "count": 9
+    },
+    {
+     "word": "phin",
+     "count": 9
+    },
+    {
+     "word": "vừa",
+     "count": 7
+    }
+   ]
+  },
+  {
+   "word_count": 979,
+   "sentence_count": 55,
+   "sentence_len": {
+    "median": 16.0,
+    "mean": 17.8,
+    "stdev": 12.25
+   },
+   "short_sentence_share": 0.04,
+   "long_sentence_share": 0.38,
+   "paragraph_len_median": 7.0,
+   "question_rate": 30.91,
+   "exclamation_rate": 0.0,
+   "first_person_rate": 0.1,
+   "reader_rate": 0.31,
+   "number_density": 0.51,
+   "transition_freq": [
+    {
+     "term": "nhưng",
+     "count": 1
+    }
+   ],
+   "type_token_ratio": 0.32,
+   "top_words": [
+    {
+     "word": "cà",
+     "count": 36
+    },
+    {
+     "word": "phê",
+     "count": 36
+    },
+    {
+     "word": "robusta",
+     "count": 35
+    },
+    {
+     "word": "rang",
+     "count": 24
+    },
+    {
+     "word": "arabica",
+     "count": 22
+    },
+    {
+     "word": "vị",
+     "count": 17
+    },
+    {
+     "word": "cao",
+     "count": 13
+    },
+    {
+     "word": "mộc",
+     "count": 11
+    },
+    {
+     "word": "trồng",
+     "count": 11
+    },
+    {
+     "word": "đậm",
+     "count": 11
+    },
+    {
+     "word": "hạt",
+     "count": 10
+    },
+    {
+     "word": "nguyên",
+     "count": 9
+    },
+    {
+     "word": "chọn",
+     "count": 8
+    },
+    {
+     "word": "đắng",
+     "count": 8
+    },
+    {
+     "word": "chua",
+     "count": 8
+    }
+   ]
+  }
+ ],
+ "fingerprint": {
+  "word_count": 4081,
+  "sentence_count": 253,
+  "sentence_len": {
+   "median": 14.0,
+   "mean": 16.13,
+   "stdev": 10.44
+  },
+  "short_sentence_share": 0.05,
+  "long_sentence_share": 0.24,
+  "paragraph_len_median": 9.0,
+  "question_rate": 22.92,
+  "exclamation_rate": 0.0,
+  "first_person_rate": 0.02,
+  "reader_rate": 0.2,
+  "number_density": 1.67,
+  "transition_freq": [
+   {
+    "term": "nhưng",
+    "count": 8
+   },
+   {
+    "term": "nhất là",
+    "count": 4
+   },
+   {
+    "term": "vì vậy",
+    "count": 2
+   }
+  ],
+  "type_token_ratio": 0.16,
+  "top_words": [
+   {
+    "word": "phê",
+    "count": 189
+   },
+   {
+    "word": "cà",
+    "count": 187
+   },
+   {
+    "word": "rang",
+    "count": 127
+   },
+   {
+    "word": "mộc",
+    "count": 58
+   },
+   {
+    "word": "hạt",
+    "count": 53
+   },
+   {
+    "word": "pha",
+    "count": 49
+   },
+   {
+    "word": "mùi",
+    "count": 46
+   },
+   {
+    "word": "robusta",
+    "count": 45
+   },
+   {
+    "word": "vị",
+    "count": 40
+   },
+   {
+    "word": "cách",
+    "count": 37
+   },
+   {
+    "word": "đậm",
+    "count": 35
+   },
+   {
+    "word": "túi",
+    "count": 33
+   },
+   {
+    "word": "phin",
+    "count": 31
+   },
+   {
+    "word": "xay",
+    "count": 29
+   },
+   {
+    "word": "nguyên",
+    "count": 28
+   }
+  ]
+ },
+ "consistency": {
+  "divergence_cv": {
+   "sentence_median": 0.1,
+   "sentence_stdev": 0.12,
+   "first_person_rate": 2.0
+  },
+  "warnings": [
+   "samples diverge on first_person_rate (CV 2.0 > 0.35) — possibly mixed authors"
+  ]
+ }
+}
