@@ -25,6 +25,18 @@ Audit round 2 additions:
   "Arabica Dak Lak") cannot evade them, "số 1" no longer matches inside
   "số 12", and a NEGATED claim ("không phải là tốt nhất", "không rang vào
   thứ Tư") is not treated as an assertion.
+
+Core-completion additions:
+- Origin pairing is negation-aware too: "Robusta không lấy từ Cầu Đất"
+  and "không phải Robusta Cầu Đất" are denials, not assertions (while
+  "không chỉ lấy từ Cầu Đất" still asserts and still flags).
+- Single-value delivery ("giao trong 3 ngày") is checked against the
+  fact range — inside passes, outside flags — and same-day claims
+  ("giao ngay trong ngày") contradict a multi-day range.
+- Statistic-shaped claims with the number in Vietnamese WORDS are
+  detected for scale shapes ("năm trăm khách hàng", "hàng nghìn người
+  dùng"). Money fully spelled out in words is NOT parsed (documented
+  limitation — digit formats only).
 """
 from __future__ import annotations
 
@@ -35,6 +47,13 @@ from .loaders import prohibited_claims
 
 WEIGHT = re.compile(r"(\d+)\s?(?:gam|gram|g)\b")
 DELIVERY = re.compile(r"(\d+)\s*[-–—]\s*(\d+)\s*ngày")
+# Single-value delivery ("giao trong 3 ngày"): a delivery verb must appear
+# shortly before "trong N ngày", so unrelated durations ("dùng trong 5
+# ngày") are not delivery claims. The value is checked against the fact
+# RANGE: inside passes, outside is a wrong_delivery.
+SINGLE_DELIVERY = re.compile(
+    r"(?:giao|nhận hàng|ship|vận chuyển)[^.!?…\n]{0,40}?\btrong\s+(\d+)\s*ngày",
+    re.IGNORECASE)
 PERCENT = re.compile(r"\d+\s?%")
 NEEDS_SOURCE = "[NEEDS SOURCE]"
 
@@ -132,6 +151,39 @@ _SOURCING_MARKERS_NORM = [normalize_for_match(m) for m in
 _NEGATED_PREFIX_RE = re.compile(
     r"(khong phai|chang phai|dau phai|khong nhan|khong dam nhan)( la)?$")
 
+# Origin pairing, negation-aware (core-completion round): the same
+# denial-vs-assertion distinction as claims. A bean paired with the WRONG
+# region is an assertion only when the pairing is not denied:
+#   "Không phải Robusta Cầu Đất"      — negation right before the bean;
+#   "Robusta không lấy từ Cầu Đất"    — negated sourcing verb between
+#                                       bean and region.
+# "không chỉ" is an AFFIRMATION ("không chỉ lấy từ Cầu Đất mà còn...")
+# and never negates, mirroring the claim rule above.
+_ORIGIN_NEGATED_SOURCING = (" khong lay tu ", " khong den tu ",
+                            " khong phai ", " khong thuoc ",
+                            " khong co nguon goc ", " khong lay ")
+
+
+def _asserted_wrong_origin(norm: str, bean: str, other: str) -> bool:
+    """True when the normalized sentence ASSERTS bean+other (the wrong
+    pairing) at least once, honouring the negations documented above."""
+    bean_at = [m.start() for m in re.finditer(rf"\b{re.escape(bean)}\b", norm)]
+    other_at = [m.start() for m in re.finditer(rf"\b{re.escape(other)}\b", norm)]
+    for b in bean_at:
+        following = [o for o in other_at if o > b]
+        if not following:
+            continue
+        o = min(following)
+        between = norm[b:o]
+        if "khong chi" in between or "khong chi" in norm[:b].rstrip()[-24:]:
+            return True  # "không chỉ" affirms — an assertion, not a denial
+        if _NEGATED_PREFIX_RE.search(norm[:b].rstrip()):
+            continue  # denied before the bean: "không phải Robusta ..."
+        if any(marker in between for marker in _ORIGIN_NEGATED_SOURCING):
+            continue  # denied sourcing: "Robusta không lấy từ ..."
+        return True
+    return False
+
 
 def find_claim(sentence: str, phrases: list[str]) -> str | None:
     """First phrase (list order) with a NON-NEGATED normalized match in the
@@ -156,6 +208,29 @@ _STAT_UNITS = ["khách hàng", "người dùng", "năm kinh nghiệm", "cửa h�
 _STAT_RE = re.compile(
     r"(\d+(?:[.,]\d+)?)\s*(" + "|".join(re.escape(u) for u in _STAT_UNITS) + r")\b",
     re.IGNORECASE)
+
+# Statistic-shaped claims with the number written as Vietnamese WORDS
+# (core-completion round). Bounded on purpose: only SCALE shapes are
+# recognised — a number phrase built on trăm/nghìn/triệu (the shapes
+# marketing copy actually inflates with), plus the vague quantifier
+# "hàng <scale>" — glued to an audience noun, matched on the NORMALIZED
+# sentence: "năm trăm khách hàng" (500 customers), "hàng nghìn người
+# dùng". A lone word-number ("một khách hàng hỏi...") is ordinary prose,
+# not a statistic, and is NOT matched. Money spelled out in words
+# ("một trăm ... nghìn đồng") is likewise not parsed — see README.
+_WORD_DIGIT = r"(?:mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin)"
+_WORD_STAT_UNITS = ["khach hang", "nguoi dung", "cua hang", "chi nhanh",
+                    "nguoi", "khach"]
+_WORD_NUMBER = (
+    r"(?:hang\s+(?:tram|nghin|trieu)"
+    r"|" + _WORD_DIGIT + r"\s+(?:tram|nghin|trieu)"
+    r"(?:\s+(?:le|linh)\s+" + _WORD_DIGIT + r")?"
+    r"(?:\s+" + _WORD_DIGIT + r"\s+muoi(?:\s+" + _WORD_DIGIT + r")?)?"
+    r"|" + _WORD_DIGIT + r"\s+muoi\s+(?:nghin|trieu)"
+    r"|muoi(?:\s+" + _WORD_DIGIT + r")?\s+(?:nghin|trieu))"
+)
+_WORD_STAT_RE = re.compile(
+    r"\b" + _WORD_NUMBER + r"\s+(" + "|".join(_WORD_STAT_UNITS) + r")\b")
 # Numbers that ARE facts (pack weight in g / as 1kg, the pack price in k).
 _FACT_NUMBER_TOKENS = {"185", "250", "1000"}
 
@@ -176,10 +251,23 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
     for m in WEIGHT.finditer(text):
         if int(m.group(1)) not in (f["pack_weight_g"], 1000):
             issues.append({"section_id": section_id, "type": "unknown_weight", "detail": m.group(0)})
-    fact_range = f["delivery_days"].split()[0]  # e.g. "2-3"
+    _days = [int(n) for n in re.findall(r"\d+", str(f["delivery_days"]))]
+    fact_lo = _days[0] if _days else 0
+    fact_hi = _days[1] if len(_days) > 1 else fact_lo
     for m in DELIVERY.finditer(text):
-        if f"{m.group(1)}-{m.group(2)}" != fact_range:
+        if (int(m.group(1)), int(m.group(2))) != (fact_lo, fact_hi):
             issues.append({"section_id": section_id, "type": "wrong_delivery", "detail": m.group(0)})
+    # Single-value delivery: inside the fact range passes ("giao trong
+    # 3 ngày" for a 2-3 fact), outside contradicts it.
+    for m in SINGLE_DELIVERY.finditer(text):
+        if not (fact_lo <= int(m.group(1)) <= fact_hi):
+            issues.append({"section_id": section_id, "type": "wrong_delivery", "detail": m.group(0)})
+    # Same-day delivery claims ("giao ngay trong ngày", "giao trong
+    # ngày") promise 0 days — they contradict any multi-day fact range.
+    norm_text = normalize_for_match(text)
+    if fact_lo > 0 and ("giao ngay trong ngay" in norm_text or "giao trong ngay" in norm_text):
+        issues.append({"section_id": section_id, "type": "wrong_delivery",
+                       "detail": f"giao ngay trong ngày (same-day) != fact {f['delivery_days']}"})
 
     fact_roast_day_norm = normalize_for_match(str(f.get("roast_weekday", "")))
 
@@ -209,7 +297,7 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
         #     the same semantics.) ---
         for bean, home in _ORIGIN_PAIRS_NORM.items():
             other = next(v for k, v in _ORIGIN_PAIRS_NORM.items() if k != bean)
-            if bean in norm and other in norm and home not in norm:
+            if home not in norm and _asserted_wrong_origin(norm, bean, other):
                 issues.append({"section_id": section_id, "type": "wrong_origin",
                                "detail": f"{bean} paired with {other}, fact is {bean} {home}"})
 
@@ -253,6 +341,16 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
                 continue  # inside a range like 2-3 (delivery fact territory)
             if sentence[m.end():m.end() + 1] == "-":
                 continue  # start of a range
+            if marked:
+                flagged.append({"section_id": section_id, "type": "flagged_claim",
+                                "detail": m.group(0)})
+            else:
+                issues.append({"section_id": section_id, "type": "unsupported_number",
+                               "detail": m.group(0)})
+
+        # --- unsupported statistics with the number in WORDS (normalized
+        #     sentence; scale shapes only — see _WORD_STAT_RE) ---
+        for m in _WORD_STAT_RE.finditer(norm):
             if marked:
                 flagged.append({"section_id": section_id, "type": "flagged_claim",
                                 "detail": m.group(0)})

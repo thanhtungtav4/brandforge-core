@@ -30,11 +30,31 @@ def _protect_numbers(text: str) -> str:
         protected = new
 
 
+# Vietnamese abbreviations whose trailing '.' is part of the abbreviation,
+# NOT a sentence boundary: "TP. Hồ Chí Minh", "ThS. Nguyễn", "Q. 1" used to
+# be torn into fragments, corrupting sentence counts and every median /
+# rhythm metric built on them. The set is deliberately small and
+# documented: place/district (TP, Q) and academic/professional titles
+# (ThS, TS, PGS, GS, BS, KS). Matching is case-sensitive (the canonical
+# forms); the dot is swapped for the same placeholder as number dots and
+# restored in the returned sentences. Trade-off: an abbreviation at the
+# very end of a sentence ("...ở Q.") no longer ends that sentence — in
+# practice these abbreviations are virtually always followed by the name
+# or number they abbreviate, so protection is the safer default.
+_ABBREVIATIONS = ["PGS", "ThS", "TP", "GS", "TS", "BS", "KS", "Q"]
+_ABBR_DOT_RE = re.compile(r"\b(" + "|".join(_ABBREVIATIONS) + r")\.")
+
+
+def _protect_abbreviations(text: str) -> str:
+    return _ABBR_DOT_RE.sub(lambda m: m.group(1) + _NUM_DOT, text)
+
+
 def split_sentences(text: str) -> list[str]:
-    """Split on sentence punctuation WITHOUT breaking numbers like 185.000đ.
-    The '.' inside digit groups is restored in the returned sentences, so
-    callers see the original text, just correctly segmented."""
-    protected = _protect_numbers(text)
+    """Split on sentence punctuation WITHOUT breaking numbers like 185.000đ
+    or documented abbreviations like 'TP. Hồ Chí Minh'. Protected dots are
+    restored in the returned sentences, so callers see the original text,
+    just correctly segmented."""
+    protected = _protect_abbreviations(_protect_numbers(text))
     return [s.strip().replace(_NUM_DOT, ".")
             for s in SENTENCE_SPLIT.split(protected) if s.strip()]
 

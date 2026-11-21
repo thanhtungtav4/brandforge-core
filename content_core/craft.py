@@ -44,6 +44,17 @@ MAX_CORE_CARDS = 1  # always-on budget: at most 1 core card per retrieval
 CRAFT_PASS_SCORE = 70
 CRAFT_BLOCKING_FORMATS = {"blog", "product"}
 
+# Minimum text length craft_check will judge at all. Below this many
+# words there is no rhythm, no opening pattern and no room for sensory
+# detail — yet the penalty-based scoring used to return ~90 for an empty
+# string (nothing to penalise), i.e. "no text" scored as GOOD prose.
+# 10 words is roughly one full Vietnamese sentence (the brand's own
+# sentence target is 11-14 words); anything shorter is a fragment, not
+# prose. Legitimate short formats are far above it (the golden social
+# post is ~35 words, care-email sections ~20+). Shorter input returns
+# score 0 with an explicit too_short_to_judge violation instead.
+MIN_WORDS_TO_JUDGE = 10
+
 # Stock filler phrases (vi): removing them never changes the meaning.
 FILLER_PHRASES = [
     "có thể nói rằng", "không thể phủ nhận", "trong thế giới hiện đại",
@@ -105,6 +116,10 @@ def retrieve_cards(fmt: str = "", intent: str = "", text: str = "",
     - Every other card stays DORMANT unless it triggers: its formats must
       include `fmt` (or be empty), AND — when it declares intents/keywords —
       the intent must match or a keyword must appear in `text`.
+    - An EMPTY `fmt` ("") means NO format filtering: a card is not
+      excluded for format reasons at all. Dormancy still applies — a
+      card declaring intents/keywords still needs one of them to fire.
+      (Callers that want format filtering must pass a real format.)
       A card declaring neither intents nor keywords triggers on format alone.
     Triggered cards are ranked by match strength (intent+keyword > intent >
     keyword > format-only), ties keep library order.
@@ -167,7 +182,27 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None) -> d
       monotone rhythm  -15  (>=4 sentences and stdev of sentence lengths < 2.0)
       repeated opening -10  (same first word opens >=3 sentences)
       no sensory term  -10  (product/blog only: 0 glossary sensory terms used)
+
+    Too-short guard: text under MIN_WORDS_TO_JUDGE words is not judged
+    at all — it returns score 0 with a too_short_to_judge violation.
+    An empty/fragment text must never read as good prose.
     """
+    words = (text or "").split()
+    if len(words) < MIN_WORDS_TO_JUDGE:
+        lengths = _sentence_lengths(text or "")
+        return {
+            "score": 0.0,
+            "violations": [{"type": "too_short_to_judge",
+                            "detail": f"{len(words)} words < {MIN_WORDS_TO_JUDGE} minimum to judge prose"}],
+            "metrics": {
+                "word_count": len(words),
+                "sentence_count": len(lengths),
+                "rhythm_stdev": round(statistics.stdev(lengths), 2) if len(lengths) >= 2 else 0.0,
+                "weak_words_found": [],
+                "filler_found": [],
+                "sensory_terms_used": [],
+            },
+        }
     data = glossary if glossary is not None else load_domain_glossary()
     low = text.lower()
     violations: list[dict] = []
@@ -222,6 +257,7 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None) -> d
         "score": max(0.0, score),
         "violations": violations,
         "metrics": {
+            "word_count": len(words),
             "sentence_count": len(lengths),
             "rhythm_stdev": round(stdev, 2),
             "weak_words_found": [h["term"] for h in weak_hits],

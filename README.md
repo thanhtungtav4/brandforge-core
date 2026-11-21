@@ -83,7 +83,10 @@ draft_sections → brand_check → fact_check → seo_pass → final_gate ─(pa
 - **Weight / delivery**: pack weights other than 250g/1000g (including the
   `gam`/`gram` spellings, `300 gam`), delivery ranges other than 2-3 ngày —
   typographic dashes and spaced ranges (`5–7 ngày`, `5 - 7 ngày`) are
-  checked too.
+  checked too. A **single-value** delivery is checked against the fact
+  range: `giao trong 3 ngày` passes (inside 2–3), `giao trong 5 ngày`
+  flags, and a same-day claim (`giao ngay trong ngày`) contradicts the
+  range outright.
 - **Roast weekday**: a sentence about roasting ("rang") that names a weekday
   other than the fact's thứ Ba is a `wrong_roast_day` issue. Weekdays in
   non-roast sentences are ignored, and a negated mention ("không rang vào
@@ -91,7 +94,10 @@ draft_sections → brand_check → fact_check → seo_pass → final_gate ─(pa
 - **Origins**: Arabica pairs only with Cầu Đất, Robusta only with Đắk Lắk
   (`wrong_origin`); a sentence naming a bean with the other region is
   flagged only when the bean's true home is not named in the same sentence,
-  so one sentence may list both correct pairings. Another coffee region
+  so one sentence may list both correct pairings. The pairing check is
+  negation-aware: `Robusta không lấy từ Cầu Đất` and `không phải Robusta
+  Cầu Đất` are denials and pass, while `không chỉ lấy từ Cầu Đất` affirms
+  and still flags. Another coffee region
   (Bảo Lộc, Di Linh, Gia Lai, Kon Tum, Sơn La, Điện Biên, Buôn Ma Thuột)
   presented as the source of the brand's beans (sourcing markers like
   "hạt của", "trồng tại", "nguồn hạt", "Mộc Brew") is an `unknown_origin`
@@ -101,6 +107,12 @@ draft_sections → brand_check → fact_check → seo_pass → final_gate ─(pa
   `unsupported_number` issue — unless the sentence is marked
   `[NEEDS SOURCE]`, in which case it is recorded as a flagged claim instead.
   Fact numbers (185/250/1000, the 2-3 delivery range) are whitelisted.
+  The same check catches numbers written as Vietnamese **words** in
+  scale shapes (`năm trăm khách hàng`, `hàng nghìn người dùng`).
+  **Limitation:** money fully spelled out in words (`một trăm tám mươi
+  lăm nghìn đồng`) is NOT parsed — the price check covers digit formats
+  only; a spelled-out price passes unchecked (pinned by a boundary test
+  in `tests/test_core_completion.py`).
 - **Claims**: prohibited phrases block outright; evidence-requiring phrases
   and bare percentages block unless marked `[NEEDS SOURCE]`.
 
@@ -125,6 +137,22 @@ substring matching had three evasion classes and one false-positive class:
 The gate also rejects a VACUOUS draft (audit round 2): no sections, or any
 section with zero words, is a hard failure — an empty draft used to pass
 every checker trivially (no text = no violations = brand 100).
+
+Sentence splitting protects a documented set of Vietnamese abbreviations
+(`TP. Hồ Chí Minh`, `ThS. Nguyễn`, `Q. 1`, PGS/GS/TS/BS/KS) as well as
+numbers, so abbreviations no longer tear sentences and corrupt the
+median/rhythm metrics.
+
+## Storage durability (core-completion round)
+
+Drafts and all stored profiles (style / brand drafts / quality) are
+written **atomically** — temp file in the same directory + `os.replace`
+(`loaders.atomic_write_text`) — so a crash mid-write leaves the previous
+JSON intact instead of a corrupt file. Stored filenames are injective:
+when an id contains characters the filename sanitiser must drop, a short
+stable hash of the original id is appended, so `a/b` and `ab` no longer
+overwrite each other; already-clean ids keep their exact legacy
+filenames. (Versioning/locking remains deferred to the product phase.)
 
 ## Four data layers — kept separate on purpose
 
@@ -172,7 +200,9 @@ must appear in the topic/text. A card declaring neither triggers on format
 alone. At most **3 cards** per call, at most **1 always-on core card**
 (`concrete-specifics`). An unrelated task (e.g. a social post about the
 weather) gets only the core card — craft costs nothing when it is not
-relevant.
+relevant. Passing an **empty format** (`""`) disables format filtering
+entirely (dormancy still applies); callers that want filtering must pass
+a real format.
 
 ### craft_check — a quality score, separate from the brand score
 
@@ -188,7 +218,13 @@ deterministic and scores **writing quality only**, 0–100:
 - repeated sentence openings (same first word ≥3 times): −10
 - no glossary sensory term in a product/blog text: −10
 
-It returns `{score, violations, metrics{sentence_count, rhythm_stdev,
+**Too-short guard:** text under **10 words** (`MIN_WORDS_TO_JUDGE`) is
+not judged at all — it returns score **0** with a `too_short_to_judge`
+violation. (The penalty-only scoring used to return ~90 for an empty
+string: nothing to penalise read as good prose.) Legitimate short
+formats sit far above the floor — the golden social post is ~35 words.
+
+It returns `{score, violations, metrics{word_count, sentence_count, rhythm_stdev,
 weak_words_found, sensory_terms_used}}`. Measured on real fixtures: the
 pre-Craft demo product text (correct but plain, uniform 13–14-word
 sentences) scores **85** (monotone rhythm is its only craft fault); a

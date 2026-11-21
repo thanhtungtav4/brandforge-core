@@ -1,13 +1,58 @@
 """Load the 3 separate data layers: Persona (Card V2) / Brand (YAML) / Facts (lorebook JSON)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import tempfile
 from pathlib import Path
 
 import yaml
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` atomically: write a temp file in the SAME
+    directory, fsync, then os.replace over the target. A crash mid-write
+    leaves the previous file intact (at worst an orphan temp file), never
+    a half-written JSON. Versioning/locking is a separate, deferred
+    concern (P3) — this is rename atomicity only."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent),
+                                    prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def stored_file_stem(raw_id: str) -> str:
+    """Map a stored id to its filename stem, INJECTIVELY.
+
+    The old sanitiser simply dropped disallowed characters, which mapped
+    distinct ids ("a/b" and "ab") to the SAME file — the second save
+    silently overwrote the first. Now: characters outside [alnum-_]
+    are dropped as before, but when dropping changed the id, a short
+    stable hash of the ORIGINAL id is appended, so distinct ids stay
+    distinct. Ids that were already clean keep their exact legacy stem
+    ("mocbrew-blog-voice" -> "mocbrew-blog-voice.json"), so every file
+    stored before this change resolves exactly as before."""
+    safe = "".join(c for c in raw_id if c.isalnum() or c in "-_")
+    if not safe:
+        raise ValueError(f"invalid id: {raw_id!r}")
+    if safe != raw_id:
+        digest = hashlib.sha1(raw_id.encode("utf-8")).hexdigest()[:8]
+        safe = f"{safe}-{digest}"
+    return safe
 
 
 def _load_json_file(path: Path) -> dict:
@@ -64,17 +109,13 @@ def style_profiles_dir() -> Path:
 
 
 def _style_profile_path(profile_id: str) -> Path:
-    safe = "".join(c for c in profile_id if c.isalnum() or c in "-_")
-    if not safe:
-        raise ValueError("invalid profile_id")
-    return style_profiles_dir() / f"{safe}.json"
+    return style_profiles_dir() / f"{stored_file_stem(profile_id)}.json"
 
 
 def save_style_profile(profile: dict) -> dict:
     """Persist a profile dict (must carry an 'id'). Returns the profile."""
-    style_profiles_dir().mkdir(parents=True, exist_ok=True)
-    _style_profile_path(profile["id"]).write_text(
-        json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(_style_profile_path(profile["id"]),
+                      json.dumps(profile, ensure_ascii=False, indent=2))
     return profile
 
 
@@ -117,18 +158,14 @@ def brand_drafts_dir() -> Path:
 
 
 def _brand_draft_path(draft_id: str) -> Path:
-    safe = "".join(c for c in draft_id if c.isalnum() or c in "-_")
-    if not safe:
-        raise ValueError("invalid draft_id")
-    return brand_drafts_dir() / f"{safe}.json"
+    return brand_drafts_dir() / f"{stored_file_stem(draft_id)}.json"
 
 
 def save_brand_draft(draft: dict) -> dict:
     """Persist a brand draft dict (keyed by draft['brand']['id']).
     Returns the draft."""
-    brand_drafts_dir().mkdir(parents=True, exist_ok=True)
-    _brand_draft_path(draft["brand"]["id"]).write_text(
-        json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(_brand_draft_path(draft["brand"]["id"]),
+                      json.dumps(draft, ensure_ascii=False, indent=2))
     return draft
 
 
@@ -173,17 +210,13 @@ def quality_profiles_dir() -> Path:
 
 
 def _quality_profile_path(profile_id: str) -> Path:
-    safe = "".join(c for c in profile_id if c.isalnum() or c in "-_")
-    if not safe:
-        raise ValueError("invalid profile_id")
-    return quality_profiles_dir() / f"{safe}.json"
+    return quality_profiles_dir() / f"{stored_file_stem(profile_id)}.json"
 
 
 def save_quality_profile(profile: dict) -> dict:
     """Persist a quality profile dict (must carry an 'id'). Returns it."""
-    quality_profiles_dir().mkdir(parents=True, exist_ok=True)
-    _quality_profile_path(profile["id"]).write_text(
-        json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(_quality_profile_path(profile["id"]),
+                      json.dumps(profile, ensure_ascii=False, indent=2))
     return profile
 
 

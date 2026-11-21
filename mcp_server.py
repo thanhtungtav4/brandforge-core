@@ -48,7 +48,7 @@ from content_core.gates import evaluate_gate as _evaluate_gate
 from content_core.graph import Core
 from content_core.linter import lint_draft as _lint_draft
 from content_core.linter import lint_section as _lint_section
-from content_core.loaders import DEFAULT_STYLE_PROFILE_ID
+from content_core.loaders import DEFAULT_STYLE_PROFILE_ID, atomic_write_text, stored_file_stem
 from content_core.loaders import list_style_profiles as _list_style_profiles
 from content_core.loaders import load_brand, load_facts, load_persona
 from content_core.loaders import load_style_profile as _load_style_profile
@@ -154,10 +154,14 @@ def drafts_dir() -> Path:
 
 
 def _draft_path(draft_id: str) -> Path:
-    safe = "".join(c for c in draft_id if c.isalnum() or c in "-_")
-    if not safe:
-        raise ValueError("invalid draft_id")
-    return drafts_dir() / f"{safe}.json"
+    # Same injective stem mapping as loaders.stored_file_stem: clean ids
+    # keep their legacy filename; ids the sanitiser had to change get a
+    # stable hash suffix instead of colliding with another draft's file.
+    try:
+        stem = stored_file_stem(draft_id)
+    except ValueError:
+        raise ValueError("invalid draft_id") from None
+    return drafts_dir() / f"{stem}.json"
 
 
 def _load_draft(draft_id: str) -> dict:
@@ -171,8 +175,10 @@ def _load_draft(draft_id: str) -> dict:
 
 
 def _store_draft(draft: dict) -> dict:
-    _draft_path(draft["draft_id"]).write_text(
-        json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Atomic write (temp file + os.replace, via loaders): a crash
+    # mid-write can no longer corrupt the stored draft's JSON.
+    atomic_write_text(_draft_path(draft["draft_id"]),
+                      json.dumps(draft, ensure_ascii=False, indent=2))
     return draft
 
 
