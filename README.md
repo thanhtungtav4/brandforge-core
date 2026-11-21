@@ -1,0 +1,720 @@
+# Content Core — Phase 1 prototype (core-first, NO UI yet)
+
+The testable core of Smith's AI content-writing product. Product direction for
+later phases: Next.js + LangGraph + Postgres/pgvector (3–6 weeks part-time).
+**This phase deliberately builds none of that** — the principle is that the
+content-writing core must be solid before any infrastructure wraps it.
+
+Testbed brand is **simulated**: "Mộc Brew", small-batch coffee for Vietnamese
+office workers. No real client data anywhere in this repo.
+
+## Run it
+
+```bash
+cd ~/workspace/projects/content-core
+python3 -m venv .venv            # already created
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest -q          # full test suite
+.venv/bin/python run_golden.py         # MockWriter golden set, exit code non-zero on any FAIL
+.venv/bin/python run_model_golden.py   # model-written golden set (MCP mode regression)
+```
+
+No API keys needed. Nothing calls an external LLM.
+
+## Architecture
+
+Real **LangGraph 1.2.24** `StateGraph` (installed in the local `.venv`, not a
+fake/adapter). Typed state: `content_core/state.py` (`ContentState`).
+
+```
+validate_brief → research → outline → outline_gate ─(not approved)→ END
+                                            │ approved
+draft_sections → brand_check → fact_check → seo_pass → final_gate ─(pass)→ END
+                                            │ fail & rewrite_count < 2
+                                     rewrite_sections ─→ brand_check (loop)
+                                            │ fail & rewrites exhausted → END (failed_gates)
+```
+
+- **research**: keyword-triggered lorebook retrieval from the local facts file
+  only — entries stay dormant (zero cost) until a key matches the brief.
+- **outline_gate**: human approval simulated by the `outline_approved` state
+  flag. In LangGraph product code this becomes an `interrupt()`.
+- **draft_sections**: writes section by section (never one long generation),
+  via the pluggable `Writer` interface.
+- **brand_check**: deterministic linter in code (`linter.py`) — banned terms,
+  no exclamation marks in blog, median sentence length per format, max sentence
+  length. Score = worst section score. Sentence splitting protects Vietnamese
+  thousand separators (`185.000đ` is one token, never a sentence boundary —
+  fixed in P1a; the unprotected splitter tore prices in half and corrupted
+  the median metric).
+- **fact_check**: deterministic (`fact_check.py`) — coverage in the Fact
+  check section below; unsupported claims block the gate unless marked
+  `[NEEDS SOURCE]` (then they are recorded as `flagged_claims`).
+- **final_gate**: pass only if brand score ≥ 85 **and** 0 banned terms **and**
+  0 unflagged fact issues **and** (blog/product) craft ≥ 70 — the rule lives in
+  `content_core/gates.py` and is shared with the MCP `final_gate` tool,
+  which can additionally apply the optional Quality Profile layer. On failure
+  it rewrites **only the failing sections**, max 2 rewrites, and records
+  every pass in `gate_history`.
+
+## Gate rules (from data/brand_mocbrew.yaml — checkable, not adjectives)
+
+- Median sentence 11–14 words (blog/product/comparison), 5–14 social, 8–14 email; max 25 words/sentence.
+- No exclamation marks in blog.
+- Banned: elevate, curated, game-changing, leverage, delve, seamless,
+  "tốt nhất Việt Nam", "100% chữa mất ngủ", "đẳng cấp thế giới".
+- Facts (facts file only): 185.000đ/250g, rang thứ Ba hàng tuần, giao 2–3 ngày,
+  Arabica Cầu Đất + Robusta Đắk Lắk.
+- A brief asking for a prohibited claim (golden brief 6: "100% chữa mất ngủ")
+  is **refused**: the claim is recorded in `refused_claims` and never written.
+
+## Fact check coverage (P1b)
+
+`fact_check.py` is deterministic and compares the draft against
+`data/facts_lorebook.json` only:
+
+- **Money, normalized**: `185.000đ`, `185.000 đ`, `185.000đ/gói`,
+  `185.000 VND` / `vnđ`, `185000đ`, `185k`, `185 nghìn`, `185 ngàn` are all
+  recognized, converted to a VND integer and compared with the fact price
+  (185000). Any other amount — in any of those shapes — is a `wrong_price`
+  issue, reported once per amount (span de-duplication).
+- **Weight / delivery**: pack weights other than 250g/1000g, delivery ranges
+  other than 2-3 ngày.
+- **Roast weekday**: a sentence about roasting ("rang") that names a weekday
+  other than the fact's thứ Ba is a `wrong_roast_day` issue. Weekdays in
+  non-roast sentences are ignored.
+- **Origins**: checked per clause — Arabica pairs only with Cầu Đất, Robusta
+  only with Đắk Lắk (`wrong_origin`); one sentence may list both correct
+  pairings. Another coffee region (Bảo Lộc, Di Linh, Gia Lai, Kon Tum,
+  Sơn La, Điện Biên, Buôn Ma Thuột) presented as the source of the brand's
+  beans (sourcing markers like "hạt của", "trồng tại", "nguồn hạt",
+  "Mộc Brew") is an `unknown_origin` issue; merely mentioning such a region
+  (e.g. in a comparison) is not flagged.
+- **Unsupported numbers**: a digit + countable unit (`500 khách hàng`,
+  `3 cửa hàng`, `10 năm kinh nghiệm`, …) that no fact supports is an
+  `unsupported_number` issue — unless the sentence is marked
+  `[NEEDS SOURCE]`, in which case it is recorded as a flagged claim instead.
+  Fact numbers (185/250/1000, the 2-3 delivery range) are whitelisted.
+- **Claims**: prohibited phrases block outright; evidence-requiring phrases
+  and bare percentages block unless marked `[NEEDS SOURCE]`.
+
+## Four data layers — kept separate on purpose
+
+| Layer | File | Holds |
+|---|---|---|
+| Persona | `data/persona_linh.json` | Character Card V2 for Linh, barista-writer (who writes) |
+| Brand | `data/brand_mocbrew.yaml` | Voice rules, banned terms, examples (how the brand sounds) |
+| Facts | `data/facts_lorebook.json` | Prices, schedule, origins + keyword lorebook entries (what is true) |
+| Craft | `data/craft_library.json`, `data/exemplars.json`, `data/domain_glossary.json` | Technique cards, exemplar passages, domain vocabulary (how to write WELL — see Layer 4 section below) |
+
+Mixing these layers is the most common cause of voice/fact drift, so the core
+never merges them into one prompt blob.
+
+## Layer 4 — Craft & Domain Library
+
+The first three layers make output **correct** (right persona, right voice
+rules, right facts) but the prose was still plain. Layer 4 exists to raise
+prose **quality**. It is a separate layer on purpose: craft is not brand
+(a brand rule says what Mộc Brew never does; a craft card says how anyone
+writes a good sentence), and it is not facts.
+
+### The three data files
+
+| File | What it is |
+|---|---|
+| `data/craft_library.json` | **12 technique cards** distilled from classic writing principles: concrete specifics (the one always-on core card), concrete opening, strong verbs, show-don't-tell sensory detail, deliberate rhythm variation, cut filler, one idea per paragraph, active voice, concrete ending, logical transitions, fact-before-claim, domain vocabulary. Each card: checkable `instruction`, an ORIGINAL `good_example` and `bad_example` written for Mộc Brew, and a `source_note`. |
+| `data/exemplars.json` | **Exemplar bank**: one strong ORIGINAL passage (60–120 words) per format — `blog_intro`, `product`, `social`, `email`, `comparison` — each with 2–4 `why_it_works` notes. These are few-shot style anchors in `assemble_context`. |
+| `data/domain_glossary.json` | **Coffee vocabulary**: 6 groups (`aroma`, `acidity`, `body`, `aftertaste`, `brewing`, `roast`) of precise terms with one-line usage notes, plus **16 weak words** (`ngon`, `thơm ngon`, `tuyệt vời`, `hoàn hảo`, `đặc biệt`, `chất lượng cao`, …) each with a precise suggested replacement. |
+
+### Copyright rule: distillation, not copying
+
+No book text is stored anywhere in this repo. Only the **principles** are
+kept, paraphrased into checkable instructions in our own words (every card's
+`source_note` says e.g. "Orwell's rules — paraphrased", "Strunk & White
+principles — paraphrased", "Zinsser, On Writing Well — principle
+paraphrased"). Every example sentence is original writing for Mộc Brew.
+Ideas and principles are reusable; an author's sentences are not.
+
+### How cards trigger (lorebook-style)
+
+`content_core/craft.py::retrieve_cards(format, intent, text)` — a card stays
+**dormant** until it triggers: its `formats` must include the task format,
+and when it declares `intents`/`keywords`, the intent must match or a keyword
+must appear in the topic/text. A card declaring neither triggers on format
+alone. At most **3 cards** per call, at most **1 always-on core card**
+(`concrete-specifics`). An unrelated task (e.g. a social post about the
+weather) gets only the core card — craft costs nothing when it is not
+relevant.
+
+### craft_check — a quality score, separate from the brand score
+
+`craft_check(text, format)` (in `craft.py`, exposed as an MCP tool) is
+deterministic and scores **writing quality only**, 0–100:
+
+- weak/vague word: −6 per occurrence, capped −30 (each hit comes with the
+  glossary's suggested replacement)
+- filler phrase (`có thể nói rằng`, `thật sự là`, …): −4 each, capped −12
+- monotone rhythm: −15 (≥4 sentences and stdev of sentence lengths < 2.0;
+  sentence splitting protects Vietnamese thousand separators, so `185.000đ`
+  is not mistaken for a sentence boundary)
+- repeated sentence openings (same first word ≥3 times): −10
+- no glossary sensory term in a product/blog text: −10
+
+It returns `{score, violations, metrics{sentence_count, rhythm_stdev,
+weak_words_found, sensory_terms_used}}`. Measured on real fixtures: the
+pre-Craft demo product text (correct but plain, uniform 13–14-word
+sentences) scores **85** (monotone rhythm is its only craft fault); a
+sensory-rich rewrite of the same facts scores **100** with 7 glossary
+sensory terms.
+
+### Gate status: BLOCKING for blog/product (P2b) — one gate, two call sites
+
+Craft is a blocking rule for long-form formats: for `blog` and `product`
+drafts, a craft score below **70** (`CRAFT_PASS_SCORE`, formats in
+`CRAFT_BLOCKING_FORMATS`, both in `content_core/craft.py`) **fails the
+gate** — the craft-failing sections join `failing_sections`,
+`gate_history` records `craft_score` and `craft_blocking`, and the gate
+instruction tells the writer to rewrite those sections for craft (weak
+words, rhythm, sensory detail). For `social`, `email` and `comparison`
+craft stays **advisory** (reported, never blocking; `craft_advisory` is
+true exactly for those formats).
+
+**The gate rule now lives in exactly one place: `content_core/gates.py`
+(`evaluate_gate`)**, and both call sites — the MCP `final_gate` tool and
+the LangGraph graph's `final_gate` node — call it. The graph previously
+skipped the craft layer (MockWriter was assumed to fail craft); measured
+with `craft_check_sections` over the golden set, MockWriter output
+scores craft **75** (worst section) for blog/product good drafts and
+**84** on the intentionally bad draft's first pass (its badness is
+brand/fact, which craft does not measure) — all ≥ 70, so craft blocking
+is enabled in the graph too: **full unification, no behavioural
+difference between the paths**. `evaluate_gate` keeps an explicit
+`craft_mode` parameter (`"blocking"` default; `"advisory"` is the single
+escape hatch for a future fixture writer) — both production call sites
+use `"blocking"`. The gate constants (`BRAND_PASS_SCORE`,
+`MAX_REWRITES`, and the craft constants re-exported) live in `gates.py`;
+`graph.py` and `mcp_server.py` import them from there.
+
+## Quality Profile — the weighted quality layer
+
+On top of the hard + craft layers, the gate has an optional **quality
+layer** (`content_core/quality.py`), implementing the design Smith
+approved from the artifact's quality tab: a draft is scored on **7 axes**
+and the user distributes a **100-point budget** across them at setup.
+
+| Axis | Label | How it is scored |
+|---|---|---|
+| `facts` | Sự thật & bằng chứng | MEASURED: fact_check — 100 − 30 per unflagged issue − 10 per flagged `[NEEDS SOURCE]` item |
+| `voice` | Giọng brand & văn phong | MEASURED: brand linter score; with a Style Profile, the mean of brand score and `style_match` score |
+| `clarity` | Dễ hiểu | MEASURED: `craft_check` over the full text (v1 mapping — craft blends clarity + rhythm + concreteness; splitting it is future work) |
+| `coherence` | Mạch lạc & cấu trúc | JUDGED: the writing model grades 0/1/2 |
+| `seo` | SEO / được tìm thấy | MEASURED: `seo_pass` returns fields, not a score — the axis maps its 4 boolean outcomes (keyword_in_title, headings_ok, meta_ok, title present) at 25 points each |
+| `persuasion` | Thuyết phục & CTA | JUDGED: grade 0/1/2 |
+| `depth` | Độ gốc & chiều sâu | JUDGED: grade 0/1/2 |
+
+Judged grades convert **{0: 20, 1: 60, 2: 95}** (mirroring the artifact's
+0/1/2 rubrics). A judged axis the writer does not grade is **excluded**
+and the weights renormalise over the present axes — the report lists
+`measured_axes` / `judged_axes` / `missing_axes` explicitly; a judged
+score is never invented.
+
+**Presets** (weights sum to exactly 100; the artifact demo's numbers):
+blog {18/14/14/14/22/8/10}, product {24/12/12/10/10/22/10},
+social {14/26/14/10/8/20/8}, email {16/12/22/14/6/22/8},
+comparison {30/10/12/14/12/10/12} (axis order as in the table).
+**Floors** (same for all formats in v1): facts 70, voice 60, clarity 60,
+coherence 60, seo 55, persuasion 55, depth 60. **PASS_TOTAL = 70.**
+
+Two guardrails are structural:
+
+1. **Hard criteria stay OUTSIDE the weighting.** Banned terms, wrong
+   facts and illegal claims fail in the hard layer no matter what the
+   quality layer says — a high weighted total cannot rescue them
+   (pinned by a test).
+2. **Every axis has a floor (anti-compensation).** `quality_pass`
+   requires weighted_total ≥ pass_total **and** zero axes below floor —
+   a draft with depth graded 0 fails on the depth floor even at a
+   weighted total of 88 (pinned by a test).
+
+Custom profiles (weights each within [2, 45], sum exactly 100; floors
+overridable within [0, 90]) persist via `loaders.py` to
+`data/quality_profiles/<id>.json` (env
+`CONTENT_CORE_QUALITY_PROFILES_DIR`), and are managed through the MCP
+tools `get_quality_profile` / `save_quality_profile`; `quality_score`
+scores a draft without running the gate, and `final_gate` activates the
+layer when given `quality_profile` and/or `judged_scores` (with judged
+scores alone, the draft format's preset is used). With neither argument,
+`final_gate` returns exactly the legacy hard+craft verdict.
+
+### Adding a real book later
+
+1. Read the book (a human, or a model in-session).
+2. Distill each usable principle into a card **in your own words**: a
+   checkable instruction, trigger conditions, and original good/bad examples
+   written for the brand at hand. Never paste the book's sentences in.
+3. Add or extend exemplar passages (original writing) and glossary terms
+   the book's domain suggests.
+4. Re-run the golden set + full pytest. A card that makes the golden set
+   worse does not ship.
+
+## Style Extraction — văn phong từ bài mẫu
+
+Correct + well-crafted is still not the same as *sounding like a specific
+human*. Style Extraction closes that gap: the user pastes links or texts
+whose voice they like, and the system distills them into a **Style
+Profile** — measured, stored, and reusable — instead of re-pasting the
+samples into every prompt.
+
+### The workflow (the MCP server stays offline)
+
+```
+paste links ──► fetch_sample.py (or Muse fetches in-session)
+            ──► analyze_style(samples)     deterministic fingerprint + warnings
+            ──► the MODEL reads the samples and fills the qualitative schema
+            ──► save_style_profile(...)    persisted to data/style_profiles/<id>.json
+            ──► a HUMAN approves the profile
+            ──► assemble_context(brief, style_profile_id=...) injects it
+            ──► final_gate reports style_match (advisory) for styled drafts
+```
+
+`fetch_sample.py <url> [more urls...]` fetches with urllib (browser-ish UA,
+20s timeout) and strips HTML to plain text with the stdlib `html.parser`
+(script/style/nav/footer dropped), printing `{url, title, text,
+word_count}` per URL. All profile file IO lives in `loaders.py`
+(`save_style_profile` / `load_style_profile` / `list_style_profiles`,
+dir overridable via `CONTENT_CORE_STYLE_PROFILES_DIR`);
+`content_core/style.py` is pure computation.
+
+### What gets measured — the fingerprint
+
+Code measures, never guesses (`style.fingerprint`):
+
+| Metric | Meaning |
+|---|---|
+| `sentence_len {median, mean, stdev}` | Sentence-length centre AND spread. The stdev is **burstiness** — the strongest human-vs-AI signal: people mix 3-word fragments with 30-word runs, models default to uniform lengths |
+| `short_sentence_share` / `long_sentence_share` | Fraction of sentences ≤6 / ≥20 words |
+| `paragraph_len_median` | Median words per paragraph (blank-line split; sentence groups of 3 when the text has no blank lines) |
+| `question_rate` / `exclamation_rate` | Per 100 sentences |
+| `first_person_rate` | `mình/tôi/ta/chúng mình/chúng tôi` per 100 words (`người ta` is generic third person and is NOT counted) |
+| `reader_rate` | `bạn` per 100 words |
+| `number_density` | Digit-bearing tokens per 100 words — concreteness |
+| `transition_freq` | Counts for a VN transition list (`tuy nhiên`, `thực ra`, `hóa ra`, `sau đó`, `tóm lại`, …) |
+| `type_token_ratio`, `top_words` | Vocabulary richness; most frequent content words after a built-in VN stopword list |
+
+`analyze_samples` also returns a **consistency report**: for the key
+metrics (sentence median, stdev, first-person rate) it computes the
+cross-sample coefficient of variation; CV > 0.35 warns "possibly mixed
+authors". It also warns when there are fewer than 3 samples, or fewer
+than 800 total words.
+
+### What the model fills in — the qualitative schema
+
+`QUALITATIVE_FIELDS` in `style.py`: `tone_traits` (list of
+`{trait, do, dont}`), `opening_patterns`, `closing_patterns`,
+`signature_devices`, `stance`, `never_do`. Code only validates and stores
+these (unknown keys are ignored, missing keys default to empty); a model
+that actually read the samples writes them, and a human approves them.
+
+### The 3 usage rules
+
+1. **3–5 samples from ONE author/source.** Mixing authors yields the
+   average internet voice — exactly the "AI voice" this feature exists to
+   avoid. The consistency warnings enforce this mechanically.
+2. **The brand's own published posts are the best samples.** They are
+   also the only samples whose passages may be stored.
+3. **Distill traits, don't copy passages.** `store_excerpts` defaults to
+   **False**: exemplar passages (≤120 words, ≤3) are stored only for the
+   user's own or licensed texts. For other people's writing the profile
+   keeps the fingerprint + distilled traits, never their sentences.
+
+### style_match — is this draft in the sample voice?
+
+`style_match(text, profile)` compares a draft's fingerprint to the
+profile on 6 metrics (sentence median, sentence stdev, short-sentence
+share, first-person rate, reader rate, number density), each with a
+documented range rule (e.g. median within ±35% or ±3 words; stdev ratio
+0.5–2.0). Score: 100 − 15 per out-of-range key metric (median, stdev)
+− 8 per other out-of-range metric, with concrete fix advice per miss
+("draft sentences too uniform: mix in short 3-6 word sentences…").
+In `final_gate` the style report is **advisory in v1** — included when
+the draft's brief carries `style_profile_id`, recorded in `gate_history`
+as `style_score`, and it never changes `passed`.
+
+### Built-in example: `mocbrew-blog-voice`
+
+Shipped at `data/style_profiles/mocbrew-blog-voice.json`, built by
+`build_default_style_profile.py` from 3 ORIGINAL Mộc Brew blog samples
+(`data/style_samples_mocbrew.json`, one consistent conversational voice;
+excerpts stored because they are our own simulated brand's texts).
+Measured fingerprint: 829 words, 61 sentences — sentence median **13.0**,
+stdev **8.72** (high burstiness), short-sentence share **0.28**,
+first-person **3.5**/100w, reader **1.93**/100w, number density
+**0.36**/100w, type-token ratio 0.37, no consistency warnings.
+Discrimination check (pinned in `tests/test_style.py`): a same-voice
+text scores **100** against it; a monotone uniform-sentence text scores
+**61** with burstiness flagged out of range.
+
+## Brand Builder — xây Brand từ site đích / đối thủ
+
+Writing a Brand Voice profile from scratch is slow, so most users never
+finish one. The Brand Builder inverts the work: **analyze the site that
+already exists** (the client's own site, or a competitor's), generate a
+draft that is 80% filled, and let the user edit/approve it.
+
+### The workflow
+
+```
+dán link ──► fetch_site.py <root_url> [--max-pages 8]
+             (stdlib CLI helper; homepage + prioritized internal pages —
+             gioi-thieu/about, san-pham/product, dich-vu/service, blog,
+             tin-tuc, lien-he/contact first; per page: clean text,
+             headings, and html_meta kit evidence)
+         ──► analyze_site_brand(pages)     deterministic analysis to review
+         ──► the MODEL reads the pages and fills the qualitative schema
+             (tone_traits[{dimension, position, do, dont}], audience_guess,
+             positioning, differentiators)
+         ──► save_brand_draft(pages, qualitative, source_type)
+             persisted to data/brand_drafts/<brand-id>.json (loaders.py,
+             env CONTENT_CORE_BRAND_DRAFTS_DIR)
+         ──► the USER edits the draft — most fields are already there
+         ──► draft_to_brand_yaml(draft)    brand chính thức (official brand)
+```
+
+`fetch_site.py` is a CLI helper like `fetch_sample.py` — the MCP server
+stays offline; every Brand Builder function takes the fetched
+`pages = [{url, title, text, headings, html_meta}]` shape
+(`content_core/brand_extract.py`, pure computation).
+
+### What is inferred vs what the user MUST decide
+
+**Inferred by code** (deterministic, each kit value carries the
+`source_url` it came from): brand kit (name from og:site_name → repeated
+title segment → domain; logo, theme color, og image, top-6 colors, top-3
+fonts merged across pages); voice suggestions from the measured
+fingerprint (sentence-median range around the site's real median, POV from
+the first-person rate, reader address from the `bạn` rate); vocabulary
+candidates (frequent domain bigrams; `exact` = brand + product-like names
+from titles/headings, casing preserved); example passages from the site's
+own pages.
+
+**The user MUST decide** — the draft says so in `review_notes`:
+- **banned_terms starts EMPTY, always.** A site never reveals what it
+  forbids itself; bans cannot be inferred and are never invented.
+- **traits are model-proposed.** The qualitative schema is a draft for
+  approval, not a measurement.
+- **claims need evidence.** The site's own superlative/claim sentences are
+  collected into `claims_and_guardrails.site_claims_to_review`, each with
+  its source_url and `risk: needs_evidence`. A site asserting "tốt nhất
+  Việt Nam" does not make it an approved brand claim.
+- **hype punctuation is flagged, not copied.** A high exclamation rate
+  becomes a review note ("decide deliberately"), never a formatting rule.
+
+### Competitor rules
+
+A competitor's site is for **analysis only** — their traits, positioning
+and gaps, never their copy. Drafts built with
+`source_type="competitor"` carry a top-level `competitor_warning` and mark
+**every example `reference_only: true`**. `draft_to_brand_yaml` **refuses**
+(ValueError) to convert any draft that still contains reference_only
+examples: the user must replace/paraphrase them with the brand's own words
+first. Competitor text can never become an approved brand by accident.
+
+### Compare mode — positioning gaps
+
+`compare_brand_voice(pages_a, pages_b)` contrasts two sites (mine vs a
+competitor): the 6 style-match fingerprint metrics side by side, sentence
+median/stdev, vocabulary symmetric difference, claim counts, both brand
+kits, and `gaps` — observations generated in code from the measured
+deltas with documented thresholds (first-person ratio ≥2×, claims
+difference ≥3, median difference ≥3 words, burstiness ratio ≥1.5×,
+exclamation difference ≥5/100 sentences). Measured on the fixture sites
+(Sớm Coffee vs Đỉnh Cao Coffee): first-person 5.84 vs 0.0 per 100 words,
+7 superlative claims vs 0 ("more restrained"), exclamation 100 vs 0 per
+100 sentences, disjoint vocabularies and kits (green/Be Vietnam Pro vs
+red-gold/Montserrat).
+
+Demo: `.venv/bin/python demo_brand_builder.py` runs the whole flow on the
+two fictional fixture sites in `tests/fixtures/` (file://, no network).
+
+## Golden set (`content_core/golden.py`, runner: `run_golden.py`)
+
+6 briefs, each with its own criteria: (1) 1500+ word SEO blog drift test,
+(2) product description fact accuracy, (3) social tone-flex, (4) care email
+clarity, (5) comparison with `[NEEDS SOURCE]` marking, (6) false health claim
+refusal. Plus case `g7-demo`: an intentionally bad draft (`writer_mode="bad"` —
+banned words, exclamations, wrong price 200.000đ) that the linter catches on
+pass 1 and the rewrite loop recovers. Run the golden set after **every**
+prompt/flow change; a regression there blocks merging.
+
+## Model golden set (`data/model_golden.json`, runner: `run_model_golden.py`)
+
+The golden set above tests the gates with MockWriter fixtures. It cannot
+test the thing that actually breaks in MCP mode: **real model prose**. The
+model golden set pins six model-written drafts (written by Muse as the
+writer) with expected brand/craft scores and gate verdicts, evaluated by
+`content_core/model_golden.py` with the MCP final_gate's exact functions
+and rule (including craft blocking at 70 for blog/product):
+
+| Entry | What it protects |
+|---|---|
+| mg1 | The demo v2 product draft (sensory-rich): brand 100, craft 90, gate passes |
+| mg2 | The demo v1 product draft (correct but plain): craft 75 worst-section (85 whole-text) — passes, since 75 ≥ 70 |
+| mg3 | A good blog intro (both origin pairings in one sentence): brand 100, craft 100, passes |
+| mg4 | A mediocre generic blog draft: brand/fact clean, craft 35 → gate **fails on craft only** |
+| mg5 | A drift draft: sections 1–2 clean, section 3 has a banned term + a `190k` wrong price → gate fails, `failing_sections` is exactly `[s3]` |
+| mg6 | A social post: social is not craft-blocking, clean brand/fact → passes |
+
+Run it together with the golden set after every prompt/craft/core change:
+`.venv/bin/python run_model_golden.py` (exit non-zero on any mismatch).
+
+## What is mock vs real
+
+- **Real**: the LangGraph graph, typed state, gates, linter, fact checker, SEO
+  pass, rewrite loop, golden runner, tests.
+- **Mock**: `MockWriter` (`content_core/writer.py`) — a deterministic writer
+  built from a pool of brand-compliant sentences, so tests are reproducible
+  without an LLM. Its drafts are structurally valid test fixtures, not
+  publishable prose.
+
+## Plugging in a real LLM writer (next step)
+
+Implement the `Writer` interface in `content_core/writer.py`:
+
+```python
+class Writer(Protocol):
+    def write_section(self, section: dict, ctx: dict) -> str: ...
+    def rewrite_section(self, section: dict, ctx: dict, issues: list[dict]) -> str: ...
+```
+
+Then either pass it in code — `run_flow(brief, writer=MyLLMWriter())` /
+`build_graph(writer=...)` — or select it by environment variable:
+`CONTENT_WRITER=my_module:MyLLMWriter` (default `mock`). `ctx` already carries
+brief, retrieved sources, facts, brand and persona, assembled in the
+context order used by the MCP `assemble_context` tool (persona → brand rules
+→ craft cards → optional style profile → triggered facts → exemplar → task
+→ post-history reminder goes in the writer's prompt template). All gates/checkers stay unchanged —
+that is the point of the core: swapping the writer cannot weaken the gates.
+
+## MCP mode — Muse is the writer
+
+Smith's decision (21 Nov 2026, superseding "connect an external LLM provider"):
+**no external LLM provider for now.** Muse's own main model is the Writer.
+The core is exposed as an **MCP server** (stdio by default, streamable
+HTTP on localhost with `--transport http`; official Python `mcp` SDK
+1.30.0, FastMCP — real SDK, pinned in `requirements.txt`), so the agent uses
+the core tools as its hands: Muse writes the prose in-session, the tools do
+everything deterministic. The packaging section below ("Chạy như tool
+trong app AI local") generalizes this to Gemini / ChatGPT / Muse:
+any host app's model can be the writer; the core stays the referee.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Muse (main model)  =  BRAIN + WRITER                      │
+│  reads assembled context, writes/repairs prose in-session   │
+└──────────────┬──────────────────────────────────────────────┘
+               │ MCP tools (stdio)
+┌──────────────▼──────────────────────────────────────────────┐
+│  mcp_server.py  =  HANDS + GATES (deterministic, no LLM)    │
+│  research/facts · context assembly · brand lint · fact      │
+│  check · SEO check · final gate · draft state · golden set  │
+│  — every tool wraps an existing content_core function,      │
+│    no logic is duplicated in the server                     │
+└──────────────┬──────────────────────────────────────────────┘
+               │
+┌──────────────▼──────────────────────────────────────────────┐
+│  Data layers: Persona (Card V2) · Brand (YAML) · Facts      │
+│               Craft (cards / exemplars / glossary)           │
+│  Draft state: drafts/<draft_id>.json (local JSON files)     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Tools (29)
+
+| Tool | What it does |
+|---|---|
+| `get_persona` | Linh, Character Card V2 |
+| `get_brand` | Mộc Brew voice rules (parsed YAML): banned terms, sentence rules, examples |
+| `research_facts(query)` | Keyword-triggered lorebook retrieval (reuses the graph's research node) + canonical facts |
+| `get_craft_cards(format, intent?, query?)` | Layer 4: triggered technique cards (lorebook-style, ≤3, ≤1 core) |
+| `get_exemplars(format)` | Layer 4: exemplar passage(s) for the format (few-shot style anchors) |
+| `get_domain_glossary(group?)` | Layer 4: coffee glossary groups + weak words with replacements |
+| `craft_check(text?, format?, draft_id?)` | Layer 4: deterministic prose-QUALITY score (weak words, rhythm, sensory detail) — reports only; the blocking decision lives in `final_gate` |
+| `assemble_context(brief, format?, style_profile_id?)` | Ordered prompt context the writer must follow: 1 persona → 2 brand rules → 3 craft cards (triggered) → 4 triggered facts → 5 exemplar (matching format) → 6 task → 7 post-history reminder. With `style_profile_id`, a `style_profile` part (fingerprint targets + qualitative do/don't + never_do) is inserted after craft cards — 8 parts total |
+| `analyze_style(samples)` | Style Extraction: per-sample + aggregate deterministic fingerprint and consistency warnings (too few samples/words, mixed-authors divergence) |
+| `save_style_profile(name, samples, qualitative, store_excerpts=false, brand_id?)` | Style Extraction: build + persist a Style Profile from samples and the model-filled qualitative schema. Excerpts stored only when `store_excerpts=True` (user's own/licensed samples) |
+| `get_style_profile(profile_id?)` | Style Extraction: one stored profile by id (`default` → `mocbrew-blog-voice`); with no id, the profile list + the default |
+| `style_match(text? / draft_id?, profile_id?)` | Style Extraction: closeness of a text/draft to a profile's fingerprint (0-100, per-metric ranges, fix advice). Advisory only |
+| `validate_brief(brief)` | Brief validation + prohibited-claim detection → `refused_claims` (e.g. "100% chữa mất ngủ" is refused) |
+| `make_outline(brief, proposed_outline?, draft_id?)` | Deterministic template outline, or validates/stores a model-proposed outline |
+| `start_draft(brief)` | New draft, persisted to `drafts/<draft_id>.json`; returns `draft_id` |
+| `save_section(draft_id, section_id, heading, text, …)` | Save/overwrite ONE section; rewriting gate-flagged sections counts toward the max-2 rewrite budget |
+| `get_draft(draft_id)` | Full stored draft state incl. gate history |
+| `brand_check(text?, format?, draft_id?)` | Deterministic brand linter + score on a text or a whole draft |
+| `fact_check(text?, draft_id?)` | Prices/numbers vs facts file; `[NEEDS SOURCE]` claims flagged, unmarked unsupported claims block |
+| `seo_check(draft_id?, title?, keyword?, topic?)` | Title / meta / headings / keyword coverage |
+| `final_gate(draft_id, quality_profile?, judged_scores?)` | THE shared gate (`gates.evaluate_gate`, same as the graph): PASS only if brand ≥85 AND 0 banned AND 0 unflagged fact issues AND (blog/product only) craft ≥70 AND, when activated, the Quality Profile passes; returns the Layer 4 `craft` report and records `craft_score`/`craft_blocking` in `gate_history` — craft **blocks** for blog/product, advisory for social/email/comparison; when the brief carries `style_profile_id`, also returns an advisory `style_match` report (recorded as `style_score`, never blocking); returns exactly which sections to rewrite |
+| `get_quality_profile(format_or_id)` | Quality Profile: a format name → the shipped preset; a saved custom id → that profile ({weights sum 100, floors, pass_total}) |
+| `save_quality_profile(format, weights, floors?, pass_total?)` | Quality Profile: validate (7 axes, each weight in [2, 45], sum exactly 100) + persist a custom profile to `data/quality_profiles/` |
+| `quality_score(draft_id, judged_scores?, quality_profile?)` | Quality Profile: score a draft on the 7 axes WITHOUT running the gate — dumbbell-ready per-axis score vs floor, weighted total, quality_pass; judged axes (coherence/persuasion/depth) are the writer's 0/1/2 grades, missing ones are excluded, never invented |
+| `run_golden()` | Runs the golden set through the LangGraph core, per-brief PASS/FAIL |
+| `analyze_site_brand(pages)` | Brand Builder: deterministic analysis of a fetched site (pages from `fetch_site.py`) — corpus stats, style fingerprint, visual brand kit with source_url evidence, voice-rule suggestions, vocabulary candidates, site claims flagged needs_evidence |
+| `save_brand_draft(pages, qualitative?, source_type?, brand_name?)` | Brand Builder: build + persist a DRAFT Brand Voice profile in the brand YAML structure. `qualitative` is the model-filled schema (tone traits, audience, positioning, differentiators). Drafts carry review_status="draft" + review_notes; competitor drafts mark every example reference_only |
+| `get_brand_draft(draft_id?)` | Brand Builder: one stored brand draft by id, or the list of drafts |
+| `compare_brand_voice(pages_a, pages_b)` | Brand Builder compare mode: two sites' fingerprints side by side, vocabulary difference, claim counts, both kits, and `gaps` — positioning observations computed from the measured deltas |
+
+### Start the server / test it
+
+```bash
+cd ~/workspace/projects/content-core
+.venv/bin/python mcp_server.py                    # stdio (default) — an MCP client launches this
+.venv/bin/python mcp_server.py --transport http   # streamable HTTP on 127.0.0.1:8765 (localhost only)
+.venv/bin/python test_mcp_client.py     # stdio: initialize + tools/list + 22 end-to-end checks
+.venv/bin/python test_mcp_http.py       # http smoke test: start server, list tools, call get_quality_profile
+.venv/bin/python run_model_golden.py    # model-written golden set (MCP mode regression)
+.venv/bin/python -m pytest -q           # full test suite (core + MCP + craft + fact/linter + model golden + quality)
+```
+
+Register it with an MCP client as a stdio server with command
+`.venv/bin/python` and args `["mcp_server.py"]` (cwd = this project).
+
+## Chạy như tool trong app AI local (Gemini / ChatGPT / Muse)
+
+Smith's packaging decision (21 Nov 2026): ship the core **first as a
+local tool that runs inside the AI apps the user already has** — Gemini,
+ChatGPT (local/desktop apps) and Muse. The concept is the MCP mode
+above, generalized:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Host app (Gemini / ChatGPT / Muse)  =  the WRITER        │
+│  its model reads the assembled context and writes prose     │
+└──────────────┬──────────────────────────────────────────────┘
+               │ MCP (stdio, or streamable HTTP on localhost)
+┌──────────────▼──────────────────────────────────────────────┐
+│  content-core MCP server  =  HANDS + REFEREE                │
+│  retrieval · context assembly · brand/fact/craft/SEO checks │
+│  · THE gate (gates.py) · Quality Profile · draft state      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Swapping the writer changes nothing else.** Later, an API provider
+(OpenAI/Claude/Gemini API) can replace the host app's model — via the
+`Writer` interface in-process, or by calling the same MCP tools — and
+the gates, checkers and Quality Profiles behave **identically**, because
+none of them know or care who wrote the prose. That is the point of the
+core: the referee is writer-agnostic.
+
+### stdio config (Gemini CLI / Muse-style `mcpServers` JSON)
+
+Most local apps take the same shape — a named server with a command and
+args (paths absolute, pointing at this project):
+
+```json
+{
+  "mcpServers": {
+    "content-core": {
+      "command": "/home/<you>/workspace/projects/content-core/.venv/bin/python",
+      "args": ["/home/<you>/workspace/projects/content-core/mcp_server.py"],
+      "cwd": "/home/<you>/workspace/projects/content-core"
+    }
+  }
+}
+```
+
+(Gemini CLI uses the same `mcpServers` block in its settings file;
+Claude-style desktop apps use the same JSON in their MCP config. The
+per-app menu steps to paste it are the apps' own UI — see "tested vs
+documented" below.)
+
+### HTTP mode (apps that connect over HTTP instead of stdio)
+
+```bash
+.venv/bin/python mcp_server.py --transport http
+# streamable HTTP at http://127.0.0.1:8765/mcp
+# host/port overridable: CONTENT_CORE_HTTP_HOST / CONTENT_CORE_HTTP_PORT
+```
+
+**There is NO auth in v1 — the HTTP server is localhost-only by
+design.** Do not bind it to a LAN/public interface. **ChatGPT** connects
+to MCP servers as *remote* servers over HTTPS, so using this local
+server from ChatGPT requires exposing it through a tunnel **the user
+controls** (e.g. Cloudflare Tunnel) and pointing ChatGPT at the
+tunnel's HTTPS URL + `/mcp` path:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8765
+# -> https://<random>.trycloudflare.com/mcp   (register this URL in ChatGPT)
+```
+
+Treat a tunnel URL as a credential while it is live: anyone who has it
+can call the tools (drafts are local files, but the tools can read and
+write them). Prefer stdio apps (Gemini CLI / Muse) for local use;
+use a tunnel only when the app leaves no other route.
+
+### Tested vs documented-from-spec
+
+- **TESTED in this repo**: the stdio transport end-to-end
+  (`test_mcp_client.py`, 22 checks, official SDK client) and the HTTP
+  transport smoke test (`test_mcp_http.py`: real server on a test port,
+  tools/list + `get_quality_profile` over streamable HTTP).
+- **Documented from the apps' public MCP specs, NOT clicked through**:
+  the exact per-app UI steps for registering the server in Gemini /
+  ChatGPT / Muse, and the ChatGPT-over-tunnel flow. The config shapes
+  above follow those specs; the first real registration in each app
+  should be verified by hand once.
+
+### The workflow an agent follows for ONE brief
+
+1. `validate_brief` — if `refused_claims` is non-empty, those claims are never written.
+2. `research_facts` — pull only the facts this brief triggers.
+3. `assemble_context` — read the ordered context; write under those rules.
+4. `start_draft` → `make_outline` (propose an outline or take the template; store it in the draft).
+5. For each section: **Muse writes the prose** → `save_section`.
+6. `brand_check` + `fact_check` (+ `seo_check`) on the draft.
+7. `final_gate` — on FAIL, rewrite **only** the listed failing sections, `save_section` them, call `final_gate` again (max 2 rewrite cycles, tracked in the draft).
+8. On PASS (`status="approved"`): deliver the draft from `get_draft`.
+
+### Honest limitation of MCP mode
+
+This mode writes **inside a Muse session** — it is not an autonomous
+backend: no session, no writer. That is the point for now (the best available
+model writes, the deterministic core keeps it honest). The later product
+swaps in an API Writer implementing the same `Writer` interface / tool
+contracts; **the gates do not change** when that happens.
+
+## Layout
+
+```
+content_core/  state.py loaders.py writer.py linter.py fact_check.py seo.py
+               graph.py golden.py runner.py craft.py model_golden.py
+               gates.py   (THE final gate: hard + craft + quality layers —
+                           the single rule both the graph and MCP call)
+               quality.py   (Quality Profile: 7 axes, presets, floors,
+                             measured/judged axis scoring)
+               style.py   (Style Extraction: fingerprint / build_profile / style_match)
+               brand_extract.py   (Brand Builder: kit / voice suggestions /
+                                   vocabulary / site claims / draft / compare)
+data/          persona_linh.json brand_mocbrew.yaml facts_lorebook.json
+               craft_library.json exemplars.json domain_glossary.json   (Layer 4)
+               model_golden.json   (model-written drafts + expected scores, P2a)
+               style_samples_mocbrew.json   (3 original samples for the default profile)
+               style_profiles/mocbrew-blog-voice.json   (built-in Style Profile)
+               brand_drafts/   (Brand Builder drafts, gitignored)
+               quality_profiles/   (custom Quality Profiles, gitignored)
+tests/         test_linter.py test_fact_check.py test_gates.py test_golden.py
+               test_mcp_server.py test_craft.py test_model_golden.py test_style.py
+               test_brand_extract.py   (Brand Builder: kit/voice/claims/drafts/compare/MCP)
+               test_quality.py   (Quality Profile + unified gate parity)
+               fixtures/dinhcao/ fixtures/som/   (two fictional coffee sites, HTML)
+mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 29 tools) — the host app's model is the writer, tools are the hands + referee
+test_mcp_client.py   end-to-end MCP client test over stdio (22 checks)
+test_mcp_http.py     MCP HTTP smoke test (server on a test port, tools/list + get_quality_profile)
+fetch_sample.py      CLI helper: URL -> plain text for Style Extraction (server stays offline)
+fetch_site.py        CLI helper: site URL -> pages + html_meta for the Brand Builder (server stays offline)
+build_default_style_profile.py   rebuilds data/style_profiles/mocbrew-blog-voice.json
+demo_mcp_e2e.py      end-to-end demo: Muse-written product draft through all gates
+demo_mcp_e2e_v2.py   same brief rewritten with Layer 4 craft (craft 85 -> 100)
+demo_brand_builder.py   Brand Builder demo on the fixture sites (draft + refusal + compare)
+drafts/              draft state JSON files created by the MCP tools (gitignored)
+run_golden.py  run_model_golden.py  requirements.txt
+```

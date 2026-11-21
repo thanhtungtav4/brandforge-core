@@ -1,0 +1,145 @@
+{
+  "id": "mocbrew-blog-voice",
+  "name": "Mộc Brew Blog Voice",
+  "brand_id": "moc-brew",
+  "created_from": {
+    "sample_count": 3,
+    "total_words": 829
+  },
+  "fingerprint": {
+    "word_count": 829,
+    "sentence_count": 61,
+    "sentence_len": {
+      "median": 13.0,
+      "mean": 13.59,
+      "stdev": 8.72
+    },
+    "short_sentence_share": 0.28,
+    "long_sentence_share": 0.26,
+    "paragraph_len_median": 61.0,
+    "question_rate": 0.0,
+    "exclamation_rate": 0.0,
+    "first_person_rate": 3.5,
+    "reader_rate": 1.93,
+    "number_density": 0.36,
+    "transition_freq": [
+      {
+        "term": "nhưng",
+        "count": 3
+      },
+      {
+        "term": "đầu tiên",
+        "count": 1
+      }
+    ],
+    "type_token_ratio": 0.37,
+    "top_words": [
+      {
+        "word": "mình",
+        "count": 29
+      },
+      {
+        "word": "bạn",
+        "count": 16
+      },
+      {
+        "word": "rang",
+        "count": 16
+      },
+      {
+        "word": "hạt",
+        "count": 15
+      },
+      {
+        "word": "tuần",
+        "count": 11
+      },
+      {
+        "word": "thứ",
+        "count": 9
+      },
+      {
+        "word": "mẻ",
+        "count": 9
+      },
+      {
+        "word": "ngày",
+        "count": 8
+      },
+      {
+        "word": "sáng",
+        "count": 7
+      },
+      {
+        "word": "phin",
+        "count": 7
+      },
+      {
+        "word": "chờ",
+        "count": 7
+      },
+      {
+        "word": "giờ",
+        "count": 7
+      },
+      {
+        "word": "đầu",
+        "count": 6
+      },
+      {
+        "word": "mới",
+        "count": 6
+      },
+      {
+        "word": "uống",
+        "count": 6
+      }
+    ]
+  },
+  "consistency_warnings": [],
+  "qualitative": {
+    "tone_traits": [
+      {
+        "trait": "kể chuyện trước, kết luận sau",
+        "do": "mở bằng một cảnh thật ở văn phòng rồi mới rút ra ý",
+        "dont": "mở bằng định nghĩa hay khẩu hiệu"
+      },
+      {
+        "trait": "nói thẳng về tiền và thời gian",
+        "do": "nêu giá, ngày rang, ngày giao ngay khi nhắc tới sản phẩm",
+        "dont": "vòng vo kiểu 'giá liên hệ' hay hứa hẹn chung chung"
+      },
+      {
+        "trait": "hóm nhẹ, không cợt nhả",
+        "do": "chọc nhẹ thói quen pha cà phê của dân văn phòng",
+        "dont": "mỉa mai khách hàng hay chạy theo meme"
+      }
+    ],
+    "opening_patterns": [
+      "Mở bằng một khoảnh khắc cụ thể của buổi sáng ở văn phòng",
+      "Mở bằng một câu hỏi khách hay hỏi, rồi trả lời ngắn gọn trước"
+    ],
+    "closing_patterns": [
+      "Kết bằng một hành động nhỏ bạn có thể làm ngay sáng mai",
+      "Kết bằng lời khuyên ngược kỳ vọng: đừng mua nhiều, bắt đầu bằng một gói"
+    ],
+    "signature_devices": [
+      "Câu ngắn 3-6 chữ chen giữa đoạn dài để ngắt nhịp (ví dụ: 'Chậm. Rất chậm.')",
+      "Chi tiết cảm quan cụ thể thay tính từ: tiếng phin nhỏ giọt, mùi caramel, bọt nở",
+      "Con số thật thay lời khen: 185.000đ, 250g, 2-3 ngày"
+    ],
+    "stance": "Người rang bán cà phê cho dân văn phòng, đứng về phía người uống bận rộn: thà nói rõ giới hạn (chỉ rang thứ Ba, giao 2-3 ngày) còn hơn hứa quá tay.",
+    "never_do": [
+      "Không dùng tính từ rỗng kiểu ngon tuyệt vời, hoàn hảo",
+      "Không hứa tác dụng sức khỏe từ cà phê",
+      "Không mở bài bằng định nghĩa sách giáo khoa",
+      "Không kết bài bằng khẩu hiệu bán hàng"
+    ]
+  },
+  "exemplars": [
+    "Sáng nào mình cũng bắt đầu bằng một cái phin. Không phải vì cầu kỳ. Vì cái phin bắt mình chờ.",
+    "Khách hay hỏi sao không rang mỗi ngày cho hạt lúc nào cũng mới. Câu trả lời ngắn gọn là: vì mình không muốn bán hạt cũ dưới cái mác mới.",
+    "Văn phòng của bạn không cần một quầy pha chế. Thật đấy. Bạn cần một gói hạt hợp gu, một cái phin, và một thói quen nhỏ lặp lại được mỗi sáng."
+  ],
+  "excerpts_note": "excerpts stored from the samples (user's own / licensed texts)"
+}

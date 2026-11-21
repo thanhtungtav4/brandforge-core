@@ -1,0 +1,214 @@
+"""Load the 3 separate data layers: Persona (Card V2) / Brand (YAML) / Facts (lorebook JSON)."""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import yaml
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+
+def load_persona(path: Path | None = None) -> dict:
+    return json.loads((path or DATA_DIR / "persona_linh.json").read_text(encoding="utf-8"))
+
+
+def load_brand(path: Path | None = None) -> dict:
+    return yaml.safe_load((path or DATA_DIR / "brand_mocbrew.yaml").read_text(encoding="utf-8"))
+
+
+def load_facts(path: Path | None = None) -> dict:
+    return json.loads((path or DATA_DIR / "facts_lorebook.json").read_text(encoding="utf-8"))
+
+
+# --- Layer 4: Craft & Domain Library (separate from Persona/Brand/Facts) ---
+
+def load_craft_library(path: Path | None = None) -> dict:
+    return json.loads((path or DATA_DIR / "craft_library.json").read_text(encoding="utf-8"))
+
+
+def load_exemplars(path: Path | None = None) -> dict:
+    return json.loads((path or DATA_DIR / "exemplars.json").read_text(encoding="utf-8"))
+
+
+def load_domain_glossary(path: Path | None = None) -> dict:
+    return json.loads((path or DATA_DIR / "domain_glossary.json").read_text(encoding="utf-8"))
+
+
+# --- Style profiles (Style Extraction) ---
+# ALL file IO for style profiles lives HERE, in loaders.py — the same rule
+# the MCP server follows for drafts. content_core/style.py is pure
+# computation (fingerprint / build / match) and never touches the disk;
+# mcp_server.py persists profiles only through these helpers.
+# Profiles live in data/style_profiles/<id>.json; tests point
+# CONTENT_CORE_STYLE_PROFILES_DIR at a tmp dir, like CONTENT_CORE_DRAFTS_DIR.
+
+DEFAULT_STYLE_PROFILE_ID = "mocbrew-blog-voice"
+
+
+def style_profiles_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_STYLE_PROFILES_DIR")
+    return Path(override) if override else DATA_DIR / "style_profiles"
+
+
+def _style_profile_path(profile_id: str) -> Path:
+    safe = "".join(c for c in profile_id if c.isalnum() or c in "-_")
+    if not safe:
+        raise ValueError("invalid profile_id")
+    return style_profiles_dir() / f"{safe}.json"
+
+
+def save_style_profile(profile: dict) -> dict:
+    """Persist a profile dict (must carry an 'id'). Returns the profile."""
+    style_profiles_dir().mkdir(parents=True, exist_ok=True)
+    _style_profile_path(profile["id"]).write_text(
+        json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
+    return profile
+
+
+def load_style_profile(profile_id: str) -> dict | None:
+    """Return the stored profile, or None when no such profile exists."""
+    path = _style_profile_path(profile_id)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def list_style_profiles() -> list[dict]:
+    """Summaries of every stored profile: id, name, brand, sample stats."""
+    d = style_profiles_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        try:
+            p = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        out.append({"id": p.get("id", path.stem), "name": p.get("name", ""),
+                    "brand_id": p.get("brand_id", ""),
+                    "sample_count": p.get("created_from", {}).get("sample_count", 0),
+                    "total_words": p.get("created_from", {}).get("total_words", 0)})
+    return out
+
+
+# --- Brand drafts (Brand Builder) ---
+# Same pattern as style profiles: ALL file IO for brand drafts lives HERE.
+# content_core/brand_extract.py is pure computation; mcp_server.py persists
+# drafts only through these helpers. Drafts live in
+# data/brand_drafts/<brand-id>.json; tests point
+# CONTENT_CORE_BRAND_DRAFTS_DIR at a tmp dir, like the profiles dir.
+
+def brand_drafts_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_BRAND_DRAFTS_DIR")
+    return Path(override) if override else DATA_DIR / "brand_drafts"
+
+
+def _brand_draft_path(draft_id: str) -> Path:
+    safe = "".join(c for c in draft_id if c.isalnum() or c in "-_")
+    if not safe:
+        raise ValueError("invalid draft_id")
+    return brand_drafts_dir() / f"{safe}.json"
+
+
+def save_brand_draft(draft: dict) -> dict:
+    """Persist a brand draft dict (keyed by draft['brand']['id']).
+    Returns the draft."""
+    brand_drafts_dir().mkdir(parents=True, exist_ok=True)
+    _brand_draft_path(draft["brand"]["id"]).write_text(
+        json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
+    return draft
+
+
+def load_brand_draft(draft_id: str) -> dict | None:
+    """Return the stored brand draft, or None when it does not exist."""
+    path = _brand_draft_path(draft_id)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def list_brand_drafts() -> list[dict]:
+    """Summaries of every stored brand draft: id, name, source, status."""
+    d = brand_drafts_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        try:
+            draft = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        brand = draft.get("brand", {})
+        out.append({"id": brand.get("id", path.stem),
+                    "name": brand.get("name", ""),
+                    "source_type": brand.get("source_type", ""),
+                    "review_status": brand.get("review_status", ""),
+                    "source_urls": brand.get("source_urls", [])})
+    return out
+
+
+# --- Quality profiles (Quality Profile gate layer) ---
+# Same pattern as style profiles: ALL file IO for quality profiles lives
+# HERE. content_core/quality.py is pure computation + validation and never
+# touches the disk; mcp_server.py persists profiles only through these
+# helpers. Profiles live in data/quality_profiles/<id>.json; tests point
+# CONTENT_CORE_QUALITY_PROFILES_DIR at a tmp dir, like the other dirs.
+
+def quality_profiles_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_QUALITY_PROFILES_DIR")
+    return Path(override) if override else DATA_DIR / "quality_profiles"
+
+
+def _quality_profile_path(profile_id: str) -> Path:
+    safe = "".join(c for c in profile_id if c.isalnum() or c in "-_")
+    if not safe:
+        raise ValueError("invalid profile_id")
+    return quality_profiles_dir() / f"{safe}.json"
+
+
+def save_quality_profile(profile: dict) -> dict:
+    """Persist a quality profile dict (must carry an 'id'). Returns it."""
+    quality_profiles_dir().mkdir(parents=True, exist_ok=True)
+    _quality_profile_path(profile["id"]).write_text(
+        json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
+    return profile
+
+
+def load_quality_profile(profile_id: str) -> dict | None:
+    """Return the stored quality profile, or None when it does not exist."""
+    path = _quality_profile_path(profile_id)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def list_quality_profiles() -> list[dict]:
+    """Summaries of every stored custom quality profile: id, format."""
+    d = quality_profiles_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        try:
+            p = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        out.append({"id": p.get("id", path.stem), "format": p.get("format", ""),
+                    "pass_total": p.get("pass_total")})
+    return out
+
+
+def banned_terms(brand: dict) -> list[str]:
+    return [str(t).lower() for t in brand["voice"]["banned_terms"]]
+
+
+def prohibited_claims(brand: dict) -> list[str]:
+    return [str(t).lower() for t in brand["voice"].get("prohibited_claims", [])]
+
+
+def median_range(brand: dict, fmt: str) -> tuple[int, int]:
+    rules = brand["voice"]["sentence_rules"]
+    lo, hi = rules.get("median_words_by_format", {}).get(fmt, rules["median_words_default"])
+    return int(lo), int(hi)

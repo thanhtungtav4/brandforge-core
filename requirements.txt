@@ -1,0 +1,4 @@
+langgraph==1.2.24
+PyYAML==6.0.4
+pytest==9.2.0
+mcp==1.30.0

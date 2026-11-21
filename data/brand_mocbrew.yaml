@@ -1,0 +1,57 @@
+# Brand Voice — Mộc Brew (GIẢ LẬP, chỉ dùng để test core)
+# Lớp 2 trong 3 lớp: Persona (persona_linh.json) != Brand (file này) != Facts (facts_lorebook.json)
+brand:
+  id: moc-brew
+  name: Mộc Brew
+  simulated: true
+  version: 1
+  review_date: 2026-11-21
+  knowledge_collection: mocbrew-facts   # facts nằm ở data/facts_lorebook.json, KHÔNG nằm trong file voice này
+
+voice:
+  traits:
+    - { dimension: directness, position: "nói thẳng", do: "nêu giá và fact trước lợi ích", dont: "hype hoặc dùng tính từ superlative" }
+    - { dimension: formality, position: "thân thiện, gọn", do: "xưng mình, gọi bạn", dont: "dùng văn phong trang trọng kiểu công văn" }
+  pov: first-person-minh
+  reader_address: bạn
+  # Quy tắc ĐO ĐƯỢC — linter trong code kiểm tra đúng các số này
+  sentence_rules:
+    median_words_default: [11, 14]
+    median_words_by_format:
+      blog: [11, 14]
+      product: [11, 14]
+      comparison: [11, 14]
+      social: [5, 14]
+      email: [8, 14]
+    max_sentence_words: 25
+  formatting_rules:
+    - "blog: không dùng dấu chấm than"
+  banned_terms:
+    - elevate
+    - curated
+    - game-changing
+    - leverage
+    - delve
+    - seamless
+    - "tốt nhất Việt Nam"
+    - "100% chữa mất ngủ"
+    - "đẳng cấp thế giới"
+  prohibited_claims:
+    - "100% chữa mất ngủ"
+    - "tốt nhất Việt Nam"
+    - "đẳng cấp thế giới"
+    - "chữa mất ngủ"
+    - "trị bệnh"
+
+examples:
+  - format: blog_intro
+    text: "Một gói 250g có giá 185.000đ trước khi nói tới hương vị. Mộc Brew rang vào thứ Ba hàng tuần, bạn nhận hạt còn mới, pha tại bàn làm việc vẫn gọn và nhanh."
+    why_it_works: "giá và lịch rang nói trước, câu ngắn, không hype"
+anti_examples:
+  - bad: "Trải nghiệm cà phê đẳng cấp thế giới, elevate buổi sáng của bạn!"
+    good: "Hạt rang thứ Ba hàng tuần. Bạn pha phin hoặc V60 đều rõ vị."
+    reason: "bỏ superlative và từ cấm, thay bằng fact kiểm chứng được"
+
+claims_and_guardrails:
+  requires_evidence: ["mọi số liệu", "mọi khẳng định về sức khỏe", "mọi so sánh với đối thủ"]
+  unsupported_claim_marker: "[NEEDS SOURCE]"

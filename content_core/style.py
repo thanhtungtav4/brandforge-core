@@ -1,0 +1,414 @@
+"""Style Extraction — a writing-style fingerprint measured from samples.
+
+The user pastes links/texts whose voice they like; this module turns those
+samples into a **Style Profile**:
+
+- a DETERMINISTIC fingerprint — code measures, never guesses (sentence
+  length median AND spread/burstiness, short/long sentence share, question
+  and first-person rates, number density, transition habits, vocabulary
+  richness);
+- a QUALITATIVE schema — tone traits, opening/closing patterns, signature
+  devices, stance, never-do list. Code only defines, validates and stores
+  these fields; a MODEL fills them in after actually reading the samples;
+- optionally, short exemplar passages taken from the samples.
+
+COPYRIGHT RULE: excerpts are stored ONLY when the caller explicitly passes
+store_excerpts=True, which is reserved for the user's OWN or licensed
+samples. The default is False: for other people's writing we keep the
+distilled traits and the measured fingerprint, never their passages.
+
+Persistence is NOT here: all style-profile file IO lives in loaders.py
+(load_style_profile / list_style_profiles / save_style_profile).
+"""
+from __future__ import annotations
+
+import hashlib
+import re
+import statistics
+import unicodedata
+from collections import Counter
+
+from .linter import split_sentences
+
+# ---------------------------------------------------------------------------
+# Constants (documented thresholds — tune here, nowhere else)
+# ---------------------------------------------------------------------------
+
+#: Cross-sample coefficient of variation (pstdev / mean) above which a key
+#: metric is considered divergent — the classic "mixed authors" signal.
+DIVERGENCE_CV = 0.35
+
+#: Below this many total sample words a fingerprint is shaky.
+MIN_RELIABLE_WORDS = 800
+
+#: Recommended sample count (from ONE author / one voice).
+RECOMMENDED_SAMPLES = "3-5"
+
+#: VN transition / discourse markers whose frequency is part of the voice.
+TRANSITIONS = ["tuy nhiên", "nhưng", "vì vậy", "thực ra", "hóa ra",
+               "đầu tiên", "sau đó", "cuối cùng", "ví dụ", "nói cách khác",
+               "tóm lại", "đặc biệt", "nhất là"]
+
+#: First-person markers (counted on tokens, bigrams first).
+_FIRST_PERSON_BIGRAMS = {("chúng", "mình"), ("chúng", "tôi")}
+_FIRST_PERSON_SINGLES = {"mình", "tôi", "ta"}
+
+#: Small built-in VN stopword list for top_words (function words carry no
+#: voice signal; content words do).
+STOPWORDS = {
+    "và", "của", "là", "có", "cho", "các", "những", "này", "đó", "được",
+    "khi", "với", "trong", "một", "không", "đã", "sẽ", "thì", "mà", "ở",
+    "trên", "để", "từ", "theo", "vào", "ra", "lên", "xuống", "cũng", "rất",
+    "nhiều", "việc", "làm", "đi", "đến", "về", "lại", "hơn", "như", "nếu",
+    "vì", "nên", "nhưng", "còn", "hay", "hoặc", "tại", "bằng", "qua", "sau",
+    "trước", "mỗi", "từng", "cái", "con", "sự", "bị", "đang", "chúng",
+    "người", "gì", "nào", "ai", "đâu", "sao", "bao", "nhiêu", "khi",
+    "thế", "vậy", "ấy", "kia", "nọ", "rồi", "nhé", "nhỉ", "ạ", "ơi",
+    "chỉ", "vẫn", "đều", "cả", "hết", "tới", "nữa", "thôi", "thật",
+}
+
+_WORD_RE = re.compile(r"[a-zà-ỹ0-9]+")
+
+#: The qualitative schema a model fills in after reading the samples.
+#: Unknown keys are IGNORED on build (documented choice: forward-compatible
+#: with newer model outputs); missing keys default to empty.
+QUALITATIVE_FIELDS = ["tone_traits", "opening_patterns", "closing_patterns",
+                      "signature_devices", "stance", "never_do"]
+
+
+def _tokens(text: str) -> list[str]:
+    return _WORD_RE.findall(text.lower())
+
+
+def _round(x: float) -> float:
+    return round(float(x), 2)
+
+
+# ---------------------------------------------------------------------------
+# Fingerprint — deterministic, code measures everything
+# ---------------------------------------------------------------------------
+
+def fingerprint(text: str) -> dict:
+    """Measure the style fingerprint of ONE text.
+
+    Rates are documented per field: question/exclamation rate is per 100
+    SENTENCES; first-person / reader / number density are per 100 WORDS;
+    shares are fractions (0-1). Sentence stats use the population stdev
+    (statistics.pstdev) so a single-sentence text has stdev 0.
+    Paragraphs split on blank lines; when the text has no blank lines,
+    sentences are grouped into chunks of 3 as pseudo-paragraphs.
+    """
+    sentences = split_sentences(text)
+    lengths = [len(s.split()) for s in sentences]
+    ws_tokens = text.split()
+    word_count = len(ws_tokens)
+    tokens = _tokens(text)
+
+    if lengths:
+        sl = {"median": _round(statistics.median(lengths)),
+              "mean": _round(statistics.fmean(lengths)),
+              "stdev": _round(statistics.pstdev(lengths))}
+        short_share = _round(sum(1 for n in lengths if n <= 6) / len(lengths))
+        long_share = _round(sum(1 for n in lengths if n >= 20) / len(lengths))
+    else:
+        sl = {"median": 0.0, "mean": 0.0, "stdev": 0.0}
+        short_share = long_share = 0.0
+
+    # Paragraphs: blank-line split, else sentence groups of 3.
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(paragraphs) >= 2:
+        para_lengths = [len(p.split()) for p in paragraphs]
+    elif sentences:
+        para_lengths = [sum(len(s.split()) for s in sentences[i:i + 3])
+                        for i in range(0, len(sentences), 3)]
+    else:
+        para_lengths = []
+    paragraph_len_median = _round(statistics.median(para_lengths)) if para_lengths else 0.0
+
+    n_sent = len(sentences) or 1
+    per100w = (100.0 / word_count) if word_count else 0.0
+
+    # First person: scan tokens, bigrams ("chúng mình") before singles.
+    # "người ta" is generic third person, NOT first person — its "ta" is
+    # never counted.
+    fp = 0
+    i = 0
+    while i < len(tokens):
+        if i + 1 < len(tokens) and (tokens[i], tokens[i + 1]) in _FIRST_PERSON_BIGRAMS:
+            fp += 1
+            i += 2
+            continue
+        if tokens[i] in _FIRST_PERSON_SINGLES:
+            if not (tokens[i] == "ta" and i > 0 and tokens[i - 1] == "người"):
+                fp += 1
+        i += 1
+
+    low = text.lower()
+    transition_counts = {t: low.count(t) for t in TRANSITIONS}
+    transition_freq = [{"term": t, "count": c} for t, c in
+                       sorted(transition_counts.items(), key=lambda kv: -kv[1]) if c > 0]
+
+    content_words = [t for t in tokens if t not in STOPWORDS and not t.isdigit()]
+    top_words = [{"word": w, "count": c} for w, c in Counter(content_words).most_common(15)]
+    ttr = _round(len(set(tokens)) / len(tokens)) if tokens else 0.0
+
+    return {
+        "word_count": word_count,
+        "sentence_count": len(sentences),
+        "sentence_len": sl,
+        "short_sentence_share": short_share,
+        "long_sentence_share": long_share,
+        "paragraph_len_median": paragraph_len_median,
+        "question_rate": _round(text.count("?") / n_sent * 100),
+        "exclamation_rate": _round(text.count("!") / n_sent * 100),
+        "first_person_rate": _round(fp * per100w),
+        "reader_rate": _round(tokens.count("bạn") * per100w),
+        "number_density": _round(sum(1 for t in ws_tokens if any(ch.isdigit() for ch in t)) * per100w),
+        "transition_freq": transition_freq,
+        "type_token_ratio": ttr,
+        "top_words": top_words,
+    }
+
+
+def _metric(fp: dict, name: str) -> float:
+    if name == "sentence_median":
+        return fp["sentence_len"]["median"]
+    if name == "sentence_stdev":
+        return fp["sentence_len"]["stdev"]
+    return float(fp[name])
+
+
+_KEY_METRICS = ["sentence_median", "sentence_stdev", "first_person_rate"]
+
+
+def analyze_samples(samples: list[str]) -> dict:
+    """Fingerprint each sample + the aggregate, with a consistency report.
+
+    The aggregate is computed over the concatenated samples (paragraph-joined).
+    Consistency: for the key metrics (sentence median, sentence stdev,
+    first-person rate) the cross-sample coefficient of variation
+    (pstdev/mean) is compared against DIVERGENCE_CV — above it, the samples
+    probably do not come from one voice.
+    """
+    samples = [s for s in samples if s and s.strip()]
+    per_sample = [fingerprint(s) for s in samples]
+    aggregate = fingerprint("\n\n".join(samples)) if samples else fingerprint("")
+
+    warnings: list[str] = []
+    if len(samples) < 3:
+        warnings.append(
+            f"only {len(samples)} sample(s) — {RECOMMENDED_SAMPLES} samples "
+            f"from ONE author recommended")
+    total_words = aggregate["word_count"]
+    if total_words < MIN_RELIABLE_WORDS:
+        warnings.append(
+            f"total words {total_words} < {MIN_RELIABLE_WORDS} — "
+            f"fingerprint may be unreliable")
+
+    divergence: dict[str, float] = {}
+    if len(per_sample) >= 2:
+        for name in _KEY_METRICS:
+            values = [_metric(fp, name) for fp in per_sample]
+            mean = statistics.fmean(values)
+            if mean > 0:
+                cv = statistics.pstdev(values) / mean
+                divergence[name] = _round(cv)
+                if cv > DIVERGENCE_CV:
+                    warnings.append(
+                        f"samples diverge on {name} "
+                        f"(CV {divergence[name]} > {DIVERGENCE_CV}) — "
+                        f"possibly mixed authors")
+
+    return {"sample_count": len(samples),
+            "per_sample": per_sample,
+            "fingerprint": aggregate,
+            "consistency": {"divergence_cv": divergence,
+                            "warnings": warnings}}
+
+
+# ---------------------------------------------------------------------------
+# Profile building — code validates/stores; the MODEL supplies `qualitative`
+# ---------------------------------------------------------------------------
+
+def _slugify(name: str) -> str:
+    nfkd = unicodedata.normalize("NFD", name.lower().replace("đ", "d"))
+    ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "-", ascii_only).strip("-") or "style"
+
+
+def _validate_qualitative(qualitative: dict | None) -> dict:
+    """Keep only QUALITATIVE_FIELDS (unknown keys ignored); missing keys
+    default to empty. tone_traits entries are normalized to {trait, do, dont}."""
+    q = qualitative or {}
+    out: dict = {}
+    for field in QUALITATIVE_FIELDS:
+        value = q.get(field)
+        if field == "tone_traits":
+            traits = []
+            for item in value or []:
+                if isinstance(item, dict):
+                    traits.append({"trait": str(item.get("trait", "")),
+                                   "do": str(item.get("do", "")),
+                                   "dont": str(item.get("dont", ""))})
+                elif item:
+                    traits.append({"trait": str(item), "do": "", "dont": ""})
+            out[field] = traits
+        elif field == "stance":
+            out[field] = str(value or "")
+        else:
+            out[field] = [str(v) for v in (value or [])]
+    return out
+
+
+def _passages(text: str) -> list[str]:
+    """Candidate passages of one sample: its paragraphs, or — when it has no
+    blank lines — sentence groups, each trimmed to <=120 words at a sentence
+    boundary (hard word-truncation only if a single sentence exceeds 120)."""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(paragraphs) < 2:
+        sentences = split_sentences(text)
+        paragraphs = [" ".join(sentences[i:i + 4]) for i in range(0, len(sentences), 4)]
+    out = []
+    for para in paragraphs:
+        words = para.split()
+        if len(words) <= 120:
+            out.append(para)
+            continue
+        kept, count = [], 0
+        for sentence in split_sentences(para):
+            n = len(sentence.split())
+            if count + n > 120:
+                break
+            kept.append(sentence)
+            count += n
+        out.append(" ".join(kept) if kept else " ".join(words[:120]))
+    return [p for p in out if p.strip()]
+
+
+def build_profile(name: str, samples: list[str], qualitative: dict | None = None,
+                  store_excerpts: bool = False, brand_id: str = "moc-brew",
+                  profile_id: str | None = None) -> dict:
+    """Build a Style Profile dict from samples + model-filled qualitative.
+
+    COPYRIGHT RULE: `store_excerpts` defaults to False — exemplar passages
+    from the samples are stored ONLY when the samples are the user's own or
+    licensed. Otherwise `exemplars` is [] and `excerpts_note` says so.
+    `profile_id` overrides the generated id (slug + content hash), used for
+    the shipped default profile.
+    """
+    samples = [s for s in samples if s and s.strip()]
+    analysis = analyze_samples(samples)
+    digest = hashlib.sha1("\n".join(samples).encode("utf-8")).hexdigest()[:6]
+    pid = profile_id or f"{_slugify(name)}-{digest}"
+
+    exemplars: list[str] = []
+    if store_excerpts:
+        for sample in samples:
+            if len(exemplars) >= 3:
+                break
+            passages = _passages(sample)
+            if passages:
+                exemplars.append(passages[0])
+
+    return {
+        "id": pid,
+        "name": name,
+        "brand_id": brand_id,
+        "created_from": {"sample_count": len(samples),
+                         "total_words": analysis["fingerprint"]["word_count"]},
+        "fingerprint": analysis["fingerprint"],
+        "consistency_warnings": analysis["consistency"]["warnings"],
+        "qualitative": _validate_qualitative(qualitative),
+        "exemplars": exemplars,
+        "excerpts_note": ("excerpts stored from the samples (user's own / "
+                          "licensed texts)" if store_excerpts else
+                          "excerpts not stored — fingerprint + distilled "
+                          "traits only (default; use store_excerpts=True "
+                          "only for your own/licensed samples)"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# style_match — how close is a draft to the profile voice?
+# ---------------------------------------------------------------------------
+
+def _within(metric: str, profile_value: float, draft_value: float) -> bool:
+    """Range rule per metric (documented, symmetric):
+    - sentence_median: within ±35% of profile OR ±3 words, whichever larger.
+    - sentence_stdev (burstiness): draft/profile ratio within [0.5, 2.0];
+      a zero profile stdev requires a near-zero draft stdev (<= 0.5).
+    - shares (0-1 fractions): within ±50% OR 0.05 absolute, whichever larger.
+    - rates (per 100 words): within ±50% OR 0.5 absolute, whichever larger.
+    """
+    if metric == "sentence_median":
+        return abs(draft_value - profile_value) <= max(0.35 * profile_value, 3.0)
+    if metric == "sentence_stdev":
+        if profile_value <= 0:
+            return draft_value <= 0.5
+        return 0.5 <= draft_value / profile_value <= 2.0
+    if metric == "short_sentence_share":
+        return abs(draft_value - profile_value) <= max(0.5 * profile_value, 0.05)
+    return abs(draft_value - profile_value) <= max(0.5 * profile_value, 0.5)
+
+
+_ADVICE = {
+    "sentence_median": (
+        lambda p, d: (f"sentences run longer than the sample voice "
+                      f"(median {d} vs ~{p} words): split and shorten sentences"
+                      if d > p else
+                      f"sentences are shorter than the sample voice "
+                      f"(median {d} vs ~{p} words): let some sentences breathe longer")),
+    "sentence_stdev": (
+        lambda p, d: ("draft sentences too uniform: mix in short 3-6 word "
+                      "sentences and some longer ones — burstiness is the "
+                      "sample voice's human signature"
+                      if d < p else
+                      "draft rhythm swings wider than the sample voice: "
+                      "even out the extreme sentence lengths")),
+    "short_sentence_share": (
+        lambda p, d: ("add short punchy sentences (≤6 words) — the samples "
+                      "use them to break the rhythm"
+                      if d < p else
+                      "too many fragments: merge some short sentences")),
+    "first_person_rate": (
+        lambda p, d: ("the sample voice says 'mình/tôi' more: write in "
+                      "first person more often"
+                      if d < p else
+                      "more first person than the samples: pull back the 'mình/tôi'")),
+    "reader_rate": (
+        lambda p, d: ("address the reader as 'bạn' more often, like the samples"
+                      if d < p else
+                      "you address 'bạn' more than the samples do: ease off")),
+    "number_density": (
+        lambda p, d: ("the samples are more concrete: add specific numbers "
+                      "and measurable details"
+                      if d < p else
+                      "more numbers than the sample voice: drop some figures")),
+}
+
+_MATCH_METRICS = ["sentence_median", "sentence_stdev", "short_sentence_share",
+                  "first_person_rate", "reader_rate", "number_density"]
+_KEY_MATCH = {"sentence_median", "sentence_stdev"}
+
+
+def style_match(text: str, profile: dict) -> dict:
+    """Compare a draft's fingerprint against a Style Profile.
+
+    Score: start 100, −15 per out-of-range KEY metric (sentence median,
+    sentence stdev/burstiness), −8 per other out-of-range metric, floor 0.
+    Advisory signal — it measures closeness to the sample voice, it does
+    not judge whether the draft is good.
+    """
+    draft_fp = fingerprint(text)
+    prof_fp = profile.get("fingerprint", {})
+    metrics, advice, score = [], [], 100.0
+    for name in _MATCH_METRICS:
+        pv = _metric(prof_fp, name) if prof_fp else 0.0
+        dv = _metric(draft_fp, name)
+        ok = _within(name, pv, dv)
+        metrics.append({"metric": name, "profile_value": pv,
+                        "draft_value": dv, "within_range": ok})
+        if not ok:
+            score -= 15 if name in _KEY_MATCH else 8
+            advice.append(_ADVICE[name](pv, dv))
+    return {"score": max(0.0, score), "metrics": metrics, "advice": advice}

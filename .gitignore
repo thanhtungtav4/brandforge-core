@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+.pytest_cache/
+drafts/
+data/brand_drafts/
+.env
+*.env
+data/quality_profiles/
