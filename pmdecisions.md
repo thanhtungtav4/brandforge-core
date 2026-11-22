@@ -50,3 +50,21 @@
 - Spec section 12, questions 2 and 3 are marked resolved with these answers.
 - The P3 data contract must include: a system-level corpus registry (id + version), and a per-brand corpus choice recorded in the research pack.
 - The Astryx checklist UI is a per-item review surface; no bulk-approve control is to be built.
+
+## 2026-11-22 — Article images: search real photos, vet, then AI-edit; generation becomes the last resort
+
+**Decision:** The image fulfilment chain gains a search path between the brand library and AI generation, specified in `specs/image-search-edit-feature.md`. Per slot, the order becomes: brand library, then search real photos from license-clear sources on a per-brand allowlist, then vision vetting of candidates, then AI editing of the chosen photo (crop, colour and light grading toward the brand's visual style, background cleanup; never regenerating the photo and never altering the product in it), then the existing vision check on the result. Generation from scratch drops to last resort, runs only on an explicit exhausted-search flag, and is marked as generated in the manifest. Build is deferred; the current image layer is unchanged until Smith greenlights a build round.
+
+**Context:** Smith reviewed the generated image set for the Mắm Bà Giáo Khỏe intro article (all 6 slots generated, because the brand library was empty) and judged the output in his own words: the flow should be "tìm kiếm ảnh, về nhận diện ảnh rồi dùng AI tinh chỉnh lại để bám sát hơn" instead of generating, because generated images "nhìn AI quá" (look too AI). The brands brandforge serves sell food and physical products to readers who judge authenticity from photos, so a synthetic look costs reader trust in the product itself. Asked to choose between building immediately and recording the decision plus spec first, Smith chose spec first.
+
+**Options considered:**
+1. Keep library-then-generation (status quo) — rejected by Smith on the evidence of the v4 image set: the output reads as AI-generated on a food shop's article.
+2. Search, vet, then AI-edit real photos; generation last (chosen) — keeps the photo real, uses editing only to pull it toward the slot's ratio and the brand's visual style, and reuses the existing vision-check layer as the gate on the result.
+3. Search and use photos unedited — rejected: unedited stock clashes with the brand's visual style from image to image, which is the same set-consistency problem the style lock already solves for generated images.
+
+**Trade-offs accepted:** more steps per article for slots the library cannot fill (search, vetting, editing, each capped and measured in the spec's first trial, with a 15-minute-per-article time guardrail), dependence on the host app's image-editing ability, which the project has not tested yet, and license bookkeeping per searched image, in exchange for photos that read as real. Legal discipline is part of the decision, not an add-on: allowlisted sources only, a license type from a fixed set recorded per image, unknown-license images rejected at registration, watermarked candidates rejected at vetting, and editing a watermark away is banned outright.
+
+**Consequences / next steps:**
+- Spec at `specs/image-search-edit-feature.md` defines the chain, the vetting record, the fixed edit-operation vocabulary with the product-truthfulness rule, and the manifest provenance fields (`origin`, `source_url`, `license_type`, `attribution_text`, `edit_ops`, `generated`). No code changes in this round.
+- First trial, when built, runs on Smith's own shop (brand `mambagiaokhoe`) and is decided by his blind scoring of edited photos against the existing generated set, per spec section 8.
+- Open items the spec leaves for Smith: the default stock-source allowlist, whether product-specific slots are library-only or library-then-generation, whether customer-sent photos count as user-supplied sources, and whether attribution-required licenses stay in the allowed set.
