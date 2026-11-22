@@ -157,8 +157,47 @@ def _require_stored_object(data: object, path: Path, kind: str,
     return data
 
 
+def personas_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_PERSONAS_DIR")
+    return Path(override) if override else DATA_DIR
+
+
 def load_persona(path: Path | None = None) -> dict:
-    return json.loads((path or DATA_DIR / "persona_linh.json").read_text(encoding="utf-8"))
+    return json.loads(
+        (path or personas_dir() / "persona_linh.json").read_text(encoding="utf-8"))
+
+
+def load_persona_by_id(persona_id: str) -> dict:
+    """Resolve a persona by id — the name a brief carries as
+    `persona_id` (the graph state's persona_id is the persona's NAME,
+    e.g. "Linh" / "An"). Resolution: the persona_<slug>.json file for
+    the slugified id, else any persona_*.json whose data.name matches
+    case-insensitively. An unknown id raises ValueError: the writer
+    tools must NEVER silently serve the default persona for a brief
+    that named another one (trial finding, 22 Nov 2026 — the mirror of
+    the facts store's never-borrow rule)."""
+    pid = str(persona_id or "").strip()
+    if not pid:
+        raise ValueError("persona_id must be a non-empty string")
+    direct = personas_dir() / f"persona_{slugify(pid)}.json"
+    if direct.exists():
+        return _require_stored_object(_load_json_file(direct), direct,
+                                      "persona", required="data")
+    for path in sorted(personas_dir().glob("persona_*.json")):
+        try:
+            card = _load_json_file(path)
+        except ValueError:
+            continue
+        if not isinstance(card, dict):
+            continue
+        data = card.get("data")
+        name = data.get("name") if isinstance(data, dict) else None
+        if isinstance(name, str) and name.casefold() == pid.casefold():
+            return _require_stored_object(card, path, "persona",
+                                          required="data")
+    raise ValueError(
+        f"unknown persona_id: {persona_id!r} — no stored persona card; "
+        f"refusing to fall back to the default persona")
 
 
 def load_brand(path: Path | None = None) -> dict:

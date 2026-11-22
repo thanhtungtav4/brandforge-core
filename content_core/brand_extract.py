@@ -55,7 +55,7 @@ from .linter import WORD_RE as _WORD_RE
 from .linter import normalize_for_match
 from .linter import split_sentences
 from .linter import word_tokens as _tokens
-from .loaders import load_brand, prohibited_claims
+from .loaders import load_brand, prohibited_claims, validate_visual
 from .loaders import slugify as _slugify
 from .style import STOPWORDS, fingerprint
 
@@ -207,6 +207,85 @@ def extract_brand_kit(pages: list[dict]) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Corpus cleaning — boilerplate filtering for voice statistics
+# ---------------------------------------------------------------------------
+# Fetched site text is block-structured (blank-line separated blocks).
+# The blocks that repeat verbatim across a site — nav, cart, hotline,
+# sidebar listings, footers — are CHROME, not the brand's voice; they
+# also carry no sentence punctuation, so measured raw they glue onto
+# real prose and poison every sentence statistic (trial bug 2: on
+# mambagiaokhoe.com 845 of 919 blocks were repeats, the raw sentence
+# median came out 33 against real prose ≈ 27, and the suggested band
+# [28, 30] was unusable without a manual operator edit). The
+# calibration round filtered table-like segments out of the linter's
+# sentence statistics; this is the same move one level up, applied to
+# the corpus the builder measures. Voice statistics (suggest_voice_
+# rules, the analyze fingerprint, compare mode) are computed on the
+# CLEANED text; the raw corpus stays available for fetch diagnostics
+# (site_corpus total_words / per-page counts are unchanged).
+
+#: Markers of legal/footer lines — boilerplate even when the block
+#: appears only once (a homepage-only legal footer is still chrome).
+_LEGAL_BOILERPLATE_MARKERS = ("©", "copyright", "bản quyền",
+                              "all rights reserved", "ghi rõ nguồn")
+
+#: A short block whose tokens are mostly generic web vocabulary is a
+#: nav/chrome label, not prose ("Trang chủ", "Giỏ hàng Giỏ hàng 0").
+#: The word bound keeps the rule away from real sentences: prose of
+#: <= 14 tokens that is >= 60% navigation vocabulary does not occur
+#: on the sites measured so far.
+_BOILERPLATE_MAX_WORDS = 14
+_BOILERPLATE_GENERIC_SHARE = 0.6
+
+
+def is_boilerplate_segment(segment: str) -> bool:
+    """True when a fetched-text block is page furniture, not prose:
+    it carries a legal/footer marker, or it is short (<= 14 tokens)
+    and mostly generic web vocabulary (see _GENERIC_WEB_WORDS).
+    Conservative by design — a block of real prose sentences is long
+    and content-dense, so it trips neither rule."""
+    low = (segment or "").lower()
+    if any(marker in low for marker in _LEGAL_BOILERPLATE_MARKERS):
+        return True
+    toks = _tokens(segment or "")
+    if 0 < len(toks) <= _BOILERPLATE_MAX_WORDS:
+        generic = sum(1 for t in toks if t in _GENERIC_WEB_WORDS)
+        return generic / len(toks) >= _BOILERPLATE_GENERIC_SHARE
+    return False
+
+
+def _segment_key(segment: str) -> str:
+    """Normalised identity of a block for repetition counting:
+    case- and whitespace-insensitive (fetchers vary both)."""
+    return " ".join((segment or "").lower().split())
+
+
+def clean_corpus_text(text: str) -> str:
+    """The PROSE-weighted view of a fetched corpus, for voice
+    statistics: boilerplate-like segments are removed entirely, and
+    every other verbatim-repeated block is kept ONCE (its first
+    occurrence). Nav/sidebar chrome repeats on every page by
+    construction, so counting it per page lets page furniture
+    outvote the brand's prose in every median and rate; genuine
+    prose blocks (post excerpts repeated on listing pages) stay
+    represented exactly once, so the sentence-length tail they carry
+    is not thinned either. Block order is preserved. A corpus with
+    no repeated/boilerplate blocks is returned block-for-block."""
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", text or "") if b.strip()]
+    seen: set[str] = set()
+    kept: list[str] = []
+    for block in blocks:
+        if is_boilerplate_segment(block):
+            continue
+        key = _segment_key(block)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(block)
+    return "\n\n".join(kept)
+
+
+# ---------------------------------------------------------------------------
 # Voice-rule suggestions — derived from the measured fingerprint
 # ---------------------------------------------------------------------------
 
@@ -282,17 +361,32 @@ def suggest_voice_rules(corpus_text: str, brand_name: str | None = None) -> dict
     - reader_address: "bạn" when reader_rate >= 0.8/100 words, else None.
     - exclamation: a high rate is reported as a review NOTE, never copied
       into formatting_rules — hype punctuation must be a deliberate choice.
+
+    The corpus is measured AFTER boilerplate filtering
+    (clean_corpus_text): repeated chrome blocks are deduped and
+    boilerplate-like segments excluded BEFORE the fingerprint and
+    POV statistics are computed, so fetched page furniture can no
+    longer set a brand's sentence band (trial bug 2). When filtering
+    removed anything, a formatting note says so. ONE statistic is
+    deliberately still derived from the RAW text: max_sentence_words
+    (see _derived_max_sentence — its p90 was designed for raw scraped
+    corpora in the calibration round, where the artefacts live in the
+    top decile the percentile discounts; deduping first would thin
+    the genuine excerpt tail and under-cap brands whose own posts
+    run long — CNM's derived 39 is the pinned evidence).
     """
-    fp = fingerprint(corpus_text or "")
+    raw_text = corpus_text or ""
+    corpus_text = clean_corpus_text(raw_text)
+    fp = fingerprint(corpus_text)
     median = fp["sentence_len"]["median"]
     lo = max(3, math.floor(median * 0.85)) if median else 11
     hi = min(30, math.ceil(median * 1.15)) if median else 14
     if hi <= lo:
         hi = lo + 2
-    max_sentence = _derived_max_sentence(corpus_text or "")
+    max_sentence = _derived_max_sentence(raw_text)
 
     fp_rate = fp["first_person_rate"]
-    subject_hits = (_brand_name_subject_hits(corpus_text or "", brand_name)
+    subject_hits = (_brand_name_subject_hits(corpus_text, brand_name)
                     if brand_name else 0)
     if fp_rate >= 1.5:
         pov = "first-person"
@@ -313,6 +407,13 @@ def suggest_voice_rules(corpus_text: str, brand_name: str | None = None) -> dict
                     f"in third person / by name")
 
     notes: list[str] = []
+    if corpus_text != raw_text:
+        notes.append(
+            "boilerplate filtering: repeated blocks were deduped to "
+            "one copy and boilerplate segments removed before "
+            "measuring — fetched chrome (nav, cart, sidebars, "
+            "footers) is not the brand's voice and must not set its "
+            "sentence band")
     excl = fp["exclamation_rate"]
     if excl >= 10:
         notes.append(
@@ -774,7 +875,15 @@ def draft_to_brand_yaml(draft: dict) -> str:
     REFUSES (ValueError) while any example/anti-example still carries
     competitor copy (see _blocks_conversion): competitor text must be
     replaced/paraphrased by the user first, and the passage's flag
-    then removed (or set to an explicit false)."""
+    then removed (or set to an explicit false).
+
+    The draft's `visual` section (the article-images style lock) is
+    carried through, validated via loaders.validate_visual (trial
+    bug 3: conversion used to drop it silently, so a brand approved
+    via YAML lost the style lock its draft carried). An invalid
+    visual raises the validator's ValueError NAMING the field —
+    failing loudly beats approving a brand whose images quietly lost
+    their style."""
     ref_only = _reference_only_entries(draft)
     if ref_only:
         raise ValueError(
@@ -835,6 +944,8 @@ def draft_to_brand_yaml(draft: dict) -> str:
         },
         "brand_kit": _sanitize_brand_kit(draft.get("brand_kit", {})),
     }
+    if draft.get("visual") is not None:
+        clean["visual"] = validate_visual(draft["visual"])
     return yaml.safe_dump(clean, allow_unicode=True, sort_keys=False,
                           default_flow_style=False)
 
@@ -916,7 +1027,11 @@ def compare_brand_voice(pages_a: list[dict], pages_b: list[dict]) -> dict:
     claim counts, brand kits, and `gaps` — observations generated in code
     from the measured deltas, never hardcoded prose."""
     corpus_a, corpus_b = site_corpus(pages_a), site_corpus(pages_b)
-    fp_a, fp_b = fingerprint(corpus_a["all_text"]), fingerprint(corpus_b["all_text"])
+    # Voice is compared on the PROSE of each site (trial bug 2):
+    # chrome-inflated sentence statistics would compare the two
+    # sites' page furniture, not their voices.
+    fp_a = fingerprint(clean_corpus_text(corpus_a["all_text"]))
+    fp_b = fingerprint(clean_corpus_text(corpus_b["all_text"]))
     ma, mb = _fp_metrics(fp_a), _fp_metrics(fp_b)
     metrics = {k: {"a": ma[k], "b": mb[k], "delta": round(mb[k] - ma[k], 2)}
                for k in ma}

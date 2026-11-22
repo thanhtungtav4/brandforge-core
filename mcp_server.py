@@ -63,6 +63,7 @@ from content_core.loaders import banned_terms as _brand_banned_terms
 from content_core.loaders import list_style_profiles as _list_style_profiles
 from content_core.loaders import list_facts_profiles as _list_facts_profiles
 from content_core.loaders import load_brand, load_facts, load_persona
+from content_core.loaders import load_persona_by_id as _load_persona_by_id
 from content_core.loaders import save_facts as _save_facts_file
 from content_core.loaders import validate_facts as _validate_facts
 from content_core.loaders import load_style_profile as _load_style_profile
@@ -74,6 +75,7 @@ from content_core.quality import get_profile as _quality_get_profile
 from content_core.quality import make_profile as _make_quality_profile
 from content_core.quality import preset_profile as _quality_preset
 from content_core.brand_extract import build_brand_draft as _build_brand_draft
+from content_core.brand_extract import clean_corpus_text as _clean_corpus_text
 from content_core.brand_extract import compare_brand_voice as _compare_brand_voice
 from content_core.brand_extract import extract_brand_kit as _extract_brand_kit
 from content_core.brand_extract import extract_vocabulary as _extract_vocabulary
@@ -504,6 +506,34 @@ def _resolve_brand_only(brand_id: str) -> dict:
     return draft
 
 
+def _resolve_writer_context(brief: dict) -> tuple[dict, dict, dict]:
+    """(brand, facts, persona) for the WRITER-FACING tools
+    (validate_brief / assemble_context) — resolved from the brief
+    exactly like the gate path resolves its brand (trial bug 1: these
+    tools used to serve the server brand/persona unconditionally, so a
+    brief naming brand X was validated and contextualised as Mộc Brew /
+    Linh while the gate judged it as X). brief.brand_id → that brand's
+    stored draft + facts profile; brief.persona_id → that persona's
+    card. Absent keys → the server defaults. An unknown brand/persona
+    raises ValueError — never a silent fall back to another brand's
+    rules or another persona's voice."""
+    brand, facts = _resolve_brand_facts(brief.get("brand_id", ""))
+    persona_id = brief.get("persona_id")
+    persona = (_load_persona_by_id(persona_id) if persona_id
+               else load_persona())
+    return brand, facts, persona
+
+
+def _core_for_brief(brief: dict) -> Core:
+    """A Core bound to the brief's own brand/facts/persona when the
+    brief names any of them; the shared server Core otherwise, so the
+    default path is byte-identical to before."""
+    if brief.get("brand_id") or brief.get("persona_id"):
+        brand, facts, persona = _resolve_writer_context(brief)
+        return Core(brand=brand, facts=facts, persona=persona)
+    return _get_core()
+
+
 def _draft_images_state(draft: dict) -> dict:
     """The draft's images state {"plan": [...], "images": {...}},
     defaulted for drafts started before the image layer existed."""
@@ -606,17 +636,29 @@ def research_facts(query: str) -> dict:
 
 @mcp.tool()
 def validate_brief(brief: dict) -> dict:
-    """Validate a brief {topic, format, keyword?, title?, requested_claims?}.
+    """Validate a brief {topic, format, keyword?, title?, requested_claims?,
+    brand_id?, persona_id?}.
 
     Includes prohibited-claim detection: a brief ASKING for e.g.
     '100% chữa mất ngủ' is refused — `valid` is False, `status` is
     "refused", and the claims are listed in refused_claims. Do not write
     the brief as asked; the claims must not appear in any draft. A brief
     that merely DISCLAIMS a claim ("cam kết không chữa mất ngủ") is not
-    a request and validates clean."""
-    core = _get_core()
+    a request and validates clean.
+
+    Brand/persona resolution (trial bug 1): the brief is validated
+    against ITS OWN brand — brief.brand_id selects that brand's rules
+    (including ITS prohibited claims) and brief.persona_id that
+    persona; absent keys validate against the server brand (Mộc Brew /
+    Linh), as before. An unknown brand/persona returns a structured
+    error, never a silent validation against another brand."""
+    try:
+        core = _core_for_brief(brief)
+    except ValueError as exc:
+        return {"error": str(exc)}
     result = core.validate_brief({"brief": brief})  # type: ignore[arg-type]
-    refused = result.get("refused_claims", find_refused_claims(str(brief), _brand()))
+    refused = result.get("refused_claims",
+                         find_refused_claims(str(brief), core.brand))
     if refused:
         instruction = (f"Brief REFUSED: it requests prohibited claims {refused}. "
                        f"Do not write it as asked — ask the user to re-scope "
@@ -793,7 +835,11 @@ def analyze_site_brand(pages: list[dict]) -> dict:
     model/user reviews BEFORE a draft is saved — nothing here is an
     approved brand."""
     corpus = _site_corpus(pages)
-    fp = _fingerprint(corpus["all_text"])
+    # The fingerprint measures the site's PROSE (trial bug 2): the raw
+    # corpus's repeated chrome blocks glue into pseudo-sentences and
+    # corrupt every sentence statistic; voice_suggestions below apply
+    # the same filtering internally.
+    fp = _fingerprint(_clean_corpus_text(corpus["all_text"]))
     claims = _find_site_claims(pages)
     warnings: list[str] = []
     if corpus["total_words"] < 800:
@@ -929,12 +975,30 @@ def assemble_context(brief: dict, format: str | None = None,
     (8 parts total): fingerprint targets in plain language + the distilled
     qualitative do/don't + never_do. Without it the context is exactly the
     7 parts above. A requested-but-missing profile is reported in
-    `style_profile_error` and the context is built without the part."""
+    `style_profile_error` and the context is built without the part.
+
+    Brand/persona/facts resolution (trial bug 1): EVERYTHING is resolved
+    from the brief — brief.brand_id selects that brand's rules and its
+    fact base (the facts part is triggered from THAT brand's lorebook),
+    brief.persona_id that persona's card; absent keys use the server
+    defaults (Mộc Brew / Linh), as before. The result names the
+    resolution (`brand_id`, `persona_id`). An unknown brand/persona
+    returns a structured error — the context is never silently built
+    for another brand."""
     fmt = format or brief.get("format", "blog")
     brief = {**brief, "format": fmt}
-    persona = load_persona()["data"]
-    brand = _brand()
-    sources = research_facts(str(brief))["sources"]
+    try:
+        brand, facts, persona_card = _resolve_writer_context(brief)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    persona = persona_card["data"]
+    # Lorebook retrieval against the RESOLVED brand's fact base: the
+    # graph's research node bound to a Core for this brief's brand,
+    # fed the same state shape the research_facts tool uses, so key
+    # triggering is identical — only the fact base differs.
+    _brief_core = Core(brand=brand, facts=facts, persona=persona_card)
+    sources = _brief_core.research(
+        {"brief": {"topic": str(brief), "text": str(brief)}})["sources"]  # type: ignore[arg-type]
 
     persona_text = "\n".join([
         persona.get("system_prompt", ""),
@@ -1017,6 +1081,8 @@ def assemble_context(brief: dict, format: str | None = None,
                for i, (name, content) in enumerate(parts)]
     result = {
         "format": fmt,
+        "brand_id": brand["brand"]["id"],
+        "persona_id": persona.get("name", ""),
         "counts": {"sources": len(sources), "craft_cards": len(cards),
                    "exemplars": len(exemplars)},
         "style_profile": ({"id": style_profile["id"], "name": style_profile.get("name", "")}
@@ -1498,19 +1564,35 @@ def fulfil_images_from_library(draft_id: str) -> dict:
 # --------------------------------------------------------------------------
 
 @mcp.tool()
-def brand_check(text: str = "", format: str = "blog", draft_id: str = "") -> dict:
+def brand_check(text: str = "", format: str = "blog", draft_id: str = "",
+                brand_id: str = "") -> dict:
     """Deterministic brand linter + score (0-100). Pass either a raw `text`
     (checked as one section) or a `draft_id` (all saved sections checked;
     overall score = worst section). Catches banned terms, exclamation marks
-    in blog, sentence-length rule violations."""
-    brand = _brand()
+    in blog, sentence-length rule violations.
+
+    Brand resolution (trial bug 1 — the standalone tool used to lint
+    EVERY draft against the server brand, so a mambagiaokhoe draft
+    scored 88 against Mộc Brew's rules while its own gate scored 100):
+    `brand_id` when given; else the draft's brief.brand_id; else the
+    server brand (moc-brew) — the same order fact_check uses. The
+    result names the brand it used (`brand_id`). An unknown brand is a
+    structured error, never a silent lint against Mộc Brew."""
     if draft_id:
         draft, error = _load_draft_or_error(draft_id)
         if error:
             return error
+        brand_id = brand_id or draft.get("brief", {}).get("brand_id", "")
+    try:
+        brand = _resolve_brand_only(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    resolved_id = brand.get("brand", {}).get("id", "")
+    if draft_id:
         fmt = draft.get("brief", {}).get("format", format)
         violations, score, failing = _lint_draft(_sections_of(draft), fmt, brand)
         return {"score": score, "violations": violations, "failing_sections": failing,
+                "brand_id": resolved_id,
                 "banned_found": [v["detail"] for v in violations if v["type"] == "banned_term"]}
     violations, score = _lint_section(text, format, brand, "text")
     # The free-text path applies the SAME failing rule as the draft
@@ -1522,6 +1604,7 @@ def brand_check(text: str = "", format: str = "blog", draft_id: str = "") -> dic
         any(not v.get("warning") for v in violations) or score < BRAND_PASS_SCORE)
     return {"score": score, "violations": violations,
             "failing_sections": ["text"] if failing else [],
+            "brand_id": resolved_id,
             "banned_found": [v["detail"] for v in violations if v["type"] == "banned_term"]}
 
 
