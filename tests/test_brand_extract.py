@@ -232,9 +232,10 @@ def test_mcp_tool_list_now_29():
     # backup tools, P3 added the 3 WordPress exporter tools, the
     # L5 closure added clear_corpus_choice, the quality-uplift
     # round added score_section_variants + sync_wordpress_edits,
-    # and the AI-tagging round added tag_library_image.)
+    # the AI-tagging round added tag_library_image, and the
+    # setup-assist round added prepare_brand_setup + get_brand_setup.)
     assert EXPECTED_NEW_TOOLS <= set(srv.TOOL_NAMES)
-    assert len(srv.TOOL_NAMES) == 68
+    assert len(srv.TOOL_NAMES) == 70
     for name in EXPECTED_NEW_TOOLS:
         assert callable(getattr(srv, name)), name
 

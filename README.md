@@ -673,6 +673,8 @@ any host app's model can be the writer; the core stays the referee.
 | `save_brand_draft(pages, qualitative?, source_type?, brand_name?)` | Brand Builder: build + persist a DRAFT Brand Voice profile in the brand YAML structure. `qualitative` is the model-filled schema (tone traits, audience, positioning, differentiators). Drafts carry review_status="draft" + review_notes; competitor drafts mark every example reference_only |
 | `get_brand_draft(draft_id?)` | Brand Builder: one stored brand draft by id, or the list of drafts |
 | `compare_brand_voice(pages_a, pages_b)` | Brand Builder compare mode: two sites' fingerprints side by side, vocabulary difference, claim counts, both kits, and `gaps` — positioning observations computed from the measured deltas |
+| `prepare_brand_setup(site_url, brand_id, display_name?)` | Setup Assist: prepare a NEW brand's whole setup in one call → the SETUP DOSSIER. Fetches the site, saves the brand DRAFT via the Brand Builder (visual palette inferred from the site kit, stamped `setup_assist`), extracts a FACTS DRAFT into the setup record (never the live profile), creates the research pack if absent + builds its proposals, PROPOSES a corpus + persona candidates. Nothing goes live; site self-contradictions block the facts draft with the contested values withheld |
+| `get_brand_setup(brand_id)` | Setup Assist: the setup checklist — per-step status (done / proposed / blocked / needs_human) DERIVED from the live stores, so steps completed through the existing tools flip automatically; plus facts-draft summary, pack counts, corpus proposal, contradictions and the exact `needs_human` list |
 | `plan_images(draft_id)` | Images: plan a draft's image slots — 1 featured + 1 per section (max 5 in-content), each with a deterministic generation prompt = scene + the brand's visual style block. Explicit, never auto-planned; stored in the draft under the per-draft lock |
 | `set_image(draft_id, image_id, source, ref, …)` | Images: fulfil one slot with an image the writer generated (`source="ai"`, pass `prompt_used`) or a client photo (`source="client"`). Filename/alt default to the SEO suggestions (alt marked `alt_suggested`); the core stores refs + metadata only, never image bytes |
 | `image_check(draft_id, complete?)` | Images: deterministic checker — alt presence/duplication/stuffing/length, filename slug rules, featured keyword + no featured reuse, AI style lock, vision grades. `complete=True` also counts unfulfilled slots as issues. Advisory only: never part of `final_gate` |
@@ -705,6 +707,44 @@ any host app's model can be the writer; the core stays the referee.
 | `get_wordpress_target(brand_id)` | WordPress exporter: the stored target + `credentials_configured` (boolean only; the password is never returned) |
 | `export_draft_to_wordpress(brand_id, draft_id, force=false)` | WordPress exporter: upload the draft's images per its media manifest (featured → `featured_media`, alt/caption/description set), create the post with status **"draft" — always; there is no publish path**, record the export on the draft (post id + edit link). A second export is refused unless `force=True` |
 | `sync_wordpress_edits(brand_id? / draft_id?)` | Edit-feedback loop (quality uplift): READ-ONLY (GET only) — fetch each exported post's current content, diff it against the exported draft, and record a changed pair in the taste layer as an "edited" verdict (both versions kept; provenance = WP post id + site). Idempotent per post + content hash; a further edit supersedes the entry |
+
+### Setup Assist — AI-assisted new-brand setup
+
+Smith's direction (22 Nov 2026): the AI does most of the new-brand
+setup work; the human only decides. `prepare_brand_setup` is the
+orchestration over pieces that already existed (Brand Builder,
+facts profiles, research packs, corpus registry, persona/visual
+schema, WP targets): fetch → brand draft → facts draft → pack +
+proposals → corpus proposal → persona candidates → dossier, in one
+call. The hard rules are the point:
+
+- **Nothing goes live without the existing approval paths.** The
+  brand stays a draft; the facts stay a draft inside the setup
+  record (`data/brand_setups/<brand-id>.json`) until a human saves
+  them via `save_facts`; pack items are all `proposed` (per-item
+  manual approval only — no bulk approve, no auto-apply); the
+  corpus is proposed, never chosen; persona candidates are never
+  saved as a persona.
+- **Contradictions are blockers, never silently resolved.** Two
+  prices for one pack size (or two delivery promises) land in the
+  dossier's `contradictions[]`, the facts step reads `blocked`,
+  and the contested values are withheld from the facts draft.
+- **The checklist derives from live state.** `get_brand_setup`
+  recomputes every step from the stores, so finishing a step
+  through the existing tools (`save_facts`, `set_corpus_choice`,
+  `decide_pack_item`, `set_wordpress_target`…) flips it to `done`
+  with no bookkeeping in the setup record.
+- Re-running prepare is idempotent-ish: the pack is reused (never
+  version-bumped), proposals are built only when the pack has no
+  brand_rule item yet, and drafts are refreshed from the new fetch.
+- **A re-prepare never silently overwrites the human's review**
+  (review round 3, S2). Generation is deterministic, so any field
+  in which the stored brand draft differs from the fresh
+  generation counts as a human edit: it is preserved (banned_terms
+  above all), and the dossier's `preserved_fields` lists every
+  preserved field path.
+  Inferred fields (e.g. the visual palette from the site's CSS)
+  carry provenance `setup_assist`.
 
 ### Article images (hybrid library-first + style lock + vision grades)
 

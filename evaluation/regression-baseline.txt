@@ -1,0 +1,21 @@
+Regression baseline — brandforge-core — recorded 2026-11-22 (skills application run, Phase 1)
+HEAD at recording: 1931076
+Environment: project .venv, local stores (drafts/, data/) as-is.
+
+unit suite (pytest tests/ -q)        : 558 passed, 0 failed
+golden (run_golden.py)               : 7/7 cases passed
+model golden (run_model_golden.py)   : 6/6 entries passed
+MCP stdio selftest (test_mcp_client) : 24/24 checks passed
+MCP HTTP smoke (test_mcp_http)       : PASS, 70 tools on the wire
+demos (e2e, e2e_v2, brand_builder, images): 4/4 exit 0
+transport parity probe               : 16/16 calls identical stdio vs HTTP
+monotonicity sweep probe             : 420 cases, 9 inversions (all weak-word injector;
+                                       documented residual, probe threshold <=12 OK)
+stored-draft differential            : 116 drafts re-gated vs recorded gate_history —
+                                       113 exact; 3 differ only in recording shape
+                                       (graph-path entries carry no craft fields;
+                                       brand/fact/passed agree on all 116)
+compile (compileall content_core, mcp_server.py): OK
+lint / typecheck                     : SKIP — no ruff/mypy configured in the repo
+docs-vs-code                         : 1 delta — AGENTS.md + .pmcontext.md say
+                                       "377 tests"; actual 558 (known stale-docs Low)

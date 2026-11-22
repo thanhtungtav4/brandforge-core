@@ -47,6 +47,7 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "set_wordpress_target", "get_wordpress_target",
                   "export_draft_to_wordpress", "sync_wordpress_edits",
                   "score_section_variants",
+                  "prepare_brand_setup", "get_brand_setup",
                   "export_core_data", "list_backups"}
 
 CLEAN_TEXT = (

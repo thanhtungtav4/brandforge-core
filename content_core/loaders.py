@@ -139,6 +139,21 @@ def _load_json_file(path: Path) -> dict:
         raise ValueError(f"corrupt JSON in stored file {path.name}: {exc}") from None
 
 
+def _store_doc_or_none(path: Path) -> dict | None:
+    """Parse one stored JSON file for a list_* function; None when the
+    file is corrupt (unreadable, unparseable, or not a JSON object).
+    The list functions share this read so a corrupt file is LISTED as
+    corrupt by every store in exactly the same way (review L6) — the
+    per-store summary shaping stays in each list function."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(doc, dict):
+            raise ValueError("not a JSON object")
+    except (json.JSONDecodeError, OSError, ValueError):
+        return None
+    return doc
+
+
 def _require_stored_object(data: object, path: Path, kind: str,
                            required: str | None = None) -> dict:
     """Stored-shape validation on LOAD (review M7): every store's file
@@ -375,11 +390,8 @@ def list_facts_profiles() -> list[dict]:
         return []
     out = []
     for path in sorted(d.glob("*.json")):
-        try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(doc, dict):
-                raise ValueError("not a JSON object")
-        except (json.JSONDecodeError, OSError, ValueError):
+        doc = _store_doc_or_none(path)
+        if doc is None:
             out.append({"brand_id": path.stem, "corrupt": True})
             continue
         facts = doc.get("facts") if isinstance(doc.get("facts"), dict) else {}
@@ -511,11 +523,8 @@ def list_style_profiles() -> list[dict]:
         return []
     out = []
     for path in sorted(d.glob("*.json")):
-        try:
-            p = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(p, dict):
-                raise ValueError("not a JSON object")
-        except (json.JSONDecodeError, OSError, ValueError):
+        p = _store_doc_or_none(path)
+        if p is None:
             out.append({"id": path.stem, "corrupt": True})
             continue
         created = p.get("created_from") if isinstance(p.get("created_from"), dict) else {}
@@ -614,11 +623,8 @@ def list_brand_drafts() -> list[dict]:
         return []
     out = []
     for path in sorted(d.glob("*.json")):
-        try:
-            draft = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(draft, dict):
-                raise ValueError("not a JSON object")
-        except (json.JSONDecodeError, OSError, ValueError):
+        draft = _store_doc_or_none(path)
+        if draft is None:
             out.append({"id": path.stem, "corrupt": True})
             continue
         brand = draft.get("brand") if isinstance(draft.get("brand"), dict) else {}
@@ -675,11 +681,8 @@ def list_quality_profiles() -> list[dict]:
         return []
     out = []
     for path in sorted(d.glob("*.json")):
-        try:
-            p = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(p, dict):
-                raise ValueError("not a JSON object")
-        except (json.JSONDecodeError, OSError, ValueError):
+        p = _store_doc_or_none(path)
+        if p is None:
             out.append({"id": path.stem, "corrupt": True})
             continue
         out.append({"id": p.get("id", path.stem), "format": p.get("format", ""),
@@ -1130,11 +1133,8 @@ def list_research_packs() -> list[dict]:
         return []
     out = []
     for path in sorted(d.glob("*.json")):
-        try:
-            pack = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(pack, dict):
-                raise ValueError("not a JSON object")
-        except (json.JSONDecodeError, OSError, ValueError):
+        pack = _store_doc_or_none(path)
+        if pack is None:
             out.append({"brand_id": path.stem, "corrupt": True})
             continue
         out.append({"brand_id": pack.get("brand_id", path.stem),
@@ -1220,11 +1220,8 @@ def list_corpus_entries() -> list[dict]:
         return []
     out = []
     for path in sorted(d.glob("*.json")):
-        try:
-            entry = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(entry, dict):
-                raise ValueError("not a JSON object")
-        except (json.JSONDecodeError, OSError, ValueError):
+        entry = _store_doc_or_none(path)
+        if entry is None:
             out.append({"id": path.stem, "corrupt": True})
             continue
         entry.setdefault("corrupt", False)
@@ -1468,15 +1465,100 @@ def list_wordpress_targets() -> list[dict]:
         return []
     out = []
     for path in sorted(d.glob("*.json")):
-        try:
-            target = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(target, dict):
-                raise ValueError("not a JSON object")
-        except (json.JSONDecodeError, OSError, ValueError):
+        target = _store_doc_or_none(path)
+        if target is None:
             out.append({"brand_id": path.stem, "corrupt": True})
             continue
         out.append({"brand_id": target.get("brand_id", path.stem),
                     "site_url": target.get("site_url", ""),
+                    "corrupt": False})
+    return out
+
+
+# --- Brand setups (setup assist) ---
+# The orchestration record for AI-assisted new-brand setup
+# (content_core/setup_assist.py): ONE JSON per brand at
+# data/brand_setups/<brand-id>.json; tests point
+# CONTENT_CORE_BRAND_SETUPS_DIR at a tmp dir. The record holds only
+# what cannot be derived from the live stores: the site it was
+# prepared from, the fetch summary, the FACTS DRAFT (a candidate
+# facts document — deliberately NOT the live facts profile; it goes
+# live only when a human reviews it and calls save_facts), the
+# corpus PROPOSAL (a recommendation — the choice itself lives in
+# the corpus-choices store and is set only by a human decision) and
+# the persona-frame PROPOSAL (candidates, never a saved persona).
+# Step/checklist state is NOT stored here: get_brand_setup derives
+# it from the live stores so the checklist can never drift from
+# reality.
+
+def brand_setups_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_BRAND_SETUPS_DIR")
+    return Path(override) if override else DATA_DIR / "brand_setups"
+
+
+def _brand_setup_path(brand_id: str) -> Path:
+    return brand_setups_dir() / f"{stored_file_stem(brand_id)}.json"
+
+
+def validate_brand_setup(record: dict) -> dict:
+    """Schema-check a brand setup record BEFORE it is persisted.
+    Required: brand_id, site_url. The proposal artefacts, when
+    present, must be objects (facts_draft / fetch_summary /
+    persona_proposal) or object-or-None (corpus_proposal). Raises
+    ValueError; returns the record."""
+    if not isinstance(record, dict):
+        raise ValueError("brand setup record must be an object")
+    if not str(record.get("brand_id") or "").strip():
+        raise ValueError("brand setup record needs a non-empty brand_id")
+    if not str(record.get("site_url") or "").strip():
+        raise ValueError("brand setup record needs a non-empty site_url")
+    for key in ("facts_draft", "fetch_summary", "persona_proposal"):
+        value = record.get(key)
+        if value is not None and not isinstance(value, dict):
+            raise ValueError(f"brand setup {key} must be an object")
+    proposal = record.get("corpus_proposal")
+    if proposal is not None and not isinstance(proposal, dict):
+        raise ValueError("brand setup corpus_proposal must be an object or None")
+    return record
+
+
+def save_brand_setup(record: dict) -> dict:
+    """Validate + persist a brand setup record (atomic write).
+    Stamps updated_at. Returns the record."""
+    validate_brand_setup(record)
+    record["updated_at"] = _utc_now()
+    atomic_write_text(_brand_setup_path(record["brand_id"]),
+                      json.dumps(record, ensure_ascii=False, indent=2))
+    return record
+
+
+def load_brand_setup(brand_id: str) -> dict | None:
+    """Return the stored setup record for a brand, or None when no
+    setup was prepared for it. Stored shape is validated like every
+    other store (review M7)."""
+    path = _brand_setup_path(brand_id)
+    if not path.exists():
+        return None
+    return _require_stored_object(_load_json_file(path), path,
+                                  "brand setup", required="brand_id")
+
+
+def list_brand_setups() -> list[dict]:
+    """Summaries of every stored setup record: brand_id, site_url,
+    prepared_at. Corrupt files are listed as corrupt, never
+    silently skipped (house discipline)."""
+    d = brand_setups_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        record = _store_doc_or_none(path)
+        if record is None:
+            out.append({"brand_id": path.stem, "corrupt": True})
+            continue
+        out.append({"brand_id": record.get("brand_id", path.stem),
+                    "site_url": record.get("site_url", ""),
+                    "prepared_at": record.get("prepared_at", ""),
                     "corrupt": False})
     return out
 

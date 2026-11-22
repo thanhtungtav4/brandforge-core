@@ -611,6 +611,41 @@ def test_ws3_sync_skips_unexported_and_errors_cleanly(
     assert "error" in srv.sync_wordpress_edits()
 
 
+def test_ws3_malformed_export_record_is_a_per_draft_error(
+        stores, mock_wp_get):
+    """S1 (review round 3): a stored draft whose wordpress_export
+    wp_post_id is not an integer ("not-a-number" — a corrupt or
+    hand-edited record) must NOT sink the brand-wide sync. The
+    per-draft contract: that draft gets a structured error and the
+    remaining drafts still sync."""
+    good_id = _exported_draft(stores, mock_wp_get)
+    bad = {
+        "draft_id": "d-malformed-export",
+        "brief": {"brand_id": WP_BRAND, "format": "blog",
+                  "topic": "bản ghi xuất lỗi", "keyword": "k",
+                  "title": "Bản ghi lỗi"},
+        "sections": [],
+        "wordpress_export": {
+            "brand_id": WP_BRAND, "wp_post_id": "not-a-number",
+            "site_url": mock_wp_get.base_url,
+            "post_link": f"{mock_wp_get.base_url}/?p=bad"},
+    }
+    (stores / "drafts" / "d-malformed-export.json").write_text(
+        json.dumps(bad, ensure_ascii=False), encoding="utf-8")
+
+    out = srv.sync_wordpress_edits(brand_id=WP_BRAND)
+    assert "error" not in out, out
+    by_id = {r["draft_id"]: r for r in out["results"]}
+    assert set(by_id) == {good_id, "d-malformed-export"}
+    # The good draft synced normally…
+    assert by_id[good_id]["changed"] is False
+    # …and the malformed one is a structured per-draft error that
+    # names the bad value — no exception escaped the sync.
+    bad_result = by_id["d-malformed-export"]
+    assert "error" in bad_result
+    assert "not-a-number" in bad_result["error"]
+
+
 def test_ws3_html_blocks_roundtrip_matches_draft_blocks():
     sections = [dict(s) for s in WP_SECTIONS]
     html = wordpress.build_content_html(sections, {})

@@ -103,6 +103,7 @@ from content_core.loaders import list_image_library as _list_image_library_file
 from content_core.loaders import set_image_library_tags as _set_library_tags_file
 from content_core.seo import seo_pass as _seo_pass
 from content_core import research as _research
+from content_core import setup_assist as _setup_assist
 from content_core import taste as _taste
 from content_core import variants as _variants
 from content_core import backup as _backup
@@ -2906,10 +2907,19 @@ def _sync_one_wp_edit(brand_id: str, draft: dict) -> dict:
     to WordPress; WP/credential failures are per-draft errors, not
     exceptions, so one bad post cannot sink a brand-wide sync."""
     record = draft["wordpress_export"]
-    post_id = int(record["wp_post_id"])
     base = {"draft_id": draft.get("draft_id", ""),
-            "wp_post_id": post_id,
             "site_url": record.get("site_url", "")}
+    try:
+        post_id = int(record["wp_post_id"])
+    except (KeyError, TypeError, ValueError):
+        # A corrupt or hand-edited export record (review round 3,
+        # S1): the failure is THIS draft's structured error, never
+        # an exception that sinks the brand-wide sync.
+        return {**base, "wp_post_id": record.get("wp_post_id"),
+                "error": f"malformed wordpress_export record: "
+                         f"wp_post_id {record.get('wp_post_id')!r} "
+                         f"is not an integer"}
+    base["wp_post_id"] = post_id
     try:
         target = _load_wp_target(brand_id)
     except ValueError as exc:
@@ -2998,6 +3008,61 @@ def sync_wordpress_edits(brand_id: str = "", draft_id: str = "") -> dict:
     return {"brand_id": brand_id,
             "results": [_sync_one_wp_edit(brand_id, d)
                         for d in candidates]}
+
+
+@mcp.tool()
+def prepare_brand_setup(site_url: str, brand_id: str,
+                        display_name: str = "") -> dict:
+    """Setup Assist: prepare a NEW brand's whole setup from its site
+    in ONE call and return the SETUP DOSSIER — the AI does the work,
+    the human only decides. Fetches the site (fetch_site machinery),
+    builds + saves the brand DRAFT via the Brand Builder (a visual
+    palette inferred from the site's CSS is stamped as a
+    'setup_assist' proposal), extracts a FACTS DRAFT (prices /
+    weights / origin candidates / delivery promises, with provenance
+    per value), creates the research pack if none exists and builds
+    its proposals from the site's own pages, and PROPOSES a corpus
+    (best registered match + reasoning + confidence) and persona
+    frame candidates.
+
+    HARD RULES: nothing goes live — the brand stays a draft, the
+    facts stay a draft inside the setup record (NOT the live facts
+    profile), pack items are all "proposed" (per-item manual
+    approval only), the corpus is proposed never chosen, no persona
+    is saved. Contradictions the site carries against itself (two
+    prices for one pack size, two delivery promises) are surfaced
+    as blockers and the contested values are WITHHELD from the
+    facts draft, never silently resolved. Re-running prepare is
+    idempotent-ish: the pack is reused (never version-bumped), its
+    proposals are built only once, and the facts draft is refreshed
+    from the fresh fetch — but the brand draft is refreshed WITHOUT
+    erasing the human's review: fields the stored draft carries
+    that differ from the fresh generation (banned_terms above all)
+    are preserved, and the dossier's `preserved_fields` names
+    every one of them."""
+    try:
+        return _setup_assist.prepare_brand_setup(
+            site_url, brand_id, display_name=display_name or None)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+
+
+@mcp.tool()
+def get_brand_setup(brand_id: str) -> dict:
+    """Setup Assist: the current setup checklist for a prepared
+    brand — steps (site_fetch / brand_draft / facts / research_pack
+    / corpus_choice / persona / wordpress_target) with status
+    done | proposed | blocked | needs_human, the facts-draft
+    summary, pack counts, the corpus proposal + any live choice,
+    all open contradictions, and `needs_human`: exactly what only
+    the owner can decide. Step state is DERIVED from the live
+    stores, so completing a step through the existing tools
+    (save_facts, set_corpus_choice, decide_pack_item,
+    set_wordpress_target…) flips it here automatically."""
+    try:
+        return _setup_assist.build_setup_dossier(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
 
 
 @mcp.tool()

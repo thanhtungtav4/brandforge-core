@@ -320,7 +320,8 @@ def edit_link(site_url: str, post_id: int) -> str:
 # figure captions are not draft text (the exporter places them from
 # the media manifest), so they never enter the blocks.
 
-_BLOCK_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6", "p"}
+_BLOCK_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6", "p",
+               "li", "td", "th"}
 # Subtrees whose text is not draft text. <img> is deliberately NOT
 # here: it is a void element (no end tag, no text), so it is ignored
 # by simply not being a block tag — counting it as a skip subtree
@@ -329,9 +330,21 @@ _SKIP_TAGS = {"figure", "figcaption", "script", "style"}
 
 
 class _BlockExtractor(HTMLParser):
-    """Collect heading/paragraph text blocks from WP content HTML.
+    """Collect text blocks from WP content HTML: headings,
+    paragraphs, list items and table cells, in document order.
     Inline markup inside a block (a, strong, em…) contributes its
-    text; figure/img subtrees are skipped entirely."""
+    text; figure/img subtrees are skipped entirely.
+
+    Editor-shaped HTML is not well-formed XHTML, so the extractor
+    is a flush-on-boundary machine (review round 3, M1): a new
+    block tag closes whatever block is open (an unclosed <p> never
+    merges into the heading after it), a <br> is a word boundary
+    (never glue), and a skipped subtree interrupting a block leaves
+    a word boundary behind (the text after a mid-paragraph figure
+    is not glued to the text before it). List items and table
+    cells are blocks in their own right — an owner editing a post
+    in the block editor routinely produces lists and price tables,
+    and their words are draft text like any other."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -339,25 +352,45 @@ class _BlockExtractor(HTMLParser):
         self._current: list[str] | None = None
         self._skip_depth = 0
 
-    def handle_starttag(self, tag, attrs):
-        if tag in _SKIP_TAGS:
-            self._skip_depth += 1
-        elif tag in _BLOCK_TAGS and self._skip_depth == 0 \
-                and self._current is None:
-            self._current = []
-
-    def handle_endtag(self, tag):
-        if tag in _SKIP_TAGS and self._skip_depth > 0:
-            self._skip_depth -= 1
-        elif tag in _BLOCK_TAGS and self._current is not None:
+    def _flush(self):
+        if self._current is not None:
             text = _normalise_block("".join(self._current))
             if text:
                 self.blocks.append(text)
             self._current = None
 
+    def handle_starttag(self, tag, attrs):
+        if tag in _SKIP_TAGS:
+            if self._current is not None and self._skip_depth == 0:
+                # A skipped subtree interrupting a block: keep the
+                # words on either side apart.
+                self._current.append(" ")
+            self._skip_depth += 1
+        elif self._skip_depth:
+            pass  # block tags inside a skipped subtree open nothing
+        elif tag in _BLOCK_TAGS:
+            self._flush()
+            self._current = []
+        elif tag == "br":
+            if self._current is not None:
+                self._current.append(" ")
+
+    def handle_endtag(self, tag):
+        if tag in _SKIP_TAGS:
+            if self._skip_depth > 0:
+                self._skip_depth -= 1
+        elif self._skip_depth:
+            pass
+        elif tag in _BLOCK_TAGS:
+            self._flush()
+
     def handle_data(self, data):
         if self._current is not None and self._skip_depth == 0:
             self._current.append(data)
+
+    def close(self):
+        super().close()
+        self._flush()  # an unclosed final block is still a block
 
 
 def _normalise_block(text: str) -> str:
@@ -367,8 +400,8 @@ def _normalise_block(text: str) -> str:
 
 
 def html_to_blocks(content_html: str) -> list[str]:
-    """WP content HTML → the normalised block list (headings and
-    paragraphs in document order)."""
+    """WP content HTML → the normalised block list (headings,
+    paragraphs, list items and table cells in document order)."""
     parser = _BlockExtractor()
     parser.feed(str(content_html or ""))
     parser.close()

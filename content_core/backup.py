@@ -65,6 +65,7 @@ def _store_sources() -> list[tuple[str, Path, bool]]:
         ("corpus_registry", loaders.corpus_registry_dir(), False),
         ("corpus_choices", loaders.corpus_choices_dir(), False),
         ("wordpress_targets", loaders.wordpress_targets_dir(), False),
+        ("brand_setups", loaders.brand_setups_dir(), False),
         ("taste", loaders.taste_dir(), False),
         ("drafts", _drafts_dir(), False),
     ]
