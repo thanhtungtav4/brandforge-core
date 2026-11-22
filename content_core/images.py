@@ -36,6 +36,15 @@ The core enforces the RECORD, never the seeing: in complete mode an
 unchecked image is flagged; a grade 0 is a hard issue whose remedy is
 regenerating/replacing that one image.
 
+AI TAGS (retrieval layer): a library entry may carry an `ai_tags`
+record — structured tags the HOST model supplies after looking at
+the photo (subjects / scene / objects / colours / text_in_image),
+validated and stamped by the core (loaders.validate_ai_tags), never
+produced by it. Their tokens join the entry token set library_score
+ranks on, at equal weight with the human tags + description: a
+photo whose caption is thin becomes findable by what it actually
+shows. Entries without the record rank exactly as before.
+
 ADVISORY BOUNDARY: this layer never enters final_gate's verdict in
 this round (like style_match). `ready` on the manifest is the image
 layer's own completeness signal for the WordPress exporter.
@@ -63,7 +72,8 @@ ALT_HARD_LIMIT = 200
 FEATURED_SIZE_BUDGET_KB = 200
 IN_CONTENT_SIZE_BUDGET_KB = 150
 # Library matching: at least 35% of a slot's query tokens must appear
-# in a library entry's tags+description. Query sets are small
+# in a library entry's token set (tags + description + AI tags).
+# Query sets are small
 # (heading + intent + keyword ≈ 5-10 tokens), so 0.35 means roughly a
 # third of the slot's concepts are covered — strict enough that a
 # generic entry sharing only the brief keyword does not auto-fit
@@ -276,12 +286,29 @@ def slot_query_tokens(item: dict, brief: dict) -> set[str]:
 
 def library_score(entry: dict, query_tokens: set[str]) -> tuple[float, int]:
     """(score, hits): the fraction of the slot's query tokens covered
-    by the entry's tags + description tokens."""
+    by the entry's token set. Token sources, UNIONED at equal weight
+    (a token counts once however many sources carry it):
+
+    1. the entry's human `tags`;
+    2. the entry's `description`;
+    3. the entry's `ai_tags` when the host model has tagged the
+       image — subjects + scene + objects + colours (the record
+       loaders.validate_ai_tags referees).
+
+    An entry without ai_tags tokenises EXACTLY as sources 1+2 — the
+    pre-tagging behaviour — so stored libraries rank unchanged until
+    their entries are actually tagged."""
     if not query_tokens:
         return 0.0, 0
-    entry_tokens = _token_set(
-        " ".join(str(t) for t in entry.get("tags") or [])
-        + " " + str(entry.get("description") or ""))
+    parts = [str(t) for t in entry.get("tags") or []]
+    parts.append(str(entry.get("description") or ""))
+    ai_tags = entry.get("ai_tags")
+    if isinstance(ai_tags, dict):
+        parts += [str(s) for s in ai_tags.get("subjects") or []]
+        parts.append(str(ai_tags.get("scene") or ""))
+        parts += [str(o) for o in ai_tags.get("objects") or []]
+        parts += [str(c) for c in ai_tags.get("colours") or []]
+    entry_tokens = _token_set(" ".join(parts))
     hits = len(query_tokens & entry_tokens)
     return hits / len(query_tokens), hits
 

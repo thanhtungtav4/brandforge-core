@@ -636,7 +636,7 @@ any host app's model can be the writer; the core stays the referee.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Tools (67)
+### Tools (68)
 
 | Tool | What it does |
 |---|---|
@@ -678,9 +678,10 @@ any host app's model can be the writer; the core stays the referee.
 | `image_check(draft_id, complete?)` | Images: deterministic checker — alt presence/duplication/stuffing/length, filename slug rules, featured keyword + no featured reuse, AI style lock, vision grades. `complete=True` also counts unfulfilled slots as issues. Advisory only: never part of `final_gate` |
 | `record_vision_check(draft_id, image_id, content_grade, style_grade, notes?)` | Images: record the WRITER's vision grades (0/1/2 per axis, strict int validation) for a fulfilled image — the judged layer for images, mirroring the Quality Profile's judged axes. A grade of 0 fails that slot until the image is replaced |
 | `get_image_manifest(draft_id)` | Images: the WordPress-export-ready media manifest (fulfilled images, plan order, WP field names) + `ready` (all slots fulfilled AND no hard issues; unchecked images appear under `warnings` without blocking) |
-| `add_library_image(brand_id, ref, description, tags?, source?)` | Images: add one image to a brand's own image library (`data/image_library/<brand-id>/`, refs only). The description is what ranking and alt suggestions read |
-| `list_library_images(brand_id)` | Images: list a brand's library entries |
-| `fulfil_images_from_library(draft_id)` | Images: library-first fulfilment — rank the draft brand's library per slot by token overlap, fulfil above the match threshold (one entry never serves two slots), report the rest as `needs_generation` with style-locked prompts |
+| `add_library_image(brand_id, ref, description, tags?, source?, ai_tags?, dimensions?)` | Images: add one image to a brand's own image library (`data/image_library/<brand-id>/`, refs only). The description is what ranking and alt suggestions read. Import flows may pass `ai_tags` + `dimensions` in the same call (validated on the tag tool's path); a re-add passing neither preserves the recorded tags |
+| `tag_library_image(brand_id, ref, ai_tags, dimensions?)` | Images: record the HOST MODEL's AI tags for one library image — the fixed shape {subjects (≤8 short phrases), scene (≤12 words), objects (≤10), colours (≤6), text_in_image}; an empty tag set is refused. The core validates + stamps (tagged_by="host_model", tag_count) and the tag tokens join the ranking token set, so a thinly described photo becomes findable. Re-tagging replaces the record; the ref must match exactly one entry of that brand |
+| `list_library_images(brand_id)` | Images: list a brand's library entries (including `ai_tags` + `dimensions` when recorded) |
+| `fulfil_images_from_library(draft_id)` | Images: library-first fulfilment — rank the draft brand's library per slot by token overlap (entry tags + description + AI tags), fulfil above the match threshold (one entry never serves two slots), report the rest as `needs_generation` with style-locked prompts |
 | `list_drafts()` | Draft admin: every stored draft (draft_id, brand, status, updated); corrupt files listed as corrupt, never skipped |
 | `delete_draft(draft_id, confirm?)` | Draft admin: delete one draft under the per-draft lock; an APPROVED draft requires `confirm=True` |
 | `create_research_pack(brand_id)` | Research pack: create (or version-bump) a brand's pre-approval setup store — sources, proposed items, contradictions, quality rejections. Never touches live config |
@@ -727,9 +728,21 @@ plans, checks and packages (`content_core/images.py`, pure):
   (same stored-profile discipline as the other stores: validated
   ids, schema-checked entries, atomic writes; the directory is
   gitignored live data). Entries: `{id, ref, source: client|ai,
-  description, tags[], added_at}`.
+  description, tags[], added_at}` plus optional `ai_tags` and
+  `dimensions` (below). Entries without them work exactly as
+  before.
+- **AI image tags.** `tag_library_image` records the host model's
+  structured read of a photo — `{subjects, scene, objects,
+  colours, text_in_image}` under a fixed discipline (short noun
+  phrases, capped counts, empty tag sets refused), stamped by the
+  core (`tagged_by="host_model"`, `tagged_at`, `tag_count`;
+  re-tagging replaces the record, only the count survives). The
+  split mirrors vision checks: the model sees, the core referees
+  the record. `add_library_image` accepts the same payload so an
+  import flow tags in one call.
 - **Library-first fulfilment.** `fulfil_images_from_library` ranks
-  entries by normalised token overlap (tags + description vs the
+  entries by normalised token overlap (entry token set = tags +
+  description + AI-tag tokens, unioned at equal weight, vs the
   slot's heading/intent + brief keyword) and fulfils slots scoring
   ≥ 0.35, client entries winning ties; one entry never fulfils two
   slots in a draft. Alt text for a library fulfilment is suggested
@@ -1084,7 +1097,7 @@ calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibrati
                files are fixtures and which are local-only raw evidence)
 evaluation/    round-1..8 reports + SUMMARY.md + probes/   (the 8-round
                evaluation and its regression probes, all with exit codes)
-mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 67 tools) — the host app's model is the writer, tools are the hands + referee
+mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 68 tools) — the host app's model is the writer, tools are the hands + referee
 test_mcp_client.py   end-to-end MCP client test over stdio (24 checks)
 test_mcp_http.py     MCP HTTP smoke test (server on a test port, tools/list + get_quality_profile)
 fetch_sample.py      CLI helper: URL -> plain text for Style Extraction (server stays offline)

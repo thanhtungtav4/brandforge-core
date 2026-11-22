@@ -34,7 +34,7 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "plan_images", "set_image", "image_check",
                   "record_vision_check", "get_image_manifest",
                   "add_library_image", "list_library_images",
-                  "fulfil_images_from_library",
+                  "tag_library_image", "fulfil_images_from_library",
                   "list_drafts", "delete_draft",
                   "create_research_pack", "add_pack_source",
                   "build_pack_proposals", "propose_pack_item", "get_pack",

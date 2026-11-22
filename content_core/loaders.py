@@ -752,6 +752,127 @@ def _image_library_index_path(brand_id: str) -> Path:
     return image_library_dir() / stored_file_stem(brand_id) / "index.json"
 
 
+# --- AI image tags (host-model supplied, core-validated) ---
+# The core cannot see images; the host model can — the same split as
+# record_vision_check. The model supplies STRUCTURED tags for a
+# library photo (what it shows, where, what colours), the core
+# validates them against this FIXED discipline, stamps them
+# (tagged_by / tagged_at / tag_count) and stores them on the entry;
+# images.library_score then ranks on the tag tokens too, which is
+# what makes a thinly described photo findable (Smith's direction,
+# 2026-11-22: "dùng AI gắn tag ảnh để dễ truy xuất hơn").
+AI_TAG_FIELDS = ("subjects", "scene", "objects", "colours",
+                 "text_in_image")
+AI_TAG_LIMITS = {"subjects": (8, 4), "objects": (10, 4),
+                 "colours": (6, 3)}  # field -> (max items, max words each)
+AI_TAG_SCENE_MAX_WORDS = 12
+
+
+def validate_ai_tags(ai_tags: dict) -> dict:
+    """Validate + clean one host-supplied AI tag payload. Returns the
+    cleaned record {subjects, scene, objects, colours, text_in_image}
+    WITHOUT the core stamps (the store functions add those). Raises
+    ValueError on: a non-object payload, unknown keys, a non-list or
+    over-cap phrase list, a blank or over-word phrase, a scene over
+    the word cap, a non-bool text_in_image, and an EMPTY tag set
+    (no subjects, no objects, no scene — a record with no signal
+    would only pretend the image was tagged)."""
+    if not isinstance(ai_tags, dict):
+        raise ValueError("ai_tags must be an object with subjects / "
+                         "scene / objects / colours / text_in_image")
+    unknown = sorted(set(ai_tags) - set(AI_TAG_FIELDS))
+    if unknown:
+        raise ValueError(f"ai_tags has unknown keys: {unknown}")
+
+    def _phrases(field: str) -> list[str]:
+        max_items, max_words = AI_TAG_LIMITS[field]
+        raw = ai_tags.get(field)
+        if raw is None:
+            return []
+        if not isinstance(raw, list) \
+                or not all(isinstance(x, str) for x in raw):
+            raise ValueError(f"ai_tags.{field} must be a list of strings")
+        cleaned = [x.strip() for x in raw]
+        if any(not x for x in cleaned):
+            raise ValueError(f"ai_tags.{field} must not contain "
+                             f"blank phrases")
+        if len(cleaned) > max_items:
+            raise ValueError(f"ai_tags.{field} allows at most "
+                             f"{max_items} phrases, got {len(cleaned)}")
+        for phrase in cleaned:
+            if len(phrase.split()) > max_words:
+                raise ValueError(
+                    f"ai_tags.{field} phrases are short noun phrases "
+                    f"(<= {max_words} words), got {phrase!r}")
+        return cleaned
+
+    subjects = _phrases("subjects")
+    objects = _phrases("objects")
+    colours = _phrases("colours")
+    scene_raw = ai_tags.get("scene")
+    if scene_raw is None:
+        scene = ""
+    elif not isinstance(scene_raw, str):
+        raise ValueError("ai_tags.scene must be a string")
+    else:
+        scene = scene_raw.strip()
+        if len(scene.split()) > AI_TAG_SCENE_MAX_WORDS:
+            raise ValueError(
+                f"ai_tags.scene is one short line "
+                f"(<= {AI_TAG_SCENE_MAX_WORDS} words), got {scene!r}")
+    flag = ai_tags.get("text_in_image", False)
+    if not isinstance(flag, bool):
+        raise ValueError("ai_tags.text_in_image must be a boolean")
+    if not subjects and not objects and not scene:
+        raise ValueError(
+            "ai_tags carries no signal: give at least one subject, "
+            "object or scene — an empty tag set is refused")
+    return {"subjects": subjects, "scene": scene, "objects": objects,
+            "colours": colours, "text_in_image": flag}
+
+
+def validate_image_dimensions(dimensions: dict) -> dict:
+    """Validate an entry's optional pixel dimensions {width, height}:
+    strict positive ints (bool is not an int here), nothing else.
+    Returns the cleaned pair; raises ValueError otherwise."""
+    if not isinstance(dimensions, dict):
+        raise ValueError("dimensions must be an object {width, height}")
+    unknown = sorted(set(dimensions) - {"width", "height"})
+    if unknown:
+        raise ValueError(f"dimensions has unknown keys: {unknown}")
+    out = {}
+    for field in ("width", "height"):
+        value = dimensions.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) \
+                or not 1 <= value <= 100_000:
+            raise ValueError(
+                f"dimensions.{field} must be an int in 1..100000, "
+                f"got {value!r}")
+        out[field] = value
+    return out
+
+
+def _stamped_ai_tags(cleaned: dict, tag_count: int) -> dict:
+    """A cleaned tag payload + the core's stamps. tagged_by is always
+    "host_model": the seeing happened in the host app, the core only
+    referees the record (the record_vision_check split)."""
+    return {**cleaned, "tagged_by": "host_model",
+            "tagged_at": _utc_now(), "tag_count": tag_count}
+
+
+def _next_tag_count(entry: dict) -> int:
+    """The tag_count a re-tag of this entry gets: previous + 1, or 1
+    for a first tag. Only the COUNT survives a re-tag — the record
+    itself is replaced, no full history is kept."""
+    prev = entry.get("ai_tags")
+    if isinstance(prev, dict):
+        count = prev.get("tag_count")
+        if isinstance(count, int) and not isinstance(count, bool) \
+                and count >= 1:
+            return count + 1
+    return 1
+
+
 def validate_image_library_entry(entry: dict) -> dict:
     """Schema-check one library entry BEFORE it is persisted (the
     save_facts / save_brand_draft discipline). Required: ref
@@ -774,6 +895,30 @@ def validate_image_library_entry(entry: dict) -> dict:
     if tags is not None and not (isinstance(tags, list)
                                  and all(isinstance(t, str) for t in tags)):
         raise ValueError("image library entry tags must be a list of strings")
+    ai_tags = entry.get("ai_tags")
+    if ai_tags is not None:
+        if not isinstance(ai_tags, dict):
+            raise ValueError("image library entry ai_tags must be an object")
+        unknown = sorted(set(ai_tags) - set(AI_TAG_FIELDS)
+                         - {"tagged_by", "tagged_at", "tag_count"})
+        if unknown:
+            raise ValueError(
+                f"image library entry ai_tags has unknown keys: {unknown}")
+        validate_ai_tags({k: ai_tags[k] for k in AI_TAG_FIELDS
+                          if k in ai_tags})
+        count = ai_tags.get("tag_count")
+        if ai_tags.get("tagged_by") != "host_model" \
+                or not str(ai_tags.get("tagged_at") or "").strip() \
+                or not (isinstance(count, int)
+                        and not isinstance(count, bool) and count >= 1):
+            raise ValueError(
+                "image library entry ai_tags must carry the core "
+                "stamps (tagged_by='host_model', tagged_at, "
+                "tag_count >= 1) — tag via tag_library_image, "
+                "not by hand")
+    dimensions = entry.get("dimensions")
+    if dimensions is not None:
+        validate_image_dimensions(dimensions)
     return entry
 
 
@@ -806,10 +951,20 @@ def save_image_library(brand_id: str, library: dict) -> dict:
 
 def add_image_library_entry(brand_id: str, ref: str, description: str,
                             tags: list[str] | None = None,
-                            source: str = "client") -> dict:
+                            source: str = "client",
+                            ai_tags: dict | None = None,
+                            dimensions: dict | None = None) -> dict:
     """Validate + append one entry to a brand's library. The entry id
     derives from ref+description, so re-adding the same image is an
-    idempotent replace, never a duplicate. Returns the entry."""
+    idempotent replace, never a duplicate. Returns the entry.
+
+    `ai_tags` (a host-supplied tag payload, validated by
+    validate_ai_tags) and `dimensions` may ride along so an import
+    flow tags in ONE call; both are stamped/validated here, on the
+    same path set_image_library_tags uses. On an idempotent re-add
+    that supplies NEITHER, the previous entry's ai_tags / dimensions
+    are preserved — a plain re-add must not wipe tags the host model
+    already recorded."""
     from datetime import datetime, timezone
 
     entry = {"id": "lib-" + hashlib.sha1(
@@ -817,13 +972,54 @@ def add_image_library_entry(brand_id: str, ref: str, description: str,
         "ref": ref, "source": source, "description": description,
         "tags": tags if tags is not None else [],
         "added_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-    validate_image_library_entry(entry)
     library = load_image_library(brand_id)
+    existing = next((e for e in library["images"]
+                     if e.get("id") == entry["id"]), None)
+    if ai_tags is not None:
+        entry["ai_tags"] = _stamped_ai_tags(
+            validate_ai_tags(ai_tags),
+            _next_tag_count(existing) if existing else 1)
+    elif existing is not None \
+            and isinstance(existing.get("ai_tags"), dict):
+        entry["ai_tags"] = existing["ai_tags"]
+    if dimensions is not None:
+        entry["dimensions"] = validate_image_dimensions(dimensions)
+    elif existing is not None \
+            and isinstance(existing.get("dimensions"), dict):
+        entry["dimensions"] = existing["dimensions"]
+    validate_image_library_entry(entry)
     entries = [e for e in library["images"] if e.get("id") != entry["id"]]
     entries.append(entry)
     library["images"] = entries
     save_image_library(brand_id, library)
     return entry
+
+
+def set_image_library_tags(brand_id: str, entry_id: str,
+                           ai_tags: dict,
+                           dimensions: dict | None = None) -> dict:
+    """Replace one entry's AI tag record (the tag_library_image
+    store path). The payload is validated BEFORE anything is read
+    or written, the new record is stamped with tag_count = previous
+    + 1 (only the count survives; the old record is gone), and
+    `dimensions` replaces the stored pair only when given. Raises
+    ValueError for an invalid payload or an unknown entry id.
+    Returns the updated entry."""
+    cleaned = validate_ai_tags(ai_tags)
+    new_dimensions = validate_image_dimensions(dimensions) \
+        if dimensions is not None else None
+    library = load_image_library(brand_id)
+    for entry in library["images"]:
+        if entry.get("id") == entry_id:
+            entry["ai_tags"] = _stamped_ai_tags(
+                cleaned, _next_tag_count(entry))
+            if new_dimensions is not None:
+                entry["dimensions"] = new_dimensions
+            validate_image_library_entry(entry)
+            save_image_library(brand_id, library)
+            return entry
+    raise ValueError(
+        f"no image library entry {entry_id!r} for brand {brand_id!r}")
 
 
 def list_image_library(brand_id: str) -> list[dict]:

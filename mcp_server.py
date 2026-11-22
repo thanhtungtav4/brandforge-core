@@ -100,6 +100,7 @@ from content_core.images import suggest_alt as _suggest_alt
 from content_core.images import suggest_filename as _suggest_filename
 from content_core.loaders import add_image_library_entry as _add_library_image_file
 from content_core.loaders import list_image_library as _list_image_library_file
+from content_core.loaders import set_image_library_tags as _set_library_tags_file
 from content_core.seo import seo_pass as _seo_pass
 from content_core import research as _research
 from content_core import taste as _taste
@@ -1614,16 +1615,75 @@ def get_image_manifest(draft_id: str) -> dict:
 @mcp.tool()
 def add_library_image(brand_id: str, ref: str, description: str,
                       tags: list[str] | None = None,
-                      source: str = "client") -> dict:
+                      source: str = "client",
+                      ai_tags: dict | None = None,
+                      dimensions: dict | None = None) -> dict:
     """Add one image to a brand's own image library (refs only — the
     core never copies image bytes). `description` says what the image
     shows: library ranking and alt suggestions read it, so write it
     like a caption. `source` is "client" (the client's real photo,
     the default) or "ai" (a generated image kept for reuse).
-    Re-adding the same ref+description replaces, never duplicates."""
+    Re-adding the same ref+description replaces, never duplicates.
+
+    Import flows may pass `ai_tags` (the tag payload described under
+    tag_library_image) and `dimensions` ({width, height} in px) in
+    the SAME call — they are validated on the tag tool's path and
+    stamped onto the entry. A re-add that passes neither preserves
+    the tags already recorded."""
     try:
         return _add_library_image_file(brand_id, ref, description, tags,
-                                       source)
+                                       source, ai_tags, dimensions)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+
+
+@mcp.tool()
+def tag_library_image(brand_id: str, ref: str, ai_tags: dict,
+                      dimensions: dict | None = None) -> dict:
+    """Record YOUR AI tags for one library image — the retrieval
+    layer for photos (the core cannot see images; you can, the same
+    split as record_vision_check). Look at the actual image first,
+    then describe it in the FIXED tag shape:
+
+    {subjects: [short noun phrases, <= 4 words each, <= 8 of them],
+     objects: [short noun phrases, <= 10], scene: one short line
+     (<= 12 words), colours: [short strings, <= 6],
+     text_in_image: bool}
+
+    An empty tag set is refused — a record with no signal only
+    pretends the image was tagged. The core validates, stamps
+    (tagged_by="host_model", tagged_at, tag_count) and stores the
+    record on the entry; the tag tokens join the token set library
+    ranking reads, which is what makes a thinly described photo
+    findable by fulfil_images_from_library. Re-tagging REPLACES the
+    record and bumps tag_count (no full history is kept).
+    `dimensions` ({width, height} in px) replaces the stored pair
+    when given. The ref must match exactly ONE entry of THIS brand's
+    library (refs are compared normalised, like fulfilment) — an
+    unknown ref, a ref that lives under another brand, or a ref
+    shared by several entries is an error, never a guess."""
+    try:
+        entries = _list_image_library_file(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    nref = _normalise_ref(ref)
+    matches = [e for e in entries
+               if _normalise_ref(e.get("ref") or "") == nref]
+    if not matches:
+        return {"error": f"no library image with ref {ref!r} in "
+                         f"brand {brand_id!r}", "brand_id": brand_id}
+    if len(matches) > 1:
+        return {"error": f"ref {ref!r} matches {len(matches)} library "
+                         f"entries in brand {brand_id!r} — ambiguous, "
+                         f"nothing was tagged", "brand_id": brand_id}
+    entry_id = matches[0].get("id")
+    if not entry_id:
+        return {"error": f"library entry for ref {ref!r} in brand "
+                         f"{brand_id!r} has no id — the library file "
+                         f"is corrupt", "brand_id": brand_id}
+    try:
+        return _set_library_tags_file(brand_id, entry_id, ai_tags,
+                                      dimensions)
     except ValueError as exc:
         return {"error": str(exc), "brand_id": brand_id}
 
@@ -1631,7 +1691,9 @@ def add_library_image(brand_id: str, ref: str, description: str,
 @mcp.tool()
 def list_library_images(brand_id: str) -> dict:
     """List a brand's image library entries ([] when the brand has
-    no library yet)."""
+    no library yet). Entries carry `ai_tags` (subjects / scene /
+    objects / colours / text_in_image + the core's stamps) and
+    `dimensions` when the host model has recorded them."""
     try:
         entries = _list_image_library_file(brand_id)
     except ValueError as exc:
@@ -1642,8 +1704,9 @@ def list_library_images(brand_id: str) -> dict:
 @mcp.tool()
 def fulfil_images_from_library(draft_id: str) -> dict:
     """Library-first fulfilment: for each unfulfilled plan slot, rank
-    the DRAFT BRAND's library by token overlap (tags + description vs
-    the slot's heading/intent + brief keyword) and fulfil with the
+    the DRAFT BRAND's library by token overlap (entry tags +
+    description + AI tags vs the slot's heading/intent + brief
+    keyword) and fulfil with the
     best unused entry above the match threshold — one library image
     never fulfils two slots in a draft. Alt text is suggested from
     the entry description (marked alt_suggested — the writer should

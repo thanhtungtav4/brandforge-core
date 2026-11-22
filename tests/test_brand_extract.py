@@ -225,15 +225,16 @@ EXPECTED_NEW_TOOLS = {"analyze_site_brand", "save_brand_draft",
 
 
 def test_mcp_tool_list_now_29():
-    # (Name kept from the 29-tool round; the count is now 67 after the
+    # (Name kept from the 29-tool round; the count is now 68 after the
     # core-completion round added get_facts/save_facts, the images
     # round added the 8 image tools, core-completion round 2
     # added the 21 research-pack / corpus / taste / draft-admin /
     # backup tools, P3 added the 3 WordPress exporter tools, the
-    # L5 closure added clear_corpus_choice, and the quality-uplift
-    # round added score_section_variants + sync_wordpress_edits.)
+    # L5 closure added clear_corpus_choice, the quality-uplift
+    # round added score_section_variants + sync_wordpress_edits,
+    # and the AI-tagging round added tag_library_image.)
     assert EXPECTED_NEW_TOOLS <= set(srv.TOOL_NAMES)
-    assert len(srv.TOOL_NAMES) == 67
+    assert len(srv.TOOL_NAMES) == 68
     for name in EXPECTED_NEW_TOOLS:
         assert callable(getattr(srv, name)), name
 
