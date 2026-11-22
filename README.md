@@ -636,7 +636,7 @@ any host app's model can be the writer; the core stays the referee.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Tools (64)
+### Tools (65)
 
 | Tool | What it does |
 |---|---|
@@ -692,7 +692,7 @@ any host app's model can be the writer; the core stays the referee.
 | `apply_pack(brand_id)` | Research pack: apply approved/edited items into live stores through the existing save paths. Invariants: proposed/rejected never apply; open-contradiction items blocked; reference material refused (brand drafts fail at the `draft_to_brand_yaml` gate); style items forced `store_excerpts=False`; idempotent; returns exactly which ids landed |
 | `register_corpus(corpus_id, version, title, kind, profile_id, legitimacy_basis, word_count, sample_count?)` | Corpus registry: register a genre corpus ONCE at system level; a corpus without a recorded legitimacy basis cannot register; re-registering an id is an error (a revision is a new version decision) |
 | `list_corpora()` / `get_corpus(corpus_id)` | Corpus registry: list / read registered corpora |
-| `set_corpus_choice(brand_id, corpus_id)` / `get_corpus_choice(brand_id)` | Corpus registry: a brand's corpus choice (corpus id + pinned version + resolved profile). `assemble_context` defaults a brand's style profile from its choice when the brief names the brand without an explicit `style_profile_id` — explicit choice always wins |
+| `set_corpus_choice(brand_id, corpus_id)` / `get_corpus_choice(brand_id)` / `clear_corpus_choice(brand_id)` | Corpus registry: a brand's corpus choice (corpus id + pinned version + resolved profile). `assemble_context` defaults a brand's style profile from its choice when the brief names the brand without an explicit `style_profile_id` — explicit choice always wins. Clear removes BOTH the choice record and the stamp a pack apply leaves on the brand draft; clearing an unset brand is a no-op report, not an error |
 | `import_taste_articles(brand_id, file_refs)` | Taste layer: import finished article files as PENDING entries — candidates only, never learned from until the owner marks them |
 | `mark_article_verdict(brand_id, verdict, draft_id? / file_ref?, edited_text?, note?)` | Taste layer: the OWNER's verdict on one article — `approved_unchanged` or `edited` (edited requires the edited text; BOTH versions are kept, the diff is the signal). Only the owner gives verdicts |
 | `build_taste_profile(brand_id)` | Taste layer: with ≥3 verdicted articles, distil them into the brand's taste profile (`<brand-id>-taste-voice`). `store_excerpts=True` is legitimate here and only here — the samples are the owner's own articles |
@@ -1082,7 +1082,7 @@ calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibrati
                files are fixtures and which are local-only raw evidence)
 evaluation/    round-1..8 reports + SUMMARY.md + probes/   (the 8-round
                evaluation and its regression probes, all with exit codes)
-mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 64 tools) — the host app's model is the writer, tools are the hands + referee
+mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 65 tools) — the host app's model is the writer, tools are the hands + referee
 test_mcp_client.py   end-to-end MCP client test over stdio (24 checks)
 test_mcp_http.py     MCP HTTP smoke test (server on a test port, tools/list + get_quality_profile)
 fetch_sample.py      CLI helper: URL -> plain text for Style Extraction (server stays offline)

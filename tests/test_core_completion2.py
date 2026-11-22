@@ -493,6 +493,113 @@ def test_ws2_corpus_choice_defaults_style_in_assemble_context(stores):
     assert explicit["style_profile_source"] == "brief"
 
 
+def _brand_b_setup(stores, srv):
+    """Mirror of the WS2 default test's brand-b writer-context setup:
+    a style profile + registered corpus pointing at it, and a stored
+    brand draft + facts so assemble_context resolves the brand."""
+    made = srv.save_style_profile("Giọng Mặc Định", [ARTICLE_1, ARTICLE_2,
+                                                     ARTICLE_3])
+    assert "error" not in made
+    srv.register_corpus("corpus-d", version=1, title="Corpus D",
+                        kind="press", profile_id=made["id"],
+                        legitimacy_basis="public domain", word_count=3000)
+    draft = {
+        "brand": {"id": "brand-b", "name": "Brand B", "simulated": True,
+                  "version": 0, "review_status": "draft",
+                  "source_type": "own_site", "source_urls": []},
+        "voice": {"traits": [], "pov": "first-person",
+                  "reader_address": "bạn",
+                  "sentence_rules": {"median_words_default": [11, 14],
+                                     "median_words_by_format": {},
+                                     "max_sentence_words": 25},
+                  "formatting_rules": [], "banned_terms": [],
+                  "prohibited_claims": []},
+        "vocabulary": {"use": [], "exact": [], "banned": [], "glossary": []},
+        "examples": [], "anti_examples": [],
+        "claims_and_guardrails": {"requires_evidence": [],
+                                  "prohibited_claims": [],
+                                  "unsupported_claim_marker": "[NEEDS SOURCE]"},
+        "brand_kit": {}, "qualitative": {}, "review_notes": [],
+    }
+    loaders.save_brand_draft(draft)
+    srv.save_facts("brand-b", {"facts": {
+        "price_vnd_per_250g": 50000, "pack_weight_g": 250,
+        "origins": ["Bến Tre"]}})
+    return made
+
+
+def test_ws2_clear_corpus_choice_removes_store_and_default(stores):
+    made = _brand_b_setup(stores, srv)
+    brief = {"topic": "viết thử", "format": "blog", "brand_id": "brand-b"}
+    srv.set_corpus_choice("brand-b", "corpus-d")
+    defaulted = srv.assemble_context(brief)
+    assert defaulted["style_profile_source"] == "brand_corpus_choice"
+    out = srv.clear_corpus_choice("brand-b")
+    assert "error" not in out
+    assert out["cleared"] is True and out["store_cleared"] is True
+    # The store file itself is gone, not just shadowed.
+    assert not loaders._corpus_choice_path("brand-b").exists()
+    got = srv.get_corpus_choice("brand-b")
+    assert "error" in got and "no corpus choice" in got["error"]
+    # assemble_context no longer defaults from a corpus choice.
+    plain = srv.assemble_context(brief)
+    assert plain["style_profile"] is None
+    assert plain["style_profile_source"] is None
+    # An explicit brief style_profile_id is unaffected by the clear.
+    explicit = srv.assemble_context(brief, style_profile_id=made["id"])
+    assert explicit["style_profile"]["id"] == made["id"]
+    assert explicit["style_profile_source"] == "brief"
+
+
+def test_ws2_clear_corpus_choice_removes_draft_stamp(stores):
+    _brand_b_setup(stores, srv)
+    srv.create_research_pack("brand-b")
+    item = srv.propose_pack_item(
+        "brand-b", "corpus_choice", {"corpus_id": "corpus-d", "version": 1},
+        {"note": "Smith chose the press corpus"})
+    srv.decide_pack_item("brand-b", item["id"], "approve")
+    srv.apply_pack("brand-b")
+    # Pack apply persists BOTH places: the choice store record and the
+    # stamp on the brand draft.
+    assert loaders.load_brand_draft("brand-b")["corpus_choice"]["corpus_id"] \
+        == "corpus-d"
+    out = srv.clear_corpus_choice("brand-b")
+    assert out["cleared"] is True
+    assert out["store_cleared"] is True and out["draft_stamp_cleared"] is True
+    assert "corpus_choice" not in loaders.load_brand_draft("brand-b")
+    assert "error" in srv.get_corpus_choice("brand-b")
+
+
+def test_ws2_clear_corpus_choice_stamp_only_state(stores):
+    # A draft-stamp-only state (store file removed by hand): the
+    # fallback in load_corpus_choice still serves the stamp, and
+    # clear must remove it there too.
+    _brand_b_setup(stores, srv)
+    srv.set_corpus_choice("brand-b", "corpus-d")
+    draft = loaders.load_brand_draft("brand-b")
+    draft["corpus_choice"] = loaders.load_corpus_choice("brand-b")
+    loaders.save_brand_draft(draft)
+    loaders._corpus_choice_path("brand-b").unlink()
+    assert srv.get_corpus_choice("brand-b")["corpus_id"] == "corpus-d"
+    out = srv.clear_corpus_choice("brand-b")
+    assert out["cleared"] is True and out["store_cleared"] is False
+    assert out["draft_stamp_cleared"] is True
+    assert "corpus_choice" not in loaders.load_brand_draft("brand-b")
+    assert "error" in srv.get_corpus_choice("brand-b")
+
+
+def test_ws2_clear_corpus_choice_unset_is_noop(stores):
+    _brand_b_setup(stores, srv)
+    out = srv.clear_corpus_choice("brand-b")
+    assert "error" not in out
+    assert out["cleared"] is False
+    assert out["store_cleared"] is False
+    assert out["draft_stamp_cleared"] is False
+    # Clearing a brand that does not exist at all is the same no-op.
+    ghost = srv.clear_corpus_choice("brand-ghost")
+    assert "error" not in ghost and ghost["cleared"] is False
+
+
 # ---------------------------------------------------------------------------
 # WS3 — taste layer
 # ---------------------------------------------------------------------------

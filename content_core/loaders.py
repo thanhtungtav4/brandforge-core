@@ -1091,6 +1091,33 @@ def load_corpus_choice(brand_id: str) -> dict | None:
     return None
 
 
+def delete_corpus_choice(brand_id: str) -> dict:
+    """Remove a brand's corpus choice from BOTH places it can live:
+    the choice store record and the `corpus_choice` stamp a research
+    pack apply leaves on the brand draft (load_corpus_choice honours
+    either, so clearing only one would leave the choice alive).
+    Returns a report — {brand_id, cleared, store_cleared,
+    draft_stamp_cleared} — where `cleared` is True when anything was
+    actually removed; clearing a brand with no choice is a clean
+    no-op report, not an error. The draft is loaded BEFORE any write
+    so a corrupt draft surfaces as the usual ValueError with nothing
+    touched."""
+    draft = load_brand_draft(brand_id)
+    path = _corpus_choice_path(brand_id)
+    store_cleared = path.exists()
+    if store_cleared:
+        path.unlink()
+    stamp_cleared = False
+    if draft is not None and "corpus_choice" in draft:
+        del draft["corpus_choice"]
+        save_brand_draft(draft)
+        stamp_cleared = True
+    return {"brand_id": brand_id,
+            "cleared": store_cleared or stamp_cleared,
+            "store_cleared": store_cleared,
+            "draft_stamp_cleared": stamp_cleared}
+
+
 # --- Taste stores (learning loop, core side) ---
 # Per-brand record of the OWNER's verdicts on finished articles:
 # approved unchanged, or edited (both versions kept — the diff is the

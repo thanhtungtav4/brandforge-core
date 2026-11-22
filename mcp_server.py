@@ -108,6 +108,7 @@ from content_core import wordpress as _wordpress
 from content_core.loaders import load_wordpress_target as _load_wp_target
 from content_core.loaders import save_wordpress_target as _save_wp_target
 from content_core.loaders import load_corpus_choice as _load_corpus_choice
+from content_core.loaders import delete_corpus_choice as _delete_corpus_choice
 from content_core.loaders import load_corpus_entry as _load_corpus_entry
 from content_core.loaders import list_corpus_entries as _list_corpus_entries
 from content_core.loaders import load_research_pack as _load_research_pack
@@ -2376,6 +2377,23 @@ def get_corpus_choice(brand_id: str) -> dict:
         return {"error": f"brand {brand_id} has no corpus choice",
                 "brand_id": brand_id}
     return choice
+
+
+@mcp.tool()
+def clear_corpus_choice(brand_id: str) -> dict:
+    """Remove a brand's recorded corpus choice entirely — BOTH the
+    choice store record and the stamp a research-pack apply left on
+    the brand draft (get_corpus_choice honours either, so both must
+    go). After clearing, get_corpus_choice reports no choice and
+    assemble_context no longer defaults the brand's style profile
+    from a corpus; an explicit style_profile_id in a brief is
+    unaffected. Clearing a brand with no choice is a clean no-op
+    ({cleared: false, ...}), not an error. Returns {brand_id,
+    cleared, store_cleared, draft_stamp_cleared}."""
+    try:
+        return _delete_corpus_choice(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
 
 
 # --------------------------------------------------------------------------

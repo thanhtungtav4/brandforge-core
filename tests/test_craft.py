@@ -171,7 +171,7 @@ def test_mcp_tool_list_matches_canonical():
     # stale 'now_29' test name from an older round — duplicates drift.
     from test_mcp_server import EXPECTED_TOOLS
     assert set(srv.TOOL_NAMES) == EXPECTED_TOOLS
-    assert len(srv.TOOL_NAMES) == 64
+    assert len(srv.TOOL_NAMES) == 65
     for name in EXPECTED_TOOLS:
         assert callable(getattr(srv, name)), name
 

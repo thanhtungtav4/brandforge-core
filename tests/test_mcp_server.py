@@ -41,6 +41,7 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "decide_pack_item", "resolve_contradiction", "apply_pack",
                   "register_corpus", "list_corpora", "get_corpus",
                   "set_corpus_choice", "get_corpus_choice",
+                  "clear_corpus_choice",
                   "import_taste_articles", "mark_article_verdict",
                   "build_taste_profile", "get_taste_status",
                   "set_wordpress_target", "get_wordpress_target",
