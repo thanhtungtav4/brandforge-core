@@ -225,10 +225,11 @@ EXPECTED_NEW_TOOLS = {"analyze_site_brand", "save_brand_draft",
 
 
 def test_mcp_tool_list_now_29():
-    # (Name kept from the 29-tool round; the count is now 31 after the
-    # core-completion round added get_facts/save_facts.)
+    # (Name kept from the 29-tool round; the count is now 39 after the
+    # core-completion round added get_facts/save_facts and the images
+    # round added the 8 image tools.)
     assert EXPECTED_NEW_TOOLS <= set(srv.TOOL_NAMES)
-    assert len(srv.TOOL_NAMES) == 31
+    assert len(srv.TOOL_NAMES) == 39
     for name in EXPECTED_NEW_TOOLS:
         assert callable(getattr(srv, name)), name
 

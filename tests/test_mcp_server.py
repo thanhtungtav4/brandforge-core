@@ -29,7 +29,11 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "analyze_site_brand", "save_brand_draft", "get_brand_draft",
                   "compare_brand_voice",
                   "get_quality_profile", "save_quality_profile", "quality_score",
-                  "get_facts", "save_facts"}
+                  "get_facts", "save_facts",
+                  "plan_images", "set_image", "image_check",
+                  "record_vision_check", "get_image_manifest",
+                  "add_library_image", "list_library_images",
+                  "fulfil_images_from_library"}
 
 CLEAN_TEXT = (
     "Mộc Brew rang cà phê vào thứ Ba hàng tuần cho bạn. "

@@ -635,7 +635,7 @@ any host app's model can be the writer; the core stays the referee.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Tools (31)
+### Tools (39)
 
 | Tool | What it does |
 |---|---|
@@ -670,6 +670,89 @@ any host app's model can be the writer; the core stays the referee.
 | `save_brand_draft(pages, qualitative?, source_type?, brand_name?)` | Brand Builder: build + persist a DRAFT Brand Voice profile in the brand YAML structure. `qualitative` is the model-filled schema (tone traits, audience, positioning, differentiators). Drafts carry review_status="draft" + review_notes; competitor drafts mark every example reference_only |
 | `get_brand_draft(draft_id?)` | Brand Builder: one stored brand draft by id, or the list of drafts |
 | `compare_brand_voice(pages_a, pages_b)` | Brand Builder compare mode: two sites' fingerprints side by side, vocabulary difference, claim counts, both kits, and `gaps` — positioning observations computed from the measured deltas |
+| `plan_images(draft_id)` | Images: plan a draft's image slots — 1 featured + 1 per section (max 5 in-content), each with a deterministic generation prompt = scene + the brand's visual style block. Explicit, never auto-planned; stored in the draft under the per-draft lock |
+| `set_image(draft_id, image_id, source, ref, …)` | Images: fulfil one slot with an image the writer generated (`source="ai"`, pass `prompt_used`) or a client photo (`source="client"`). Filename/alt default to the SEO suggestions (alt marked `alt_suggested`); the core stores refs + metadata only, never image bytes |
+| `image_check(draft_id, complete?)` | Images: deterministic checker — alt presence/duplication/stuffing/length, filename slug rules, featured keyword + no featured reuse, AI style lock, vision grades. `complete=True` also counts unfulfilled slots as issues. Advisory only: never part of `final_gate` |
+| `record_vision_check(draft_id, image_id, content_grade, style_grade, notes?)` | Images: record the WRITER's vision grades (0/1/2 per axis, strict int validation) for a fulfilled image — the judged layer for images, mirroring the Quality Profile's judged axes. A grade of 0 fails that slot until the image is replaced |
+| `get_image_manifest(draft_id)` | Images: the WordPress-export-ready media manifest (fulfilled images, plan order, WP field names) + `ready` (all slots fulfilled AND no hard issues; unchecked images appear under `warnings` without blocking) |
+| `add_library_image(brand_id, ref, description, tags?, source?)` | Images: add one image to a brand's own image library (`data/image_library/<brand-id>/`, refs only). The description is what ranking and alt suggestions read |
+| `list_library_images(brand_id)` | Images: list a brand's library entries |
+| `fulfil_images_from_library(draft_id)` | Images: library-first fulfilment — rank the draft brand's library per slot by token overlap, fulfil above the match threshold (one entry never serves two slots), report the rest as `needs_generation` with style-locked prompts |
+
+### Article images (hybrid library-first + style lock + vision grades)
+
+Smith's decisions (22 Nov 2026): articles get a featured image plus
+in-content images with SEO-standard alt text and descriptions; the
+source model is **hybrid** — the client's real photos first, AI
+generation for what no photo fits; generated images must share **one
+consistent per-brand look**; and delivery is a WordPress draft, so
+the feature ends in a media manifest the future WP exporter uploads.
+
+The split mirrors text exactly: **generation happens outside the
+core** (the host/writer makes or selects the image files); the core
+plans, checks and packages (`content_core/images.py`, pure):
+
+- **Plan.** `plan_images` creates one featured slot (16:9, 200KB
+  advisory budget) + one in-content slot per section (4:3, 150KB),
+  capped at 5 in-content. Prompts are deterministic templates — no
+  LLM — assembled as scene + style block.
+- **Per-brand image library.** Each brand/client has its own
+  refs-only library at `data/image_library/<brand-id>/index.json`
+  (same stored-profile discipline as the other stores: validated
+  ids, schema-checked entries, atomic writes; the directory is
+  gitignored live data). Entries: `{id, ref, source: client|ai,
+  description, tags[], added_at}`.
+- **Library-first fulfilment.** `fulfil_images_from_library` ranks
+  entries by normalised token overlap (tags + description vs the
+  slot's heading/intent + brief keyword) and fulfils slots scoring
+  ≥ 0.35, client entries winning ties; one entry never fulfils two
+  slots in a draft. Alt text for a library fulfilment is suggested
+  from the entry description and marked `alt_suggested`. Slots with
+  no fit come back as `needs_generation` with their generation
+  prompt.
+- **Brand visual style.** An optional `visual` section in the brand
+  YAML / brand draft — `{style_summary, palette[], medium
+  (photo|illustration|mixed), mood, composition, avoid[]}` — renders
+  as one style block appended **verbatim** to every generation
+  prompt; that identical block is what makes a generated set look
+  like one set. Mộc Brew's shipped YAML carries a seeded value;
+  brands without a section simply get no style block (loader
+  tolerates absence). A fulfilled AI image records the full prompt
+  actually used (`prompt_used`); `image_check` raises
+  `style_not_locked` when it is missing or does not carry the
+  brand's current block, and `style_block_mismatch` when two AI
+  images in one draft were locked to different blocks. Library and
+  client images need no prompt.
+- **SEO metadata checks.** Hard issues: missing/duplicate
+  (diacritics-insensitive) alt, keyword-stuffed alt (the brief
+  keyword repeated, or an alt made only of the keyword), alt
+  > 200 chars, non-slug filename, featured filename without the
+  keyword, the featured ref reused in-content, fulfilments outside
+  the plan. Flagged: alt 125–200 chars, featured without caption,
+  missing media description, local files over budget or not
+  webp/jpg/png.
+- **Vision check (judged layer).** The core cannot see images; the
+  host model can — the Quality Profile's judged-axes pattern.
+  `record_vision_check` stores the writer's grades
+  `{content_grade, style_grade, notes, checked_at}` (0/1/2: 2 =
+  matches intent and brand style, 1 = usable with reservations,
+  0 = wrong content / off-style) on the fulfilled image — client and
+  library photos included (for a real photo, the style grade judges
+  fit with the brand look, not the photo's fault). In a complete
+  check, an ungraded image is flagged `vision_unchecked`; a grade
+  of 0 is a hard issue (`vision_content_mismatch` /
+  `vision_style_mismatch`) whose remedy is regenerating or
+  replacing that one image; grade 1 passes with its notes surfaced
+  as a `vision_reservations` flag. The core enforces the record,
+  not the seeing.
+- **Manifest + boundary.** `get_image_manifest` returns fulfilled
+  images in plan order as `{role, section_id, ref, filename,
+  alt_text, caption, description}`; `ready` requires all slots
+  fulfilled and no hard issues (vision-unchecked appears under
+  `warnings` only). The image layer is **advisory in this round**:
+  it is NOT wired into `final_gate`'s verdict — a draft's gate
+  result is exactly what its text earns. The LangGraph flow is
+  unchanged. Demo: `.venv/bin/python demo_images.py`.
 
 ### Start the server / test it
 
@@ -806,6 +889,9 @@ content_core/  state.py loaders.py writer.py linter.py fact_check.py seo.py
                style.py   (Style Extraction: fingerprint / build_profile / style_match)
                brand_extract.py   (Brand Builder: kit / voice suggestions /
                                    vocabulary / site claims / draft / compare)
+               images.py   (article images: plan / SEO metadata checks /
+                            library ranking / style lock / vision grades /
+                            WP manifest — pure, no generation inside)
 data/          persona_linh.json brand_mocbrew.yaml facts_lorebook.json
                craft_library.json exemplars.json domain_glossary.json   (Layer 4)
                model_golden.json   (model-written drafts + expected scores, P2a)
@@ -815,6 +901,7 @@ data/          persona_linh.json brand_mocbrew.yaml facts_lorebook.json
                facts_profiles/cao-nguyen-moc.json   (per-brand fact base, calibration brand)
                brand_drafts/   (Brand Builder drafts, gitignored)
                quality_profiles/   (custom Quality Profiles, gitignored)
+               image_library/   (per-brand image libraries, gitignored)
 tests/         test_linter.py test_fact_check.py test_gates.py test_golden.py
                test_mcp_server.py test_craft.py test_model_golden.py test_style.py
                test_brand_extract.py   (Brand Builder: kit/voice/claims/drafts/compare/MCP)
@@ -823,6 +910,7 @@ tests/         test_linter.py test_fact_check.py test_gates.py test_golden.py
                test_calibration_fixes.py   (calibration-round fixes)
                test_core_closing.py test_core_completion.py   (core-completion round)
                test_review_fixes.py   (2026-11-22 code-review round)
+               test_images.py   (article images: plan/check/library/vision/MCP)
                fixtures/dinhcao/ fixtures/som/   (two fictional coffee sites, HTML)
                fixtures/jsshell/ fixtures/jsshell2/   (JS-shell site fixtures)
 calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibration
@@ -830,7 +918,7 @@ calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibrati
                files are fixtures and which are local-only raw evidence)
 evaluation/    round-1..8 reports + SUMMARY.md + probes/   (the 8-round
                evaluation and its regression probes, all with exit codes)
-mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 31 tools) — the host app's model is the writer, tools are the hands + referee
+mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 39 tools) — the host app's model is the writer, tools are the hands + referee
 test_mcp_client.py   end-to-end MCP client test over stdio (24 checks)
 test_mcp_http.py     MCP HTTP smoke test (server on a test port, tools/list + get_quality_profile)
 fetch_sample.py      CLI helper: URL -> plain text for Style Extraction (server stays offline)
@@ -839,6 +927,7 @@ build_default_style_profile.py   rebuilds data/style_profiles/mocbrew-blog-voice
 demo_mcp_e2e.py      end-to-end demo: Muse-written product draft through all gates
 demo_mcp_e2e_v2.py   same brief rewritten with Layer 4 craft (craft 85 -> 100)
 demo_brand_builder.py   Brand Builder demo on the fixture sites (draft + refusal + compare)
+demo_images.py       article-images demo: library-first fulfilment + style lock + vision grades + WP manifest (isolated temp stores)
 drafts/              draft state JSON files created by the MCP tools (gitignored)
 run_golden.py  run_model_golden.py  requirements.txt
 ```

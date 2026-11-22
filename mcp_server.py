@@ -31,6 +31,7 @@ import sys
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -82,6 +83,14 @@ from content_core.brand_extract import suggest_voice_rules as _suggest_voice_rul
 from content_core.loaders import list_brand_drafts as _list_brand_drafts
 from content_core.loaders import load_brand_draft as _load_brand_draft
 from content_core.loaders import save_brand_draft as _save_brand_draft_file
+from content_core.images import best_library_match as _best_library_match
+from content_core.images import build_manifest as _build_image_manifest
+from content_core.images import check_images as _check_images
+from content_core.images import plan_images as _plan_images
+from content_core.images import suggest_alt as _suggest_alt
+from content_core.images import suggest_filename as _suggest_filename
+from content_core.loaders import add_image_library_entry as _add_library_image_file
+from content_core.loaders import list_image_library as _list_image_library_file
 from content_core.seo import seo_pass as _seo_pass
 from content_core.style import analyze_samples as _analyze_samples
 from content_core.style import fingerprint as _fingerprint
@@ -477,6 +486,34 @@ def _resolve_brand_facts(brand_id: str) -> tuple[dict, dict]:
             f"build the brand first (analyze_site_brand/save_brand_draft) "
             f"and save its facts (save_facts)")
     return draft, load_facts(brand_id)
+
+
+def _resolve_brand_only(brand_id: str) -> dict:
+    """The brand DICT for a brand id, without touching the fact base —
+    the image layer needs brand context (name, visual style), not
+    numbers. ''/'moc-brew' → the server brand; any other id → the
+    stored Brand Builder draft. Raises ValueError for an unknown
+    brand (same never-borrow rule as _resolve_brand_facts)."""
+    if not brand_id or brand_id == "moc-brew":
+        return _brand()
+    draft = _load_brand_draft(brand_id)
+    if draft is None:
+        raise ValueError(
+            f"unknown brand_id: {brand_id!r} — no stored brand draft")
+    return draft
+
+
+def _draft_images_state(draft: dict) -> dict:
+    """The draft's images state {"plan": [...], "images": {...}},
+    defaulted for drafts started before the image layer existed."""
+    state = draft.get("images")
+    if not isinstance(state, dict):
+        state = {}
+    if not isinstance(state.get("plan"), list):
+        state["plan"] = []
+    if not isinstance(state.get("images"), dict):
+        state["images"] = {}
+    return state
 
 
 def _run_gate(draft: dict, quality_profile: dict | None = None,
@@ -1141,6 +1178,309 @@ def get_draft(draft_id: str) -> dict:
     if error:
         return error
     return draft
+
+
+# --------------------------------------------------------------------------
+# Tools — article images (ADVISORY layer, like style_match: these
+# tools NEVER enter final_gate's verdict in this round. The core
+# plans, ranks the brand's photo library, checks SEO metadata and
+# style lock, records the writer's vision grades, and packages the
+# WordPress-export manifest. Generating the actual image files is
+# the host/writer's job — exactly like writing the prose.)
+# --------------------------------------------------------------------------
+
+@mcp.tool()
+def plan_images(draft_id: str) -> dict:
+    """Plan a draft's image slots: one featured image + one in-content
+    image per section (capped — see content_core/images.py). Each slot
+    carries a deterministic generation prompt = scene + the brand's
+    visual style block (byte-identical across slots; that shared block
+    is the style lock). Planning is explicit: starting a draft does
+    not auto-plan. Re-planning keeps fulfilments whose slot ids still
+    exist. The plan lives in the draft's "images" state, under the
+    per-draft lock."""
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            try:
+                brand = _resolve_brand_only(
+                    draft.get("brief", {}).get("brand_id", ""))
+            except ValueError as exc:
+                return {"error": str(exc), "draft_id": draft_id}
+            plan = _plan_images(_sections_of(draft), draft.get("brief", {}),
+                                brand)
+            state = _draft_images_state(draft)
+            slot_ids = {p["id"] for p in plan}
+            kept = {iid: e for iid, e in state["images"].items()
+                    if iid in slot_ids}
+            draft["images"] = {"plan": plan, "images": kept}
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"draft_id": draft_id, "plan": plan, "images": kept}
+
+
+@mcp.tool()
+def set_image(draft_id: str, image_id: str, source: str, ref: str,
+              alt: str = "", caption: str = "", description: str = "",
+              filename: str = "", prompt_used: str = "") -> dict:
+    """Fulfil ONE planned slot with an image the writer generated or
+    selected. `source` is "ai" (generated for this article) or
+    "client" (the client's real photo); `ref` is its path or URL —
+    the core stores refs and metadata only, never image bytes.
+
+    `filename` defaults to the SEO suggestion (keyword-led slug);
+    `alt` defaults to the template suggestion and is then marked
+    `alt_suggested` — replace it with alt written from the actual
+    image whenever you can. For an "ai" image, pass `prompt_used`:
+    the full prompt actually used, which must carry the brand's style
+    block (image_check verifies it). Overwriting a slot drops any
+    vision_check recorded for the previous image. Returns the stored
+    entry plus this image's immediate check notes."""
+    if source not in ("ai", "client"):
+        return {"error": f"source must be 'ai' or 'client', got {source!r}",
+                "draft_id": draft_id}
+    if not str(ref or "").strip():
+        return {"error": "ref must be a non-empty path or URL",
+                "draft_id": draft_id}
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            state = _draft_images_state(draft)
+            item = next((p for p in state["plan"] if p["id"] == image_id),
+                        None)
+            if item is None:
+                return {"error": f"unknown image slot: {image_id!r} — "
+                                 f"call plan_images first",
+                        "draft_id": draft_id}
+            brief = draft.get("brief", {})
+            alt_suggested = not str(alt or "").strip()
+            entry = {
+                "source": source, "ref": ref,
+                "filename": filename or _suggest_filename(item, brief),
+                "alt": _suggest_alt(item, brief) if alt_suggested else alt,
+                "alt_suggested": alt_suggested,
+                "caption": caption, "description": description,
+                "prompt_used": prompt_used, "from_library": None,
+            }
+            state["images"][image_id] = entry
+            draft["images"] = state
+            _store_draft(draft)
+            try:
+                brand = _resolve_brand_only(brief.get("brand_id", ""))
+            except ValueError:
+                brand = {}
+            issues, flagged = _check_images(state["plan"], state["images"],
+                                            brief, brand)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    notes = [n for n in issues + flagged if n["image_id"] == image_id]
+    return {"draft_id": draft_id, "image_id": image_id, "image": entry,
+            "notes": notes}
+
+
+@mcp.tool()
+def image_check(draft_id: str, complete: bool = False) -> dict:
+    """Deterministic image checker: SEO metadata (alt presence /
+    duplication / keyword stuffing / length, filename slug rules,
+    featured keyword + no featured reuse), the AI style lock
+    (prompt_used must carry the brand's visual style block), and the
+    vision grades. With complete=True, unfulfilled slots count as
+    missing_image issues and ungraded images are flagged
+    vision_unchecked. Advisory: this never changes final_gate."""
+    draft, error = _load_draft_or_error(draft_id)
+    if error:
+        return error
+    state = _draft_images_state(draft)
+    if not state["plan"]:
+        return {"error": "draft has no image plan — call plan_images first",
+                "draft_id": draft_id}
+    try:
+        brand = _resolve_brand_only(draft.get("brief", {}).get("brand_id", ""))
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+    issues, flagged = _check_images(state["plan"], state["images"],
+                                    draft.get("brief", {}), brand,
+                                    complete=complete)
+    return {"ok": not issues, "draft_id": draft_id, "complete": complete,
+            "issues": issues, "flagged": flagged}
+
+
+@mcp.tool()
+def record_vision_check(draft_id: str, image_id: str, content_grade: int,
+                        style_grade: int, notes: str = "") -> dict:
+    """Record the WRITER's vision grades for one fulfilled image —
+    the judged layer for images (the core cannot see images; you
+    can). Look at the actual image first, then grade: content_grade
+    = does it show what the slot needs; style_grade = does it fit
+    the brand look (for a client photo this judges fit, not the
+    photo's fault). Rubric: 2 = matches, 1 = usable with
+    reservations (say why in notes), 0 = wrong content / off-style —
+    a 0 makes image_check fail that slot until the image is
+    regenerated or replaced. Applies to library/client photos too:
+    content relevance matters for them equally."""
+    for name, grade in (("content_grade", content_grade),
+                        ("style_grade", style_grade)):
+        if isinstance(grade, bool) or not isinstance(grade, int) \
+                or grade not in (0, 1, 2):
+            return {"error": f"{name} must be an int in 0..2, "
+                             f"got {grade!r}", "draft_id": draft_id}
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            state = _draft_images_state(draft)
+            if not state["plan"]:
+                return {"error": "draft has no image plan — call "
+                                 "plan_images first", "draft_id": draft_id}
+            entry = state["images"].get(image_id)
+            if not isinstance(entry, dict) \
+                    or not str(entry.get("ref") or "").strip():
+                return {"error": f"image slot not fulfilled: {image_id!r}",
+                        "draft_id": draft_id}
+            entry["vision_check"] = {
+                "content_grade": content_grade, "style_grade": style_grade,
+                "notes": notes,
+                "checked_at": datetime.now(timezone.utc).isoformat(
+                    timespec="seconds")}
+            state["images"][image_id] = entry
+            draft["images"] = state
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"draft_id": draft_id, "image_id": image_id,
+            "vision_check": entry["vision_check"]}
+
+
+@mcp.tool()
+def get_image_manifest(draft_id: str) -> dict:
+    """The WordPress-export-ready media manifest: fulfilled images in
+    plan order as {role, section_id, ref, filename, alt_text,
+    caption, description} — the fields the future WP exporter
+    uploads. `ready` is the image layer's own completeness signal:
+    every slot fulfilled AND no hard issues in a complete check
+    (a vision grade of 0 is a hard issue). Unchecked images do not
+    block ready; they are listed under `warnings`."""
+    draft, error = _load_draft_or_error(draft_id)
+    if error:
+        return error
+    state = _draft_images_state(draft)
+    if not state["plan"]:
+        return {"draft_id": draft_id, "manifest": [], "ready": False,
+                "issues": [], "flagged": [], "warnings": [],
+                "note": "no image plan — call plan_images first"}
+    try:
+        brand = _resolve_brand_only(draft.get("brief", {}).get("brand_id", ""))
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+    issues, flagged = _check_images(state["plan"], state["images"],
+                                    draft.get("brief", {}), brand,
+                                    complete=True)
+    return {"draft_id": draft_id,
+            "manifest": _build_image_manifest(state["plan"],
+                                              state["images"]),
+            "ready": not issues, "issues": issues, "flagged": flagged,
+            "warnings": flagged}
+
+
+@mcp.tool()
+def add_library_image(brand_id: str, ref: str, description: str,
+                      tags: list[str] | None = None,
+                      source: str = "client") -> dict:
+    """Add one image to a brand's own image library (refs only — the
+    core never copies image bytes). `description` says what the image
+    shows: library ranking and alt suggestions read it, so write it
+    like a caption. `source` is "client" (the client's real photo,
+    the default) or "ai" (a generated image kept for reuse).
+    Re-adding the same ref+description replaces, never duplicates."""
+    try:
+        return _add_library_image_file(brand_id, ref, description, tags,
+                                       source)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+
+
+@mcp.tool()
+def list_library_images(brand_id: str) -> dict:
+    """List a brand's image library entries ([] when the brand has
+    no library yet)."""
+    try:
+        entries = _list_image_library_file(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return {"brand_id": brand_id, "images": entries}
+
+
+@mcp.tool()
+def fulfil_images_from_library(draft_id: str) -> dict:
+    """Library-first fulfilment: for each unfulfilled plan slot, rank
+    the DRAFT BRAND's library by token overlap (tags + description vs
+    the slot's heading/intent + brief keyword) and fulfil with the
+    best unused entry above the match threshold — one library image
+    never fulfils two slots in a draft. Alt text is suggested from
+    the entry description (marked alt_suggested — the writer should
+    still review it). Slots with no fitting entry are reported as
+    needs_generation with their style-locked generation prompt."""
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            state = _draft_images_state(draft)
+            if not state["plan"]:
+                return {"error": "draft has no image plan — call "
+                                 "plan_images first", "draft_id": draft_id}
+            brief = draft.get("brief", {})
+            brand_id = brief.get("brand_id") or "moc-brew"
+            try:
+                entries = _list_image_library_file(brand_id)
+            except ValueError as exc:
+                return {"error": str(exc), "draft_id": draft_id}
+            images = state["images"]
+            used = {e.get("from_library") for e in images.values()
+                    if isinstance(e, dict) and e.get("from_library")}
+            fulfilled, needs_generation = [], []
+            for item in state["plan"]:
+                existing = images.get(item["id"])
+                if isinstance(existing, dict) \
+                        and str(existing.get("ref") or "").strip():
+                    continue
+                match = _best_library_match(item, brief, entries, used)
+                if match is None:
+                    needs_generation.append({
+                        "image_id": item["id"], "prompt": item["prompt"],
+                        "style_block": item.get("style_block", "")})
+                    continue
+                entry, score = match
+                used.add(entry["id"])
+                images[item["id"]] = {
+                    "source": entry.get("source", "client"),
+                    "ref": entry.get("ref", ""),
+                    "filename": _suggest_filename(item, brief),
+                    "alt": _suggest_alt(
+                        item, brief,
+                        description=entry.get("description", "")),
+                    "alt_suggested": True,
+                    "caption": "",
+                    "description": entry.get("description", ""),
+                    "prompt_used": "", "from_library": entry["id"],
+                }
+                fulfilled.append({"image_id": item["id"],
+                                  "library_id": entry["id"],
+                                  "ref": entry.get("ref", ""),
+                                  "score": round(score, 3)})
+            state["images"] = images
+            draft["images"] = state
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"draft_id": draft_id, "fulfilled": fulfilled,
+            "needs_generation": needs_generation, "images": images}
 
 
 # --------------------------------------------------------------------------

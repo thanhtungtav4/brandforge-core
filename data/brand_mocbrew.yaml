@@ -55,3 +55,15 @@ anti_examples:
 claims_and_guardrails:
   requires_evidence: ["mọi số liệu", "mọi khẳng định về sức khỏe", "mọi so sánh với đối thủ"]
   unsupported_claim_marker: "[NEEDS SOURCE]"
+
+# Visual style (tùy chọn) — content_core/images.py dựng khối phong cách
+# từ section này và gắn NGUYÊN VĂN vào mọi prompt tạo ảnh của brand, để
+# ảnh AI sinh ra trông như một bộ. Brand không có section này vẫn chạy
+# bình thường (không khóa phong cách).
+visual:
+  style_summary: "warm, minimal café photography with natural window light"
+  palette: ["#6F4E37", "#E8DCC8", "#3B2A20"]
+  medium: photo
+  mood: "warm, calm, unhurried"
+  composition: "close-up with shallow depth of field and generous negative space"
+  avoid: ["posed stock-photo models", "text overlays", "neon colours", "cluttered backgrounds"]

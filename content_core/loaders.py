@@ -620,3 +620,102 @@ def median_range(brand: dict, fmt: str) -> tuple[int, int]:
     rules = brand["voice"]["sentence_rules"]
     lo, hi = rules.get("median_words_by_format", {}).get(fmt, rules["median_words_default"])
     return int(lo), int(hi)
+
+
+# --- Image library (per-brand photo store) ---
+# Same pattern as the other stores: ALL file IO lives HERE;
+# content_core/images.py is pure computation; mcp_server.py persists
+# only through these helpers. Each brand/client has its own library
+# at data/image_library/<brand-id>/index.json; tests point
+# CONTENT_CORE_IMAGE_LIBRARY_DIR at a tmp dir, like the other dirs.
+# The library stores REFS ONLY (paths/URLs) — the core never copies
+# image bytes, exactly as it never generates images.
+
+def image_library_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_IMAGE_LIBRARY_DIR")
+    return Path(override) if override else DATA_DIR / "image_library"
+
+
+def _image_library_index_path(brand_id: str) -> Path:
+    return image_library_dir() / stored_file_stem(brand_id) / "index.json"
+
+
+def validate_image_library_entry(entry: dict) -> dict:
+    """Schema-check one library entry BEFORE it is persisted (the
+    save_facts / save_brand_draft discipline). Required: ref
+    (non-empty), description (non-empty — ranking and alt suggestion
+    both read it), source in {"client", "ai"}. tags defaults to [].
+    Raises ValueError; returns the entry."""
+    if not isinstance(entry, dict):
+        raise ValueError("image library entry must be an object")
+    if not str(entry.get("ref") or "").strip():
+        raise ValueError("image library entry needs a non-empty ref")
+    if not str(entry.get("description") or "").strip():
+        raise ValueError(
+            "image library entry needs a non-empty description "
+            "(what the image shows — ranking and alt text read it)")
+    if entry.get("source") not in ("client", "ai"):
+        raise ValueError(
+            f"image library entry source must be 'client' or 'ai', "
+            f"got {entry.get('source')!r}")
+    tags = entry.get("tags")
+    if tags is not None and not (isinstance(tags, list)
+                                 and all(isinstance(t, str) for t in tags)):
+        raise ValueError("image library entry tags must be a list of strings")
+    return entry
+
+
+def load_image_library(brand_id: str) -> dict:
+    """The brand's library document {"brand_id", "images": [...]}.
+    A brand with no library yet gets an empty one (not an error —
+    fulfilment then simply reports every slot as needs_generation).
+    Stored shape is validated like every other store (review M7)."""
+    path = _image_library_index_path(brand_id)
+    if not path.exists():
+        return {"brand_id": brand_id, "images": []}
+    data = _require_stored_object(_load_json_file(path), path,
+                                  "image library", required="images")
+    if not isinstance(data.get("images"), list) \
+            or not all(isinstance(e, dict) for e in data["images"]):
+        raise ValueError(
+            f"corrupt image library file {path.name}: 'images' must be "
+            f"a list of objects")
+    data.setdefault("brand_id", brand_id)
+    return data
+
+
+def save_image_library(brand_id: str, library: dict) -> dict:
+    """Persist a library document (atomic write). Returns it."""
+    path = _image_library_index_path(brand_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(path, json.dumps(library, ensure_ascii=False, indent=2))
+    return library
+
+
+def add_image_library_entry(brand_id: str, ref: str, description: str,
+                            tags: list[str] | None = None,
+                            source: str = "client") -> dict:
+    """Validate + append one entry to a brand's library. The entry id
+    derives from ref+description, so re-adding the same image is an
+    idempotent replace, never a duplicate. Returns the entry."""
+    from datetime import datetime, timezone
+
+    entry = {"id": "lib-" + hashlib.sha1(
+        f"{ref}|{description}".encode("utf-8")).hexdigest()[:10],
+        "ref": ref, "source": source, "description": description,
+        "tags": tags if tags is not None else [],
+        "added_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    validate_image_library_entry(entry)
+    library = load_image_library(brand_id)
+    entries = [e for e in library["images"] if e.get("id") != entry["id"]]
+    entries.append(entry)
+    library["images"] = entries
+    save_image_library(brand_id, library)
+    return entry
+
+
+def list_image_library(brand_id: str) -> list[dict]:
+    """All entries of a brand's library ([] when none exists yet).
+    The brand id is validated at the boundary like every store."""
+    stored_file_stem(brand_id)  # raises ValueError for unusable ids
+    return load_image_library(brand_id)["images"]
