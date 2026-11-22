@@ -95,11 +95,27 @@ Core-completion additions (per-brand fact bases + R1 leftovers):
 from __future__ import annotations
 
 import re
+from functools import lru_cache as _lru_cache
 
 from .linter import (NEGATED_PREFIX_RE, _phrase_regex, collapse_letter_spacing,
                      fuzzy_phrase_spans, normalize_for_match, split_sentences,
                      strip_markup)
 from .loaders import format_vnd, prohibited_claims
+
+# Hoisted hot-path patterns (perf P7): the clause splitters are constant
+# patterns that check_section used to hand to re.split per sentence
+# (a cache lookup per call), and the origin scan rebuilt a per-bean
+# f-string pattern for every sentence — unique strings that defeat the
+# re cache entirely. Identical patterns, compiled once.
+_CLAUSE_SPLIT_RE = re.compile(r"[,;]")
+_ORIGIN_CLAUSE_SPLIT_RE = re.compile(r"[,;:—–-]|\bcòn\b|\bvà\b")
+
+
+@_lru_cache(maxsize=512)
+def _token_boundary_re(token: str) -> re.Pattern:
+    """Compiled \\b<token>\\b pattern, cached per token (beans, homes and
+    regions repeat across every sentence of every section)."""
+    return re.compile(rf"\b{re.escape(token)}\b")
 
 # Weight mentions in every common form: "250g", "300 gam", "300gr",
 # "0,3kg", "250,5g" (evaluation R1: the old integer-only, g-only pattern
@@ -458,10 +474,10 @@ def _asserted_wrong_origin(norm: str, bean: str, home: str,
     Cầu Đất, Robusta Đắk Lắk" each bean's nearest region is its home.
     `wrongs` is the list of regions that are wrong FOR THIS BEAN (see
     _wrong_regions) — more than one since per-brand fact bases."""
-    bean_at = [m.start() for m in re.finditer(rf"\b{re.escape(bean)}\b", norm)]
-    home_at = [m.start() for m in re.finditer(rf"\b{re.escape(home)}\b", norm)]
+    bean_at = [m.start() for m in _token_boundary_re(bean).finditer(norm)]
+    home_at = [m.start() for m in _token_boundary_re(home).finditer(norm)]
     wrong_at = [(m.start(), region) for region in wrongs
-                for m in re.finditer(rf"\b{re.escape(region)}\b", norm)]
+                for m in _token_boundary_re(region).finditer(norm)]
     for b in bean_at:
         candidates = [(abs(o - b), o, region) for o, region in wrong_at]
         candidates += [(abs(o - b), o, None) for o in home_at]
@@ -572,7 +588,8 @@ def _is_freshness_window(norm: str, end: int) -> bool:
                or t.isdigit() for t in following)
 
 
-def find_claim_detail(sentence: str, phrases: list[str]) -> tuple[str, int, str] | None:
+def find_claim_detail(sentence: str, phrases: list[str],
+                      prepared_norm: str | None = None) -> tuple[str, int, str] | None:
     """(phrase, span_start, norm) of the first NON-NEGATED occurrence of
     any phrase (list order), or None. `norm` is the sentence's
     normalized form the span indexes into (returned so callers can run
@@ -582,8 +599,15 @@ def find_claim_detail(sentence: str, phrases: list[str]) -> tuple[str, int, str]
     guards (see linter.normalize_for_match), markup-stripped and
     letter-spacing-collapsed, and includes the bounded fuzzy variants
     (one inserted token: "chữa được mất ngủ" matches "chữa mất ngủ" —
-    R1-D11) and the word-numeral variant of digit phrases ("số một")."""
-    norm = collapse_letter_spacing(normalize_for_match(strip_markup(sentence)))
+    R1-D11) and the word-numeral variant of digit phrases ("số một").
+
+    `prepared_norm` (perf P2a): a caller that already computed this
+    sentence's claim norm (strip_markup + normalize + collapse — the
+    exact expression below) may pass it in instead of paying for the
+    same derivation again per phrase list. The returned norm is the
+    passed-in value, so downstream coordinates are unchanged."""
+    norm = prepared_norm if prepared_norm is not None else \
+        collapse_letter_spacing(normalize_for_match(strip_markup(sentence)))
     for phrase in phrases:
         spans: list[tuple[int, int]] = []
         for variant in [phrase, _word_numeral_variant(phrase)]:
@@ -798,13 +822,21 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
             issues.append({"section_id": section_id, "type": "wrong_delivery",
                            "detail": raw})
 
+    # Sentence split + normalization happen ONCE per section (perf P6):
+    # the delivery loop, the main per-sentence loop and the
+    # cross-sentence block all used to re-split (and the main loop
+    # re-normalize) the same text independently. split_sentences and
+    # normalize_for_match are pure, so sharing the results is exact.
+    sentences = split_sentences(text)
+    sentence_norms = [normalize_for_match(s) for s in sentences]
+
     # Delivery RANGES are checked per sentence and only with delivery
     # context (evaluation R1): the same "5-7 ngày" shape is a use-by
     # window in "dùng trong 5-7 ngày" and a delivery claim in "giao
     # trong 5-7 ngày" — the sentence's verbs decide, not the digits.
     # All delivery checks are skipped when the facts doc records no
     # delivery fact (delivery_known is False).
-    for sentence in split_sentences(text) if delivery_known else []:
+    for sentence in sentences if delivery_known else []:
         # "trong vòng N ngày" and "chậm nhất N ngày" are unambiguous
         # promise shapes — they are checked WITHOUT the context gate
         # (R1's missed case "Hàng tới nơi trong vòng 5 ngày" has no
@@ -851,9 +883,8 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
 
     fact_roast_day_norm = normalize_for_match(str(f.get("roast_weekday", "")))
 
-    for sentence in split_sentences(text):
+    for sentence, norm in zip(sentences, sentence_norms):
         marked = NEEDS_SOURCE in sentence
-        norm = normalize_for_match(sentence)
 
         # --- roast weekday: CLAUSE-scoped (evaluation R1-D5). The old
         #     rule — any weekday in any sentence containing "rang", with
@@ -869,7 +900,7 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
         #     ngày rang") is honoured too. ---
         if fact_roast_day_norm and "rang" in norm:
             roast_flagged = False
-            for clause in re.split(r"[,;]", sentence):
+            for clause in _CLAUSE_SPLIT_RE.split(sentence):
                 cnorm = normalize_for_match(clause)
                 if "rang" not in cnorm:
                     continue
@@ -897,9 +928,15 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
         #     "Arabica cho vị chua, còn Robusta Đắk Lắk cho hậu đậm"
         #     clean: the unpinned bean's clause names no region at all.
         #     The pairs come from the ACTIVE facts doc (_origin_pairs). ---
+        # The origin-pairing and other-region blocks split the sentence
+        # on the SAME clause pattern and normalize every clause — split
+        # once and share the (clause, norm) pairs (perf P6). Each block
+        # still walks the clauses in its own pass, so issue order and
+        # the flagged_beans state flow are unchanged.
+        big_clauses = [(c, normalize_for_match(c))
+                       for c in _ORIGIN_CLAUSE_SPLIT_RE.split(sentence)]
         flagged_beans: set[str] = set()
-        for clause in re.split(r"[,;:—–-]|\bcòn\b|\bvà\b", sentence):
-            cnorm = normalize_for_match(clause)
+        for _clause, cnorm in big_clauses:
             if not cnorm:
                 continue
             for bean, home in pairs.items():
@@ -920,8 +957,7 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
         #     Brew dùng Arabica Cầu Đất") flagged as the brand's source.
         #     Region and marker must now share a clause, and a clause
         #     about a competitor ("đối thủ") never counts. ---
-        for clause in re.split(r"[,;:—–-]|\bcòn\b|\bvà\b", sentence):
-            cnorm = normalize_for_match(clause)
+        for _clause, cnorm in big_clauses:
             if not cnorm or "doi thu" in cnorm:
                 continue
             region_hit = next((r for r in _OTHER_REGIONS_NORM if r in cnorm), None)
@@ -935,13 +971,22 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
         #     Normalized, negation-aware matching (find_claim): a denied
         #     claim is not an assertion. ---
         claim_found = False
+        _claim_norm: str | None = None  # this sentence's claim norm, lazy
 
         def _record_claim(phrases: list[str], issue_type: str) -> bool:
             """Record the first claim from `phrases` in this sentence.
             Marked [NEEDS SOURCE] -> flagged. Attributed to a competitor
             or reported as a question (see _claim_attributed) -> flagged.
             Otherwise -> a blocking issue of `issue_type`."""
-            detail = find_claim_detail(sentence, phrases)
+            nonlocal _claim_norm
+            if _claim_norm is None:
+                # Computed once per sentence and threaded into
+                # find_claim_detail (perf P2a): the prohibited and
+                # unsupported-claim scans used to each re-derive it.
+                _claim_norm = collapse_letter_spacing(
+                    normalize_for_match(strip_markup(sentence)))
+            detail = find_claim_detail(sentence, phrases,
+                                       prepared_norm=_claim_norm)
             if detail is None:
                 return False
             hit, start, cnorm = detail
@@ -1023,11 +1068,11 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
     #     check's job). The pairing itself is judged by the same
     #     nearest-region assertion logic on a synthetic join. ---
     _PRONOUN_HEADS = ("hat nay", "loai nay", "giong nay", "hat do")
-    all_sentences = split_sentences(text)
-    for i in range(len(all_sentences) - 1):
-        n1 = normalize_for_match(all_sentences[i])
+    # Reuses the section's single split + norms (perf P6).
+    for i in range(len(sentences) - 1):
+        n1 = sentence_norms[i]
         beans1 = [b for b in pairs
-                  if re.search(rf"\b{re.escape(b)}\b", n1)]
+                  if _token_boundary_re(b).search(n1)]
         if len(beans1) != 1:
             continue
         bean = beans1[0]
@@ -1035,8 +1080,8 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
         wrongs = _wrong_regions(pairs, home)
         if any(r in n1 for r in [home, *wrongs]):
             continue  # a region is already in sentence 1 — not a split
-        n2 = normalize_for_match(all_sentences[i + 1])
-        if re.search(rf"\b{re.escape(bean)}\b", n2):
+        n2 = sentence_norms[i + 1]
+        if _token_boundary_re(bean).search(n2):
             continue
         head = " ".join(n2.split()[:3])
         if not any(p in head for p in _PRONOUN_HEADS):

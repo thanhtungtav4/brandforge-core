@@ -33,6 +33,10 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # annotations only — the runtime import is lazy (P8)
+    from content_core.graph import Core
 
 try:
     import fcntl
@@ -55,11 +59,13 @@ from content_core.fact_check import find_refused_claims
 # this server's final_gate and the LangGraph graph call gates.evaluate_gate.
 from content_core.gates import BRAND_PASS_SCORE, CRAFT_PASS_SCORE, MAX_REWRITES
 from content_core.gates import evaluate_gate as _evaluate_gate
-from content_core.graph import Core
+# NOTE: content_core.graph (and its langgraph chain, ~1 s of import) is
+# deliberately NOT imported at module level — see _core_class (perf P8).
 from content_core.linter import lint_draft as _lint_draft
 from content_core.linter import lint_section as _lint_section
 from content_core.loaders import DEFAULT_STYLE_PROFILE_ID, atomic_write_text, stored_file_stem
 from content_core.loaders import banned_terms as _brand_banned_terms
+from content_core.loaders import brand_check_context as _brand_check_context
 from content_core.loaders import list_style_profiles as _list_style_profiles
 from content_core.loaders import list_facts_profiles as _list_facts_profiles
 from content_core.loaders import load_brand, load_facts, load_persona
@@ -118,12 +124,23 @@ mcp = FastMCP("content-core")
 _core: Core | None = None
 
 
+def _core_class() -> type[Core]:
+    """The graph Core class, imported LAZILY (perf P8): importing
+    content_core.graph pulls in the langgraph chain (~1 s), and most
+    server launches never touch the graph — tools/list, the pure
+    checker tools and every stdio test spawn start without it. The
+    first call that needs a Core (assemble_context / make_outline /
+    validate_brief / run_golden) pays the import instead."""
+    from content_core.graph import Core
+    return Core
+
+
 def _get_core() -> Core:
     """One Core instance (MockWriter inside is never used by the MCP tools —
     the graph nodes we reuse are validate/research/outline, which don't write)."""
     global _core
     if _core is None:
-        _core = Core()
+        _core = _core_class()()
     return _core
 
 
@@ -473,12 +490,15 @@ def _sections_of(draft: dict) -> list[dict]:
     return draft.get("sections", [])
 
 
-def _brand_max_sentence_words() -> int | None:
+def _brand_max_sentence_words(brand: dict | None = None) -> int | None:
     """The server brand's own max sentence length — passed to craft so
     its rhythm statistic excludes over-long sentences exactly like the
-    gate paths do (monotonicity fix, evaluation R5)."""
+    gate paths do (monotonicity fix, evaluation R5). Accepts an
+    already-loaded brand dict so a caller needing several brand-derived
+    values loads the brand file ONCE (perf P4)."""
     try:
-        return int(_brand()["voice"]["sentence_rules"]["max_sentence_words"])
+        b = brand if brand is not None else _brand()
+        return int(b["voice"]["sentence_rules"]["max_sentence_words"])
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -540,7 +560,7 @@ def _core_for_brief(brief: dict) -> Core:
     default path is byte-identical to before."""
     if brief.get("brand_id") or brief.get("persona_id"):
         brand, facts, persona = _resolve_writer_context(brief)
-        return Core(brand=brand, facts=facts, persona=persona)
+        return _core_class()(brand=brand, facts=facts, persona=persona)
     return _get_core()
 
 
@@ -730,6 +750,9 @@ def craft_check(text: str = "", format: str = "blog", draft_id: str = "",
     the generic brand-neutral weak-word/sensory set instead of Mộc
     Brew's coffee vocabulary. Empty = the default Mộc Brew path."""
     server_brand = not brand_id or brand_id == "moc-brew"
+    # Load the server brand ONCE when its context is needed (perf P4:
+    # the YAML used to be parsed twice per call, once per derived value).
+    server = _brand() if server_brand else None
     if draft_id:
         draft, error = _load_draft_or_error(draft_id)
         if error:
@@ -737,12 +760,12 @@ def craft_check(text: str = "", format: str = "blog", draft_id: str = "",
         fmt = draft.get("brief", {}).get("format", format)
         return _craft_check_draft(
             _sections_of(draft), fmt, brand_id=brand_id or None,
-            max_sentence_words=_brand_max_sentence_words() if server_brand else None,
-            banned_terms=_brand_banned_terms(_brand()) if server_brand else None)
+            max_sentence_words=_brand_max_sentence_words(server) if server_brand else None,
+            banned_terms=_brand_banned_terms(server) if server_brand else None)
     return _craft_check_text(text, format, brand_id=brand_id or None,
-                             max_sentence_words=_brand_max_sentence_words()
+                             max_sentence_words=_brand_max_sentence_words(server)
                              if server_brand else None,
-                             banned_terms=_brand_banned_terms(_brand())
+                             banned_terms=_brand_banned_terms(server)
                              if server_brand else None)
 
 
@@ -1011,7 +1034,7 @@ def assemble_context(brief: dict, format: str | None = None,
     # graph's research node bound to a Core for this brief's brand,
     # fed the same state shape the research_facts tool uses, so key
     # triggering is identical — only the fact base differs.
-    _brief_core = Core(brand=brand, facts=facts, persona=persona_card)
+    _brief_core = _core_class()(brand=brand, facts=facts, persona=persona_card)
     sources = _brief_core.research(
         {"brief": {"topic": str(brief), "text": str(brief)}})["sources"]  # type: ignore[arg-type]
 
@@ -1818,6 +1841,80 @@ def quality_score(draft_id: str, judged_scores: dict | None = None,
     except ValueError as exc:
         return {"error": str(exc), "draft_id": draft_id}
     return {**report, "draft_id": draft_id}
+
+
+@mcp.tool()
+def check_draft_all(draft_id: str, judged_scores: dict | None = None,
+                    quality_profile: str = "") -> dict:
+    """Combined check for a stored draft: brand + fact + craft + style +
+    quality in ONE call, each checker run ONCE (perf P3).
+
+    The writer's normal revision loop used to call brand_check,
+    fact_check, craft_check, style_match and quality_score separately,
+    and every stateless tool re-ran every checker over the same text
+    (lint/fact 4x, craft 3x per cycle). This tool resolves the draft's
+    brand/facts/style ONCE, runs each checker once, and feeds the
+    lint/fact results into the quality layer through the same
+    _precomputed reuse the gate itself uses (review M4) — so every
+    number here is exactly what the individual tool (or final_gate)
+    reports for the same draft. It changes NO state: no gate history,
+    no verdict — final_gate remains the only verdict.
+
+    Returns {brand, fact, craft, style, quality, draft_id} where each
+    sub-report mirrors the corresponding tool's shape: brand =
+    brand_check's draft result, fact = fact_check's, craft =
+    craft_check's (judged with the draft brand's own context, exactly
+    as final_gate wires it), style = style_match's report (+profile_id)
+    or None when the brief carries no style_profile_id, quality =
+    quality_score's report. `judged_scores` / `quality_profile` behave
+    exactly as in quality_score."""
+    draft, error = _load_draft_or_error(draft_id)
+    if error:
+        return error
+    fmt = draft.get("brief", {}).get("format", "blog")
+    try:
+        profile = (_quality_get_profile(quality_profile) if quality_profile
+                   else _quality_preset(fmt))
+        style_profile = _resolve_style_profile(
+            draft.get("brief", {}).get("style_profile_id"))
+        brand, facts = _resolve_brand_facts(
+            draft.get("brief", {}).get("brand_id", ""))
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+    sections = _sections_of(draft)
+    violations, brand_score, lint_failing = _lint_draft(sections, fmt, brand)
+    issues, flagged, fact_failing = _fact_check_draft(sections, facts, brand)
+    brand_id, max_sentence_words, gate_banned_terms = _brand_check_context(brand)
+    craft = _craft_check_draft(sections, fmt, brand_id=brand_id,
+                               max_sentence_words=max_sentence_words,
+                               banned_terms=gate_banned_terms)
+    style = None
+    if style_profile is not None:
+        joined = "\n\n".join(s.get("text", "") for s in sections)
+        style = {**_style_match(joined, style_profile),
+                 "profile_id": style_profile["id"]}
+    try:
+        quality = _evaluate_quality(
+            sections, fmt, profile, judged_scores, brand, facts,
+            style_profile=style_profile, brief=draft.get("brief", {}),
+            _precomputed={"fact_issues": issues, "fact_flagged": flagged,
+                          "brand_violations": violations,
+                          "brand_score": brand_score})
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+    resolved_id = brand.get("brand", {}).get("id", "")
+    return {
+        "brand": {"score": brand_score, "violations": violations,
+                  "failing_sections": lint_failing, "brand_id": resolved_id,
+                  "banned_found": [v["detail"] for v in violations
+                                   if v["type"] == "banned_term"]},
+        "fact": {"ok": not issues, "issues": issues,
+                 "flagged_claims": flagged, "failing_sections": fact_failing},
+        "craft": craft,
+        "style": style,
+        "quality": {**quality, "draft_id": draft_id},
+        "draft_id": draft_id,
+    }
 
 
 @mcp.tool()

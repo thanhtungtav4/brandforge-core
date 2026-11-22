@@ -635,7 +635,7 @@ any host app's model can be the writer; the core stays the referee.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Tools (60)
+### Tools (61)
 
 | Tool | What it does |
 |---|---|
@@ -665,6 +665,7 @@ any host app's model can be the writer; the core stays the referee.
 | `get_quality_profile(format_or_id)` | Quality Profile: a format name → the shipped preset; a saved custom id → that profile ({weights sum 100, floors, pass_total}) |
 | `save_quality_profile(format, weights, floors?, pass_total?)` | Quality Profile: validate (7 axes, each weight in [2, 45], sum exactly 100) + persist a custom profile to `data/quality_profiles/` |
 | `quality_score(draft_id, judged_scores?, quality_profile?)` | Quality Profile: score a draft on the 7 axes WITHOUT running the gate — dumbbell-ready per-axis score vs floor, weighted total, quality_pass; judged axes (coherence/persuasion/depth) are the writer's 0/1/2 grades, missing ones are excluded, never invented |
+| `check_draft_all(draft_id, judged_scores?, quality_profile?)` | Combined check (perf P3): brand + fact + craft + style + quality for a stored draft in ONE call, each checker run once, the lint/fact results fed into the quality layer via the gate's own `_precomputed` reuse — every sub-report mirrors the individual tool's shape and numbers; changes no state, `final_gate` remains the only verdict |
 | `run_golden()` | Runs the golden set through the LangGraph core, per-brief PASS/FAIL |
 | `analyze_site_brand(pages)` | Brand Builder: deterministic analysis of a fetched site (pages from `fetch_site.py`) — corpus stats, style fingerprint, visual brand kit with source_url evidence, voice-rule suggestions, vocabulary candidates, site claims flagged needs_evidence |
 | `save_brand_draft(pages, qualitative?, source_type?, brand_name?)` | Brand Builder: build + persist a DRAFT Brand Voice profile in the brand YAML structure. `qualitative` is the model-filled schema (tone traits, audience, positioning, differentiators). Drafts carry review_status="draft" + review_notes; competitor drafts mark every example reference_only |
@@ -1031,7 +1032,7 @@ calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibrati
                files are fixtures and which are local-only raw evidence)
 evaluation/    round-1..8 reports + SUMMARY.md + probes/   (the 8-round
                evaluation and its regression probes, all with exit codes)
-mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 60 tools) — the host app's model is the writer, tools are the hands + referee
+mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 61 tools) — the host app's model is the writer, tools are the hands + referee
 test_mcp_client.py   end-to-end MCP client test over stdio (24 checks)
 test_mcp_http.py     MCP HTTP smoke test (server on a test port, tools/list + get_quality_profile)
 fetch_sample.py      CLI helper: URL -> plain text for Style Extraction (server stays offline)

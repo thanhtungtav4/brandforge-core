@@ -29,6 +29,7 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "analyze_site_brand", "save_brand_draft", "get_brand_draft",
                   "compare_brand_voice",
                   "get_quality_profile", "save_quality_profile", "quality_score",
+                  "check_draft_all",
                   "get_facts", "save_facts",
                   "plan_images", "set_image", "image_check",
                   "record_vision_check", "get_image_manifest",
@@ -179,6 +180,29 @@ def test_draft_lifecycle_and_final_gate_passes():
     assert gate["craft_advisory"] is False
     assert "score" in gate["craft"] and "violations" in gate["craft"]
     assert gate["gate_history"][-1]["craft_score"] == gate["craft"]["score"]
+
+
+def test_check_draft_all_matches_individual_tools():
+    # Perf P3(ii): the combined check must report EXACTLY what the
+    # individual tools report for the same draft (it only saves the
+    # repeated checker runs, it must never change a number).
+    draft_id = _clean_draft()
+    combined = srv.check_draft_all(draft_id, judged_scores={"coherence": 2})
+    assert combined["brand"] == srv.brand_check(draft_id=draft_id)
+    assert combined["fact"] == srv.fact_check(draft_id=draft_id)
+    assert combined["craft"] == srv.craft_check(draft_id=draft_id)
+    assert combined["style"] is None  # brief carries no style_profile_id
+    quality = srv.quality_score(draft_id, judged_scores={"coherence": 2})
+    assert combined["quality"] == quality
+    # No state change: the combined check is not a gate.
+    draft = srv.get_draft(draft_id)
+    assert not draft.get("gate_history")
+    assert draft.get("status") in (None, "", "drafting")
+
+
+def test_check_draft_all_unknown_draft_is_error():
+    out = srv.check_draft_all("d-does-not-exist")
+    assert "error" in out and out["draft_id"] == "d-does-not-exist"
 
 
 # Brand-clean, fact-clean, but craft-poor: weak words, monotone rhythm,

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import re
 import statistics
+from functools import lru_cache as _lru_cache
 
 from .linter import fuzzy_phrase_spans, normalize_for_match, split_sentences
 from .loaders import load_craft_library, load_domain_glossary, load_exemplars
@@ -209,6 +210,7 @@ def sensory_terms(glossary: dict | None = None) -> list[str]:
 # syllable inside them cannot fire a taste/price trigger either.
 _COMPOUND_MASKS = ["vị trí", "đánh giá", "giá trị", "vị thế"]
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_OPENING_CLEAN_RE = re.compile(r"[^\wÀ-ỹà-ỹ]")
 
 
 def _match_tokens(text: str) -> list[str]:
@@ -299,19 +301,70 @@ def retrieve_cards(fmt: str = "", intent: str = "", text: str = "",
 # craft_check — deterministic prose-quality score (separate from brand score)
 # --------------------------------------------------------------------------
 
-def _find_phrase_hits(text: str, phrases: list[str]) -> list[dict]:
-    """Count phrase occurrences, longest phrases first, masking matched
-    spans so a long phrase ('thơm ngon') is not double-counted by its
-    parts ('ngon').
+# ---------------------------------------------------------------------------
+# Prepared phrase tables + mask-array matching (perf P1)
+# ---------------------------------------------------------------------------
+# _find_phrase_hits used to re-normalize and re-sort the whole phrase
+# list on EVERY call and rebuild the masked haystack string once per
+# phrase — O(phrases × text) character work per call, from call sites
+# that invoke it per section and per sentence. The vocabulary is now
+# prepared ONCE per distinct phrase list (normalized + length-sorted +
+# compiled, cached) and matching runs a single scan per phrase over the
+# immutable normalized string, accepting only spans that are still
+# unmasked — the same longest-first masking semantics, proven
+# equivalent: a candidate is accepted iff (a) the token-boundary guards
+# hold on the EFFECTIVE text (masked chars read as spaces) and (b) no
+# masked position inside the span carries a non-space character (at a
+# masked position the effective char is a space, so the phrase can
+# only match there where it has a space itself — and a span containing
+# a masked space always also contains a masked letter, since a matched
+# phrase's spaces sit between its tokens). One conservative exception:
+# if the vocabulary contains a SINGLE-CHARACTER phrase, the legacy
+# rebuild-per-phrase implementation runs instead — a one-char phrase
+# can mask exactly the position where a longer phrase has a space,
+# the one shape the mask-array scan cannot reproduce.
 
-    Matching runs on the NORMALIZED text (review M3): the linter and
-    the fact checker were hardened in audit R2 precisely because
-    unaccented Vietnamese is common, but craft kept matching raw
-    substrings of text.lower() — so the SAME copy scored 67 accented
-    and 85 unaccented, and craft is a BLOCKING layer for blog/product.
-    Weak/filler/sensory matching now goes through the shared
-    normalize_for_match, with token-boundary guards on the normalized
-    form; hits still report the phrase's original (accented) form."""
+_ALNUM_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789")
+
+
+@_lru_cache(maxsize=128)
+def _phrase_table(phrases: tuple[str, ...]) -> tuple[tuple[str, str, re.Pattern], ...]:
+    """(display, normalized, compiled plain pattern) triples for one
+    vocabulary, longest normalized form first — the exact order the
+    legacy matcher rebuilt per call (stable sort, so equal lengths
+    keep list order). Duplicate normalized forms keep only their first
+    entry: in the legacy scan the later copy ran against a haystack
+    where the first copy had already masked every span it could take,
+    so it never produced a hit."""
+    pairs = sorted(((p, normalize_for_match(p)) for p in phrases if p),
+                   key=lambda pair: len(pair[1]), reverse=True)
+    seen: set[str] = set()
+    table: list[tuple[str, str, re.Pattern]] = []
+    for display, match in pairs:
+        if not match or match in seen:
+            continue
+        seen.add(match)
+        table.append((display, match, re.compile(re.escape(match))))
+    return tuple(table)
+
+
+def _span_accepted(norm: str, masked: bytearray, s: int, e: int) -> bool:
+    """True when the span (s, e) of `norm` is a match on the EFFECTIVE
+    text (masked positions read as spaces): boundary guards hold and
+    no masked letter sits inside the span (see the P1 note above)."""
+    if s > 0 and not masked[s - 1] and norm[s - 1] in _ALNUM_CHARS:
+        return False
+    if e < len(norm) and not masked[e] and norm[e] in _ALNUM_CHARS:
+        return False
+    for i in range(s, e):
+        if masked[i] and norm[i] != " ":
+            return False
+    return True
+
+
+def _find_phrase_hits_legacy(text: str, phrases: list[str]) -> list[dict]:
+    """The original rebuild-per-phrase matcher, kept for vocabularies
+    containing a single-character phrase (see the P1 note above)."""
     norm = normalize_for_match(text)
     pairs = sorted(((p, normalize_for_match(p)) for p in phrases if p),
                    key=lambda pair: len(pair[1]), reverse=True)
@@ -326,6 +379,43 @@ def _find_phrase_hits(text: str, phrases: list[str]) -> list[dict]:
             hits.append({"term": display, "index": m.start()})
             for i in range(m.start(), m.end()):
                 masked[i] = " "
+    hits.sort(key=lambda h: h["index"])
+    return hits
+
+
+def _find_phrase_hits(text: str, phrases: list[str]) -> list[dict]:
+    """Count phrase occurrences, longest phrases first, masking matched
+    spans so a long phrase ('thơm ngon') is not double-counted by its
+    parts ('ngon').
+
+    Matching runs on the NORMALIZED text (review M3): the linter and
+    the fact checker were hardened in audit R2 precisely because
+    unaccented Vietnamese is common, but craft kept matching raw
+    substrings of text.lower() — so the SAME copy scored 67 accented
+    and 85 unaccented, and craft is a BLOCKING layer for blog/product.
+    Weak/filler/sensory matching now goes through the shared
+    normalize_for_match, with token-boundary guards on the normalized
+    form; hits still report the phrase's original (accented) form."""
+    table = _phrase_table(tuple(phrases))
+    if any(len(match) == 1 for _display, match, _rx in table):
+        return _find_phrase_hits_legacy(text, phrases)
+    norm = normalize_for_match(text)
+    masked = bytearray(len(norm))
+    hits: list[dict] = []
+    for display, _match, rx in table:
+        pos = 0
+        while True:
+            m = rx.search(norm, pos)
+            if m is None:
+                break
+            s, e = m.start(), m.end()
+            if _span_accepted(norm, masked, s, e):
+                hits.append({"term": display, "index": s})
+                for i in range(s, e):
+                    masked[i] = 1
+                pos = e
+            else:
+                pos = s + 1
     hits.sort(key=lambda h: h["index"])
     return hits
 
@@ -445,7 +535,23 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
     sentences = _sentences(text)
     lengths = [len(s.split()) for s in sentences]
 
+    # Memoized per craft_check call (perf P1): the rhythm block below
+    # evaluates _carries_violation up to twice per sentence (the any()
+    # probe, then the median-imputation comprehension), and each
+    # evaluation is two phrase scans. The verdict depends only on the
+    # sentence (replacements / FILLER_PHRASES / banned_terms are fixed
+    # for the call), so caching it per sentence is exact.
+    _violation_cache: dict[str, bool] = {}
+
     def _carries_violation(sentence: str) -> bool:
+        cached = _violation_cache.get(sentence)
+        if cached is not None:
+            return cached
+        result = _carries_violation_uncached(sentence)
+        _violation_cache[sentence] = result
+        return result
+
+    def _carries_violation_uncached(sentence: str) -> bool:
         if _find_phrase_hits(sentence, list(replacements)):
             return True
         if _find_phrase_hits(sentence, FILLER_PHRASES):
@@ -480,7 +586,7 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
     for sentence in sentences:
         key_tokens = []
         for w in sentence.split()[:2]:
-            cleaned = re.sub(r"[^\wÀ-ỹà-ỹ]", "", w.lower())
+            cleaned = _OPENING_CLEAN_RE.sub("", w.lower())
             if cleaned:
                 key_tokens.append(cleaned)
         if key_tokens:
@@ -534,6 +640,14 @@ def craft_check_sections(sections: list[dict], fmt: str,
                              max_sentence_words=max_sentence_words,
                              banned_terms=banned_terms)
         return {**result, "failing_sections": []}
+    # Resolve the glossary ONCE for the whole draft (perf P4a): every
+    # section judges with the same vocabulary, but craft_check used to
+    # re-resolve it per section — a disk read + JSON parse of the
+    # domain glossary for EVERY section of every gate run. Passing the
+    # resolved dict down is exact: resolve_glossary returns an explicit
+    # glossary unchanged, and the brand rule depends only on brand_id,
+    # which is fixed for the call.
+    data = resolve_glossary(glossary, brand_id)
     all_violations: list[dict] = []
     worst = 100.0
     failing: list[str] = []
@@ -547,7 +661,7 @@ def craft_check_sections(sections: list[dict], fmt: str,
                            "rhythm_stdev": 0.0, "weak_words_found": [],
                            "filler_found": [], "sensory_terms_used": []}
     for sec in sections:
-        r = craft_check(sec.get("text", ""), fmt, glossary, brand_id,
+        r = craft_check(sec.get("text", ""), fmt, data,
                         max_sentence_words=max_sentence_words,
                         banned_terms=banned_terms)
         for v in r["violations"]:

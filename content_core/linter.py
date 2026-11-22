@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import statistics
 import unicodedata
+from functools import lru_cache as _lru_cache
 
 from .loaders import banned_terms, median_range
 
@@ -21,10 +22,13 @@ SENTENCE_SPLIT = re.compile(r"[.!?…！？]+")
 _NUM_DOT = "§"
 
 
+_NUM_DOT_RE = re.compile(r"(\d)\.(\d)")
+
+
 def _protect_numbers(text: str) -> str:
     protected = text
     while True:  # loop for multi-group numbers like 1.234.567
-        new = re.sub(r"(\d)\.(\d)", rf"\1{_NUM_DOT}\2", protected)
+        new = _NUM_DOT_RE.sub(rf"\1{_NUM_DOT}\2", protected)
         if new == protected:
             return protected
         protected = new
@@ -95,6 +99,61 @@ _CONFUSABLES = {
 }
 
 
+_CHAR_NORM: dict[str, str] = {}
+
+
+def _normalized_char(ch: str) -> str:
+    """One character's contribution to the normalized form: NFKC, then
+    NFD, combining marks dropped, confusables folded — memoized per
+    character (the alphabet a text actually uses is tiny)."""
+    out = _CHAR_NORM.get(ch)
+    if out is None:
+        decomposed = unicodedata.normalize(
+            "NFD", unicodedata.normalize("NFKC", ch))
+        out = "".join(_CONFUSABLES.get(c, c) for c in decomposed
+                      if not unicodedata.combining(c))
+        _CHAR_NORM[ch] = out
+    return out
+
+
+def _normalize_for_match_uncached(text: str) -> str:
+    # Per-character-table implementation (perf P2c): the original ran
+    # NFKC + NFD over the whole string and then two per-character
+    # Python generator joins — the system's single hottest loop. The
+    # string-level steps (lower, format-char removal, đ→d, the final
+    # punctuation collapse) are unchanged; only the NFKC/NFD/strip/
+    # confusables core now runs per character through _normalized_char.
+    # That is exact because canonical composition/decomposition are
+    # inverses on the decomposed sequence and every combining mark is
+    # dropped anyway — and it is PROVEN, not argued: a differential
+    # run against the original implementation over every Unicode
+    # codepoint, all pairs of a 240-char tricky alphabet, 30k fuzz
+    # strings and the whole shipped corpus found zero differences
+    # (/tmp/perf/norm_diff.py; the committed regression net is
+    # tests/test_perf_refactors.py, which carries the original
+    # implementation as its reference).
+    lowered = (text or "").lower()
+    for ch in _FORMAT_CHARS:
+        lowered = lowered.replace(ch, "")
+    lowered = lowered.replace("đ", "d")
+    joined = "".join(map(_normalized_char, lowered))
+    return re.sub(r"[^a-z0-9]+", " ", joined).strip()
+
+
+# Bounded memo for the normalizer (perf P2b): normalize_for_match is a
+# pure function and the system's hottest primitive — a single gate run
+# re-derived the same phrases/sentences tens of thousands of times.
+# Only SHORT inputs are cached (phrases, sentences, clauses — the
+# strings that actually repeat across sections, drafts and calls);
+# long documents bypass the cache so they cannot thrash it.
+_NORMALIZE_CACHE_MAX_LEN = 256
+
+
+@_lru_cache(maxsize=4096)
+def _normalize_for_match_cached(text: str) -> str:
+    return _normalize_for_match_uncached(text)
+
+
 def normalize_for_match(text: str) -> str:
     """Lowercase, strip Vietnamese diacritics, collapse punctuation to
     single spaces. Digits are kept. 'Đẳng cấp!' -> 'dang cap'.
@@ -103,15 +162,10 @@ def normalize_for_match(text: str) -> str:
     first, the text is NFKC-folded (fullwidth 'ｅｌｅｖａｔｅ' ->
     'elevate'), and Latin confusables (Cyrillic/Greek look-alikes) are
     folded to Latin — the three cheapest banned-term evasions."""
-    lowered = (text or "").lower()
-    for ch in _FORMAT_CHARS:
-        lowered = lowered.replace(ch, "")
-    lowered = lowered.replace("đ", "d")
-    folded = unicodedata.normalize("NFKC", lowered)
-    decomposed = unicodedata.normalize("NFD", folded)
-    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
-    mapped = "".join(_CONFUSABLES.get(c, c) for c in stripped)
-    return re.sub(r"[^a-z0-9]+", " ", mapped).strip()
+    text = text or ""
+    if len(text) <= _NORMALIZE_CACHE_MAX_LEN:
+        return _normalize_for_match_cached(text)
+    return _normalize_for_match_uncached(text)
 
 
 def _phrase_regex(phrase: str) -> re.Pattern | None:
@@ -199,9 +253,6 @@ def _phrase_regexes(phrase: str) -> list[re.Pattern]:
                 pat += (r"\s+\S+\s+" if i - 1 == gap else r"\s+") + parts[i]
             out.append(re.compile(left + pat + right))
     return out
-
-
-from functools import lru_cache as _lru_cache
 
 
 @_lru_cache(maxsize=256)
@@ -450,44 +501,67 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
     # only the negation rule classifies (conservative direction).
     sentences = split_sentences(text)
     asserted_banned_sentences: set[int] = set()
-    # Per-sentence preparation happens ONCE (review M4): the old loop
-    # re-ran strip_markup + normalize + the quote-map construction for
-    # every (term × sentence) pair, and re-derived each term's regex
-    # family per sentence — a ~50x constant factor on long drafts.
-    # Each sentence is now prepared a single time up front, and each
-    # term's regexes are built once (cached) for all sentences.
-    prepared: list[tuple[str, list[bool] | None]] = []
-    for sentence in sentences:
-        clean = strip_markup(sentence)
-        raw_norm = normalize_for_match(clean)
-        norm = collapse_letter_spacing(raw_norm)
-        indexed = _normalize_indexed(clean)
-        quote_flags = indexed[1] if norm == raw_norm and indexed[0] == raw_norm else None
-        prepared.append((norm, quote_flags))
-    # Whole-text scan coordinates: letter-DOTTED terms ("e.l.e.v.a.t.e")
-    # are torn apart by sentence splitting (every dot is a boundary), so
-    # the per-sentence scan below can never see them; the normalized
-    # whole text can (dots collapse to spaces, then the letter-spacing
-    # collapse joins the run). The whole-text pass runs per term AFTER
-    # the sentence pass and is deduped at TERM level: a term the
-    # sentence pass already classified (either way) is not re-reported.
-    whole_clean = strip_markup(text)
-    whole_raw_norm = normalize_for_match(whole_clean)
-    whole_norm = collapse_letter_spacing(whole_raw_norm)
-    whole_indexed = _normalize_indexed(whole_clean)
-    whole_quote_flags = (whole_indexed[1]
-                         if whole_norm == whole_raw_norm
-                         and whole_indexed[0] == whole_raw_norm else None)
-    for term in banned_terms(brand):
-        regexes = _phrase_regexes_cached(term)
-        if not regexes:
-            continue
-        term_norm = normalize_for_match(term)
-        term_seen = False
-        for si, (norm, quote_flags) in enumerate(prepared):
-            for span in _fuzzy_spans_prepared(norm, regexes, term_norm):
-                term_seen = True
-                if _banned_hit_is_context_only(norm, span, quote_flags):
+    # PERF (P5): both preparations below are consumed ONLY by the
+    # banned-term scan. A brand with zero banned terms skips them
+    # entirely (they used to be built and thrown away — nearly the
+    # whole lint cost for banned-term-free brands), and the whole-text
+    # preparation is built LAZILY, only when a term the sentence pass
+    # never saw actually needs it.
+    terms = banned_terms(brand)
+    if terms:
+        # Per-sentence preparation happens ONCE (review M4): the old loop
+        # re-ran strip_markup + normalize + the quote-map construction for
+        # every (term × sentence) pair, and re-derived each term's regex
+        # family per sentence — a ~50x constant factor on long drafts.
+        # Each sentence is now prepared a single time up front, and each
+        # term's regexes are built once (cached) for all sentences.
+        prepared: list[tuple[str, list[bool] | None]] = []
+        for sentence in sentences:
+            clean = strip_markup(sentence)
+            raw_norm = normalize_for_match(clean)
+            norm = collapse_letter_spacing(raw_norm)
+            indexed = _normalize_indexed(clean)
+            quote_flags = indexed[1] if norm == raw_norm and indexed[0] == raw_norm else None
+            prepared.append((norm, quote_flags))
+        # Whole-text scan coordinates: letter-DOTTED terms ("e.l.e.v.a.t.e")
+        # are torn apart by sentence splitting (every dot is a boundary), so
+        # the per-sentence scan below can never see them; the normalized
+        # whole text can (dots collapse to spaces, then the letter-spacing
+        # collapse joins the run). The whole-text pass runs per term AFTER
+        # the sentence pass and is deduped at TERM level: a term the
+        # sentence pass already classified (either way) is not re-reported.
+        whole_norm: str | None = None
+        whole_quote_flags: list[bool] | None = None
+        for term in terms:
+            regexes = _phrase_regexes_cached(term)
+            if not regexes:
+                continue
+            term_norm = normalize_for_match(term)
+            term_seen = False
+            for si, (norm, quote_flags) in enumerate(prepared):
+                for span in _fuzzy_spans_prepared(norm, regexes, term_norm):
+                    term_seen = True
+                    if _banned_hit_is_context_only(norm, span, quote_flags):
+                        violations.append({"section_id": section_id,
+                                           "type": "banned_term_context",
+                                           "detail": term, "warning": True})
+                    else:
+                        violations.append({"section_id": section_id,
+                                           "type": "banned_term", "detail": term})
+                        score -= 15
+                        asserted_banned_sentences.add(si)
+            if term_seen:
+                continue
+            if whole_norm is None:
+                whole_clean = strip_markup(text)
+                whole_raw_norm = normalize_for_match(whole_clean)
+                whole_norm = collapse_letter_spacing(whole_raw_norm)
+                whole_indexed = _normalize_indexed(whole_clean)
+                whole_quote_flags = (whole_indexed[1]
+                                     if whole_norm == whole_raw_norm
+                                     and whole_indexed[0] == whole_raw_norm else None)
+            for span in _fuzzy_spans_prepared(whole_norm, regexes, term_norm):
+                if _banned_hit_is_context_only(whole_norm, span, whole_quote_flags):
                     violations.append({"section_id": section_id,
                                        "type": "banned_term_context",
                                        "detail": term, "warning": True})
@@ -495,18 +569,6 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
                     violations.append({"section_id": section_id,
                                        "type": "banned_term", "detail": term})
                     score -= 15
-                    asserted_banned_sentences.add(si)
-        if term_seen:
-            continue
-        for span in _fuzzy_spans_prepared(whole_norm, regexes, term_norm):
-            if _banned_hit_is_context_only(whole_norm, span, whole_quote_flags):
-                violations.append({"section_id": section_id,
-                                   "type": "banned_term_context",
-                                   "detail": term, "warning": True})
-            else:
-                violations.append({"section_id": section_id,
-                                   "type": "banned_term", "detail": term})
-                score -= 15
 
     if fmt == "blog":
         n = text.count("!") + text.count("！")  # ASCII + fullwidth
