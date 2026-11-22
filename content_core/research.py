@@ -32,6 +32,7 @@ from pathlib import Path
 
 from . import loaders
 from .brand_extract import build_brand_draft as _build_brand_draft
+from .brand_extract import clean_corpus_text as _clean_corpus_text
 from .brand_extract import draft_to_brand_yaml as _draft_to_brand_yaml
 from .brand_extract import find_site_claims as _find_site_claims
 from .style import build_profile as _build_style_profile
@@ -534,3 +535,154 @@ def apply_pack(pack: dict) -> dict:
                 report["failed"].append({"item_id": item["id"],
                                          "error": str(exc)})
     return report
+
+
+# ---------------------------------------------------------------------------
+# Depth material — applied research feeding the writer (quality uplift)
+# ---------------------------------------------------------------------------
+# The pack's APPLIED items are the one part of the research store the
+# writer may draw on for DEPTH (specifics, process detail, local
+# colour). The line this section must never cross: research material
+# is SOURCE MATERIAL, not brand fact. It is rendered under its own
+# label, kept out of the facts part, and the header tells the writer
+# that any factual claim taken from it must still match the fact base
+# (where fact_check will judge it) or be marked [NEEDS SOURCE].
+# Proposed / rejected / contradiction-locked items NEVER render —
+# the same invariants apply_pack enforces, read-side.
+
+_DEPTH_EXCERPT_CHARS = 500
+_DEPTH_MAX_EXCERPTS = 3
+_DEPTH_CLAIM_CHARS = 400
+
+_DEPTH_HEADER = (
+    "TƯ LIỆU NGUỒN cho chiều sâu (SOURCE MATERIAL — research pack, "
+    "đã duyệt và áp dụng). Dùng để lấy chi tiết cụ thể, quy trình, "
+    "màu sắc địa phương. Đây KHÔNG phải sự thật của brand: mọi khẳng "
+    "định thực tế lấy từ đây phải khớp phần FACTS ở trên, hoặc phải "
+    "đánh dấu [NEEDS SOURCE].")
+
+
+def applied_items(pack: dict) -> list[dict]:
+    """The pack's applied items, in pack order — the only items any
+    downstream consumer may use."""
+    return [i for i in pack.get("items", []) if i.get("status") == "applied"]
+
+
+def _depth_fact_text(item: dict) -> str:
+    """One applied fact item as a single material line."""
+    payload = item.get("payload", {})
+    field, value = payload.get("field", ""), payload.get("value")
+    if field == "entry" and isinstance(value, dict):
+        rendered = str(value.get("content") or value)
+    elif field == "claim":
+        rendered = str(value)
+        if len(rendered) > _DEPTH_CLAIM_CHARS:
+            rendered = rendered[:_DEPTH_CLAIM_CHARS] + "…"
+    else:
+        rendered = f"{field}: {value}"
+    provenance = item.get("provenance", {})
+    line = f"- [fact] {rendered} — nguồn: {provenance.get('source_url', '')}"
+    if provenance.get("note"):
+        line += f" (ghi chú: {provenance['note']})"
+    return line
+
+
+def _depth_excerpts(pack: dict, items: list[dict]) -> list[str]:
+    """Bounded excerpts from the pack's ACCEPTED sources that applied
+    items cite — the local-colour half of the depth material. A
+    rejected source contributes nothing (the research invariant), and
+    an accepted source no applied item cites stays out: uncited
+    material was never part of an approved decision."""
+    cited = {str(i.get("provenance", {}).get("source_url") or "")
+             for i in items}
+    cited.discard("")
+    if not cited:
+        return []
+    excerpts: list[str] = []
+    for source in pack.get("sources", []):
+        if len(excerpts) >= _DEPTH_MAX_EXCERPTS:
+            break
+        if source.get("quality", {}).get("verdict") != "accept":
+            continue
+        pages = source.get("pages") or []
+        page_urls = {str(p.get("url") or "") for p in pages}
+        cited_here = (source.get("url") in cited
+                      or bool(page_urls & cited)
+                      or any(u.startswith(str(source.get("url") or ""))
+                             for u in cited if source.get("url")))
+        if not cited_here:
+            continue
+        text = _clean_corpus_text(
+            "\n\n".join(str(p.get("text") or "") for p in pages))
+        text = " ".join(text.split())
+        if not text:
+            continue
+        if len(text) > _DEPTH_EXCERPT_CHARS:
+            text = text[:_DEPTH_EXCERPT_CHARS] + "…"
+        excerpts.append(f"- [trích nguồn {source.get('url', '')}] {text}")
+    return excerpts
+
+
+def depth_material(pack: dict) -> dict | None:
+    """Render a pack's applied items as the writer's depth-material
+    section, or None when the pack has no applied items (the caller
+    then omits the section entirely — contexts for brands without an
+    applied pack stay byte-identical to before this feature)."""
+    items = applied_items(pack)
+    if not items:
+        return None
+    lines = [_DEPTH_HEADER]
+    fact_items = 0
+    for item in items:
+        if item["kind"] == "fact":
+            lines.append(_depth_fact_text(item))
+            fact_items += 1
+        else:
+            provenance = item.get("provenance", {})
+            lines.append(
+                f"- [{item['kind']}] đã áp dụng vào cấu hình brand "
+                f"từ nghiên cứu — nguồn: "
+                f"{provenance.get('source_url', '')}")
+    excerpts = _depth_excerpts(pack, items)
+    lines.extend(excerpts)
+    return {"text": "\n".join(lines),
+            "applied_items": len(items),
+            "fact_items": fact_items,
+            "source_excerpts": len(excerpts)}
+
+
+def _facts_have_material(facts: dict | None) -> bool:
+    """Whether a (normalised) facts doc carries anything a writer
+    could draw depth from: lorebook entries, or any recorded scalar
+    fact (price / weight / origins / delivery…)."""
+    if not isinstance(facts, dict):
+        return False
+    if facts.get("entries"):
+        return True
+    f = facts.get("facts") or {}
+    return any(f.get(k) not in (None, "", [])
+               for k in ("price_vnd_per_250g", "price_display",
+                         "pack_weight_g", "origins", "delivery_days",
+                         "roast_weekday", "known_prices_vnd",
+                         "pack_weights_g"))
+
+
+def depth_context(brand_id: str, facts: dict | None = None) -> str:
+    """What depth material the brand's writing is graded against:
+    "research_pack" when the brand's pack has applied items,
+    "brand_facts_only" when only the fact base carries material,
+    "none" when neither does. A corrupt pack record reads as no
+    pack — this is a reporting helper and must never break the
+    quality report it annotates."""
+    try:
+        pack = loaders.load_research_pack(brand_id)
+    except ValueError:
+        pack = None
+    if pack is not None and applied_items(pack):
+        return "research_pack"
+    if facts is None:
+        try:
+            facts = loaders.load_facts(brand_id)
+        except ValueError:
+            facts = None
+    return "brand_facts_only" if _facts_have_material(facts) else "none"

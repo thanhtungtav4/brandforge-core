@@ -1,0 +1,143 @@
+{
+  "id": "mambagiaokhoe-taste-voice",
+  "name": "mambagiaokhoe — taste voice (owner-approved articles)",
+  "brand_id": "mambagiaokhoe",
+  "algorithm_version": 2,
+  "created_from": {
+    "sample_count": 3,
+    "total_words": 3020
+  },
+  "fingerprint": {
+    "word_count": 3020,
+    "sentence_count": 161,
+    "sentence_len": {
+      "median": 19.0,
+      "mean": 18.76,
+      "stdev": 7.81
+    },
+    "short_sentence_share": 0.08,
+    "long_sentence_share": 0.47,
+    "paragraph_len_median": 64.5,
+    "question_rate": 0.62,
+    "exclamation_rate": 0.0,
+    "first_person_rate": 0.33,
+    "reader_rate": 0.0,
+    "number_density": 0.56,
+    "transition_freq": [
+      {
+        "term": "nhất là",
+        "count": 3
+      },
+      {
+        "term": "nhưng",
+        "count": 2
+      },
+      {
+        "term": "đầu tiên",
+        "count": 1
+      }
+    ],
+    "type_token_ratio": 0.44,
+    "top_words": [
+      {
+        "word": "mắm",
+        "count": 94
+      },
+      {
+        "word": "ăn",
+        "count": 65
+      },
+      {
+        "word": "mùa",
+        "count": 49
+      },
+      {
+        "word": "nước",
+        "count": 48
+      },
+      {
+        "word": "nhà",
+        "count": 46
+      },
+      {
+        "word": "cá",
+        "count": 38
+      },
+      {
+        "word": "chưng",
+        "count": 36
+      },
+      {
+        "word": "hủ",
+        "count": 28
+      },
+      {
+        "word": "loại",
+        "count": 28
+      },
+      {
+        "word": "em",
+        "count": 26
+      },
+      {
+        "word": "nguyên",
+        "count": 24
+      },
+      {
+        "word": "thịt",
+        "count": 21
+      },
+      {
+        "word": "xay",
+        "count": 20
+      },
+      {
+        "word": "cơm",
+        "count": 18
+      },
+      {
+        "word": "nhất",
+        "count": 18
+      }
+    ]
+  },
+  "consistency_warnings": [],
+  "consistency_detail": {
+    "divergence_cv": {
+      "sentence_median": 0.02,
+      "sentence_stdev": 0.03,
+      "first_person_rate": 0.62
+    },
+    "per_sample": [
+      {
+        "sentence_median": 19.0,
+        "sentence_stdev": 7.68,
+        "first_person_rate": 0.29
+      },
+      {
+        "sentence_median": 20.0,
+        "sentence_stdev": 7.57,
+        "first_person_rate": 0.1
+      },
+      {
+        "sentence_median": 19.0,
+        "sentence_stdev": 8.16,
+        "first_person_rate": 0.6
+      }
+    ]
+  },
+  "qualitative": {
+    "tone_traits": [],
+    "opening_patterns": [],
+    "closing_patterns": [],
+    "signature_devices": [],
+    "stance": "",
+    "never_do": []
+  },
+  "exemplars": [
+    "# Mắm cá lóc chưng thịt trứng: cách chưng của bếp nhà Châu Đốc",
+    "# Mùa nước nổi ở Châu Đốc: mùa cá, mùa hoa và mùa làm mắm",
+    "# Chọn mắm cá lóc: nguyên con, cắt khúc, xay hay filet?"
+  ],
+  "excerpts_note": "excerpts stored from the samples (user's own / licensed texts)"
+}

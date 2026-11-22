@@ -103,6 +103,7 @@ from content_core.loaders import list_image_library as _list_image_library_file
 from content_core.seo import seo_pass as _seo_pass
 from content_core import research as _research
 from content_core import taste as _taste
+from content_core import variants as _variants
 from content_core import backup as _backup
 from content_core import wordpress as _wordpress
 from content_core.loaders import load_wordpress_target as _load_wp_target
@@ -973,7 +974,8 @@ def compare_brand_voice(pages_a: list[dict], pages_b: list[dict]) -> dict:
 
 _CONTEXT_PART_CAPS = {"persona": 8000, "brand_rules": 6000,
                       "craft_cards": 4000, "style_profile": 4000,
-                      "facts_triggered": 3000, "exemplar": 3000,
+                      "facts_triggered": 3000, "depth_material": 6000,
+                      "exemplar": 3000,
                       "task": 1000, "post_history_reminder": 4000}
 _MAX_BRAND_EXAMPLES = 8   # few-shot examples rendered into brand_rules
 _MAX_FACT_ENTRIES = 12    # lorebook entries rendered into facts_triggered
@@ -999,6 +1001,18 @@ def assemble_context(brief: dict, format: str | None = None,
     this format/topic) → 4 triggered facts → 5 exemplar (matching format) →
     6 task → 7 post-history reminder (strongest weight, read last).
     `format` overrides brief['format'] when given.
+
+    DEPTH MATERIAL (quality uplift WS1): when the brief's brand has a
+    research pack with APPLIED items, a `depth_material` part is
+    inserted after the facts (before the exemplar): the applied facts
+    with their provenance plus bounded excerpts from the accepted
+    sources they cite, labelled as SOURCE MATERIAL for depth —
+    specifics, process detail, local colour. It is NOT part of the
+    fact base: a claim taken from it must still match the facts or
+    carry [NEEDS SOURCE], and fact_check judges it exactly as
+    before. Brands without applied items get no part and a context
+    identical to before; the result then carries a `depth_material`
+    metadata block ({applied_items, fact_items, source_excerpts}).
 
     The response carries the rendered `context_text` (the single
     representation of the content) + lightweight metadata: `counts`
@@ -1095,7 +1109,10 @@ def assemble_context(brief: dict, format: str | None = None,
     task_text = (f"Write format={fmt} about: {brief.get('topic', '')}. "
                  f"Keyword: {brief.get('keyword', '')}. Title: {brief.get('title', '')}. "
                  "Write section by section. Facts only from the facts section above; "
-                 "any claim without a source must be marked [NEEDS SOURCE].")
+                 "any claim without a source must be marked [NEEDS SOURCE]. "
+                 "For the headline, opening and CTA/closing sections, draft "
+                 "2-5 variants and call score_section_variants to pick the "
+                 "strongest before saving the section.")
     reminder = persona.get("post_history_instructions", "")
 
     # Style Extraction: optional style_profile part, after craft_cards.
@@ -1131,11 +1148,28 @@ def assemble_context(brief: dict, format: str | None = None,
             if style_profile is not None:
                 style_profile_source = "brand_corpus_choice"
 
+    # Depth material (WS1, quality uplift): the brand's APPLIED
+    # research-pack items, rendered by research.depth_material as
+    # labelled SOURCE MATERIAL after the facts — never merged into
+    # the fact base. Absent entirely when the brand's pack has no
+    # applied items, so other contexts are byte-identical to before.
+    depth = None
+    depth_error = None
+    try:
+        pack = _load_research_pack(brand["brand"]["id"])
+        if pack is not None:
+            depth = _research.depth_material(pack)
+    except ValueError as exc:  # corrupt pack record: report, don't crash
+        depth_error = str(exc)
+
     parts = [("persona", persona_text), ("brand_rules", brand_text),
              ("craft_cards", craft_text)]
     if style_profile is not None:
         parts.append(("style_profile", _style_context_text(style_profile)))
-    parts += [("facts_triggered", facts_text), ("exemplar", exemplar_text),
+    parts.append(("facts_triggered", facts_text))
+    if depth is not None:
+        parts.append(("depth_material", depth["text"]))
+    parts += [("exemplar", exemplar_text),
               ("task", task_text), ("post_history_reminder", reminder)]
     truncated_parts: list[str] = []
     parts = [(name, _cap_part(content, _CONTEXT_PART_CAPS[name], name,
@@ -1160,6 +1194,13 @@ def assemble_context(brief: dict, format: str | None = None,
     }
     if style_error:
         result["style_profile_error"] = style_error
+    if depth is not None:
+        result["depth_material"] = {
+            "applied_items": depth["applied_items"],
+            "fact_items": depth["fact_items"],
+            "source_excerpts": depth["source_excerpts"]}
+    if depth_error:
+        result["depth_material_error"] = depth_error
     return result
 
 
@@ -1824,7 +1865,10 @@ def quality_score(draft_id: str, judged_scores: dict | None = None,
     a format name or a saved custom id; default is the draft format's
     preset. The report is dumbbell-ready: per-axis score vs floor, plus
     weighted_total and quality_pass (total >= pass_total AND no axis
-    below its floor)."""
+    below its floor). It also carries `depth_context` — what material
+    the depth axis was graded against: "research_pack" (the brand's
+    research pack has applied items), "brand_facts_only", or "none".
+    Metadata only: it never changes a score."""
     draft, error = _load_draft_or_error(draft_id)
     if error:
         return error
@@ -1844,7 +1888,12 @@ def quality_score(draft_id: str, judged_scores: dict | None = None,
                                    brief=draft.get("brief", {}))
     except ValueError as exc:
         return {"error": str(exc), "draft_id": draft_id}
-    return {**report, "draft_id": draft_id}
+    # depth_context (quality uplift WS1): what material the depth
+    # grading had available — additive metadata only; no score in
+    # the report above depends on it.
+    return {**report, "draft_id": draft_id,
+            "depth_context": _research.depth_context(
+                gate_brand.get("brand", {}).get("id", ""), gate_facts)}
 
 
 @mcp.tool()
@@ -1916,9 +1965,81 @@ def check_draft_all(draft_id: str, judged_scores: dict | None = None,
                  "flagged_claims": flagged, "failing_sections": fact_failing},
         "craft": craft,
         "style": style,
-        "quality": {**quality, "draft_id": draft_id},
+        "quality": {**quality, "draft_id": draft_id,
+                    "depth_context": _research.depth_context(
+                        resolved_id, facts)},
         "draft_id": draft_id,
     }
+
+
+@mcp.tool()
+def score_section_variants(section_role: str, variants: list[str],
+                           draft_id: str = "", brand_id: str = "",
+                           format: str = "",
+                           style_profile_id: str = "") -> dict:
+    """Best-of-N: rank 2–5 candidate texts for ONE section role
+    (headline / opening / cta / closing) with the gate's own checkers,
+    so the writer picks the strongest variant BEFORE saving it.
+
+    Context: pass `draft_id` (brand, facts, format and style profile
+    resolve from the draft, exactly as quality_score resolves them)
+    or `brand_id` (+ optional `format`, default blog; the style
+    profile then defaults from the brand's corpus choice, as in
+    assemble_context). An explicit `style_profile_id` always wins.
+
+    Each variant is scored IN ISOLATION as a one-section draft:
+    brand (linter), fact (fact_check), craft and style_match where a
+    profile applies. A variant with a HARD violation — a banned term
+    or an unflagged fact issue — is INELIGIBLE and ranks last however
+    fluent it is (hard criteria stay outside the weighting, as in
+    the gate). The composite is the mean of the component scores
+    that could be computed; a variant too short for the craft
+    checker reports craft as not scored instead of a fake 0. Axes
+    that need the full draft (seo, coherence) are listed in
+    `not_scored` with reasons — never faked. Changes NO state."""
+    style_profile = None
+    if draft_id:
+        draft, error = _load_draft_or_error(draft_id)
+        if error:
+            return error
+        brief = draft.get("brief", {})
+        fmt = format or brief.get("format", "blog")
+        try:
+            brand, facts = _resolve_brand_facts(brief.get("brand_id", ""))
+        except ValueError as exc:
+            return {"error": str(exc), "draft_id": draft_id}
+        wanted_style = style_profile_id or brief.get("style_profile_id")
+    elif brand_id:
+        fmt = format or "blog"
+        try:
+            brand, facts = _resolve_brand_facts(brand_id)
+        except ValueError as exc:
+            return {"error": str(exc), "brand_id": brand_id}
+        wanted_style = style_profile_id
+        if not wanted_style:
+            try:
+                choice = _load_corpus_choice(brand_id)
+            except ValueError:  # corrupt choice record: no default
+                choice = None
+            if choice is not None:
+                wanted_style = choice.get("profile_id")
+    else:
+        return {"error": "pass draft_id or brand_id so the variants "
+                         "are judged in a brand's context"}
+    if wanted_style:
+        style_profile = _resolve_style_profile(wanted_style)
+        if style_profile is None and style_profile_id:
+            return {"error": f"style profile not found: "
+                             f"{style_profile_id}"}
+    try:
+        result = _variants.score_variants(
+            variants, section_role, fmt, brand, facts,
+            style_profile=style_profile)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if draft_id:
+        result["draft_id"] = draft_id
+    return result
 
 
 @mcp.tool()
@@ -2713,6 +2834,107 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
     except ValueError as exc:  # lock timeout / invalid draft id
         return {"error": str(exc), "brand_id": brand_id,
                 "draft_id": draft_id}
+
+
+def _sync_one_wp_edit(brand_id: str, draft: dict) -> dict:
+    """One draft's edit sync (see sync_wordpress_edits): GET the
+    exported post, diff its current blocks against the draft's,
+    and record an edited taste pair when they differ. Never writes
+    to WordPress; WP/credential failures are per-draft errors, not
+    exceptions, so one bad post cannot sink a brand-wide sync."""
+    record = draft["wordpress_export"]
+    post_id = int(record["wp_post_id"])
+    base = {"draft_id": draft.get("draft_id", ""),
+            "wp_post_id": post_id,
+            "site_url": record.get("site_url", "")}
+    try:
+        target = _load_wp_target(brand_id)
+    except ValueError as exc:
+        return {**base, "error": str(exc)}
+    if target is None:
+        return {**base, "error": f"no WordPress target configured "
+                                 f"for brand {brand_id}"}
+    password = _wordpress.load_app_password(brand_id)
+    if password is None:
+        return {**base, "error": _wordpress.not_configured_message(
+            brand_id)}
+    try:
+        post = _wordpress.get_post(target, password, post_id)
+    except _wordpress.WPError as exc:
+        return {**base, "error": str(exc)}
+    edited_blocks = _wordpress.html_to_blocks(
+        (post.get("content") or {}).get("rendered", ""))
+    original_blocks = _wordpress.sections_to_blocks(_sections_of(draft))
+    if edited_blocks == original_blocks:
+        return {**base, "changed": False, "already_synced": False}
+    diff = _wordpress.diff_blocks(original_blocks, edited_blocks)
+    try:
+        outcome = _taste.record_wp_edit(
+            brand_id, record.get("site_url") or target["site_url"],
+            post_id, "\n\n".join(original_blocks),
+            "\n\n".join(edited_blocks))
+    except ValueError as exc:
+        return {**base, "error": str(exc)}
+    if outcome["already_synced"]:
+        return {**base, "changed": False, "already_synced": True}
+    return {**base, "changed": True, "diff": diff,
+            "taste_entry_id": outcome["entry"]["id"],
+            "taste_entry_created": outcome["created"],
+            "taste_entry_updated": outcome["updated"]}
+
+
+@mcp.tool()
+def sync_wordpress_edits(brand_id: str = "", draft_id: str = "") -> dict:
+    """Sync the owner's WordPress edits back into the taste layer
+    (quality uplift WS3) — the feedback loop that teaches the system
+    from what Smith actually changed before publishing.
+
+    For each exported draft (one `draft_id`, or every exported draft
+    of a `brand_id`): GET the post's current content from the live
+    site (READ-ONLY — this tool never writes to WordPress),
+    normalise it to text blocks, and diff against the exported
+    draft's blocks. Unchanged → {changed: false}. Changed → the
+    (exported, current) pair is recorded in the brand's taste layer
+    as an "edited" verdict entry (both versions kept, provenance =
+    WP post id + site), and the result carries a diff summary
+    (blocks changed, words added/removed). Re-syncing the same post
+    without further edits is idempotent (keyed on post id + content
+    hash); a post edited AGAIN supersedes its entry with the newest
+    edited text — the taste layer's re-mark rule."""
+    if draft_id:
+        draft, error = _load_draft_or_error(draft_id)
+        if error:
+            return error
+        if not draft.get("wordpress_export"):
+            return {"error": f"draft {draft_id} has no "
+                             f"wordpress_export record — export it "
+                             f"before syncing edits",
+                    "draft_id": draft_id}
+        record = draft["wordpress_export"]
+        brand = record.get("brand_id") \
+            or draft.get("brief", {}).get("brand_id") or "moc-brew"
+        return {"brand_id": brand, "draft_id": draft_id,
+                "results": [_sync_one_wp_edit(brand, draft)]}
+    if not brand_id:
+        return {"error": "pass brand_id (sync every exported draft "
+                         "of the brand) or draft_id (sync one)"}
+    candidates = []
+    for path in sorted(drafts_dir().glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, ValueError):
+            continue  # corrupt drafts are list_drafts' story, not ours
+        if not isinstance(data, dict) or not data.get("wordpress_export"):
+            continue
+        brief = data.get("brief") if isinstance(data.get("brief"),
+                                                dict) else {}
+        if (brief.get("brand_id") or "moc-brew") != brand_id:
+            continue
+        data.setdefault("draft_id", path.stem)
+        candidates.append(data)
+    return {"brand_id": brand_id,
+            "results": [_sync_one_wp_edit(brand_id, d)
+                        for d in candidates]}
 
 
 @mcp.tool()

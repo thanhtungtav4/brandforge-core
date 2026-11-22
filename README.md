@@ -636,7 +636,7 @@ any host app's model can be the writer; the core stays the referee.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Tools (65)
+### Tools (67)
 
 | Tool | What it does |
 |---|---|
@@ -647,7 +647,7 @@ any host app's model can be the writer; the core stays the referee.
 | `get_exemplars(format)` | Layer 4: exemplar passage(s) for the format (few-shot style anchors) |
 | `get_domain_glossary(group?)` | Layer 4: coffee glossary groups + weak words with replacements |
 | `craft_check(text?, format?, draft_id?)` | Layer 4: deterministic prose-QUALITY score (weak words, rhythm, sensory detail) — reports only; the blocking decision lives in `final_gate` |
-| `assemble_context(brief, format?, style_profile_id?)` | Ordered prompt context the writer must follow: 1 persona → 2 brand rules → 3 craft cards (triggered) → 4 triggered facts → 5 exemplar (matching format) → 6 task → 7 post-history reminder. With `style_profile_id`, a `style_profile` part (fingerprint targets + qualitative do/don't + never_do) is inserted after craft cards — 8 parts total. **Response shape (backlog item 8):** the rendered `context_text` is the single representation of the context; alongside it the tool returns only lightweight metadata — `counts` (sources / craft_cards / exemplars), `style_profile` as `{id, name}`, `ordered_context` as `[{order, part, chars}]` (no content), and `truncated_parts`. A documented soft budget caps each part (persona 8000, brand_rules 6000, craft_cards 4000, style_profile 4000, facts_triggered 3000, exemplar 3000, task 1000, post_history_reminder 4000 chars; brand examples ≤ 8 entries, fact entries ≤ 12, exemplars ≤ 2); an over-budget part is truncated with an explicit `[truncated: …]` marker and named in `truncated_parts`, never silently |
+| `assemble_context(brief, format?, style_profile_id?)` | Ordered prompt context the writer must follow: 1 persona → 2 brand rules → 3 craft cards (triggered) → 4 triggered facts → 5 exemplar (matching format) → 6 task → 7 post-history reminder. With `style_profile_id`, a `style_profile` part (fingerprint targets + qualitative do/don't + never_do) is inserted after craft cards — 8 parts total. When the brand's research pack has APPLIED items, a `depth_material` part (applied facts with provenance + cited source excerpts, labelled SOURCE MATERIAL — never merged into the fact base) is inserted after the facts; `quality_score` / `check_draft_all` report the same availability as `depth_context` | **Response shape (backlog item 8):** the rendered `context_text` is the single representation of the context; alongside it the tool returns only lightweight metadata — `counts` (sources / craft_cards / exemplars), `style_profile` as `{id, name}`, `ordered_context` as `[{order, part, chars}]` (no content), and `truncated_parts`. A documented soft budget caps each part (persona 8000, brand_rules 6000, craft_cards 4000, style_profile 4000, facts_triggered 3000, exemplar 3000, task 1000, post_history_reminder 4000 chars; brand examples ≤ 8 entries, fact entries ≤ 12, exemplars ≤ 2); an over-budget part is truncated with an explicit `[truncated: …]` marker and named in `truncated_parts`, never silently |
 | `analyze_style(samples)` | Style Extraction: per-sample + aggregate deterministic fingerprint and consistency warnings (too few samples/words, mixed-authors divergence) |
 | `save_style_profile(name, samples, qualitative, store_excerpts=false, brand_id?)` | Style Extraction: build + persist a Style Profile from samples and the model-filled qualitative schema. Excerpts stored only when `store_excerpts=True` (user's own/licensed samples) |
 | `get_style_profile(profile_id?)` | Style Extraction: one stored profile by id (`default` → `mocbrew-blog-voice`); with no id, the profile list + the default |
@@ -667,6 +667,7 @@ any host app's model can be the writer; the core stays the referee.
 | `save_quality_profile(format, weights, floors?, pass_total?)` | Quality Profile: validate (7 axes, each weight in [2, 45], sum exactly 100) + persist a custom profile to `data/quality_profiles/` |
 | `quality_score(draft_id, judged_scores?, quality_profile?)` | Quality Profile: score a draft on the 7 axes WITHOUT running the gate — dumbbell-ready per-axis score vs floor, weighted total, quality_pass; judged axes (coherence/persuasion/depth) are the writer's 0/1/2 grades, missing ones are excluded, never invented |
 | `check_draft_all(draft_id, judged_scores?, quality_profile?)` | Combined check (perf P3): brand + fact + craft + style + quality for a stored draft in ONE call, each checker run once, the lint/fact results fed into the quality layer via the gate's own `_precomputed` reuse — every sub-report mirrors the individual tool's shape and numbers; changes no state, `final_gate` remains the only verdict |
+| `score_section_variants(section_role, variants, draft_id? / brand_id?)` | Best-of-N (quality uplift): rank 2–5 candidate texts for a headline / opening / cta / closing with the gate's own checkers, scored in isolation. A variant with a banned term or an unflagged fact issue is **ineligible** and ranks last however fluent (hard criteria stay outside the weighting); seo/coherence are reported `not_scored` — they need the full draft and are never faked |
 | `run_golden()` | Runs the golden set through the LangGraph core, per-brief PASS/FAIL |
 | `analyze_site_brand(pages)` | Brand Builder: deterministic analysis of a fetched site (pages from `fetch_site.py`) — corpus stats, style fingerprint, visual brand kit with source_url evidence, voice-rule suggestions, vocabulary candidates, site claims flagged needs_evidence |
 | `save_brand_draft(pages, qualitative?, source_type?, brand_name?)` | Brand Builder: build + persist a DRAFT Brand Voice profile in the brand YAML structure. `qualitative` is the model-filled schema (tone traits, audience, positioning, differentiators). Drafts carry review_status="draft" + review_notes; competitor drafts mark every example reference_only |
@@ -702,6 +703,7 @@ any host app's model can be the writer; the core stays the referee.
 | `set_wordpress_target(brand_id, site_url, username, post_type?, default_category_id?)` | WordPress exporter (P3): record a brand's NON-SECRET delivery target (site base URL, WP username, REST post type, optional category). The Application Password is never accepted or stored here — see the WordPress section below |
 | `get_wordpress_target(brand_id)` | WordPress exporter: the stored target + `credentials_configured` (boolean only; the password is never returned) |
 | `export_draft_to_wordpress(brand_id, draft_id, force=false)` | WordPress exporter: upload the draft's images per its media manifest (featured → `featured_media`, alt/caption/description set), create the post with status **"draft" — always; there is no publish path**, record the export on the draft (post id + edit link). A second export is refused unless `force=True` |
+| `sync_wordpress_edits(brand_id? / draft_id?)` | Edit-feedback loop (quality uplift): READ-ONLY (GET only) — fetch each exported post's current content, diff it against the exported draft, and record a changed pair in the taste layer as an "edited" verdict (both versions kept; provenance = WP post id + site). Idempotent per post + content hash; a further edit supersedes the entry |
 
 ### Article images (hybrid library-first + style lock + vision grades)
 
@@ -1082,7 +1084,7 @@ calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibrati
                files are fixtures and which are local-only raw evidence)
 evaluation/    round-1..8 reports + SUMMARY.md + probes/   (the 8-round
                evaluation and its regression probes, all with exit codes)
-mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 65 tools) — the host app's model is the writer, tools are the hands + referee
+mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 67 tools) — the host app's model is the writer, tools are the hands + referee
 test_mcp_client.py   end-to-end MCP client test over stdio (24 checks)
 test_mcp_http.py     MCP HTTP smoke test (server on a test port, tools/list + get_quality_profile)
 fetch_sample.py      CLI helper: URL -> plain text for Style Extraction (server stays offline)

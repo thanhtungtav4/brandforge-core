@@ -28,6 +28,61 @@ from .style import build_profile as _build_style_profile
 MIN_TASTE_SAMPLES = 3
 
 
+def wp_edit_ref(site_url: str, wp_post_id: int) -> str:
+    """The taste ref for a WordPress post's edit pair — stable per
+    post, so every sync of the same post addresses the same entry."""
+    return f"wordpress:{site_url}:post:{wp_post_id}"
+
+
+def record_wp_edit(brand_id: str, site_url: str, wp_post_id: int,
+                   original_text: str, edited_text: str) -> dict:
+    """Record a WordPress edit pair as an "edited" taste entry
+    (quality uplift WS3): original = the draft as exported, edited =
+    the post as it now stands on the site. Provenance rides on the
+    entry's `wp_sync` block (site, post id, content hash, synced_at).
+
+    Idempotency + supersession follow the taste layer's own rule —
+    re-marking the same ref REPLACES the entry:
+    - same post, same edited-content hash → already_synced, the
+      store is not touched;
+    - same post, new edited content → the entry is replaced with
+      the newest edited text (the original half stays the exported
+      draft — that is the pair the owner is teaching with);
+    - first sight → a new entry is created.
+    Returns {entry, created, updated, already_synced}."""
+    if not (original_text or "").strip():
+        raise ValueError("a WP edit pair needs the exported draft text")
+    if not (edited_text or "").strip():
+        raise ValueError("a WP edit pair needs the post's current text")
+    loaders.stored_file_stem(brand_id)
+    ref = wp_edit_ref(site_url, wp_post_id)
+    content_hash = hashlib.sha1(
+        edited_text.encode("utf-8")).hexdigest()
+    doc = _doc(brand_id)
+    existing = next((e for e in doc["entries"] if e["ref"] == ref), None)
+    if existing is not None \
+            and (existing.get("wp_sync") or {}).get("content_hash") \
+            == content_hash:
+        return {"entry": existing, "created": False, "updated": False,
+                "already_synced": True}
+    now = loaders._utc_now()
+    entry = {"id": _entry_id(ref, original_text), "ref": ref,
+             "source": "wordpress", "verdict": "edited",
+             "text": original_text, "edited_text": edited_text,
+             "note": f"WordPress edit sync: post {wp_post_id} on "
+                     f"{site_url}",
+             "marked_at": now, "imported_at": None,
+             "wp_sync": {"site_url": site_url,
+                         "wp_post_id": wp_post_id,
+                         "content_hash": content_hash,
+                         "synced_at": now}}
+    doc["entries"] = [e for e in doc["entries"] if e["ref"] != ref]
+    doc["entries"].append(entry)
+    loaders.save_taste_doc(doc)
+    return {"entry": entry, "created": existing is None,
+            "updated": existing is not None, "already_synced": False}
+
+
 def _doc(brand_id: str) -> dict:
     doc = loaders.load_taste_doc(brand_id)
     if doc is None:

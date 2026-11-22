@@ -37,6 +37,7 @@ succeeded).
 from __future__ import annotations
 
 import base64
+import difflib
 import html
 import json
 import mimetypes
@@ -44,6 +45,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from html.parser import HTMLParser
 from pathlib import Path
 
 from . import loaders
@@ -233,6 +235,15 @@ def create_post(target: dict, app_password: str, payload: dict) -> dict:
                     json_body=payload)
 
 
+def get_post(target: dict, app_password: str, post_id: int) -> dict:
+    """READ one post (the edit-feedback sync's only WP call — a GET;
+    this module's sync path never writes to WordPress). Returns the
+    WP post object ({id, status, title.rendered, content.rendered,
+    link, ...})."""
+    return _request(target, app_password, "GET",
+                    f"{target.get('post_type') or 'posts'}/{post_id}")
+
+
 # ---------------------------------------------------------------------------
 # Payload + content builders (pure)
 # ---------------------------------------------------------------------------
@@ -297,3 +308,108 @@ def edit_link(site_url: str, post_id: int) -> str:
     """The wp-admin edit URL for a post — the link the client (and
     Smith) actually clicks to review the draft."""
     return f"{site_url}/wp-admin/post.php?post={post_id}&action=edit"
+
+
+# ---------------------------------------------------------------------------
+# Edit-feedback diffing (quality uplift WS3): WP HTML ↔ draft text
+# ---------------------------------------------------------------------------
+# The sync compares the post AS IT NOW STANDS on WordPress with the
+# draft AS EXPORTED. Both sides are reduced to the same shape — a
+# list of normalised text blocks (headings and paragraphs, in order)
+# — so the comparison is about the words, not the markup. Images and
+# figure captions are not draft text (the exporter places them from
+# the media manifest), so they never enter the blocks.
+
+_BLOCK_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6", "p"}
+# Subtrees whose text is not draft text. <img> is deliberately NOT
+# here: it is a void element (no end tag, no text), so it is ignored
+# by simply not being a block tag — counting it as a skip subtree
+# would swallow every block after it.
+_SKIP_TAGS = {"figure", "figcaption", "script", "style"}
+
+
+class _BlockExtractor(HTMLParser):
+    """Collect heading/paragraph text blocks from WP content HTML.
+    Inline markup inside a block (a, strong, em…) contributes its
+    text; figure/img subtrees are skipped entirely."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.blocks: list[str] = []
+        self._current: list[str] | None = None
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in _SKIP_TAGS:
+            self._skip_depth += 1
+        elif tag in _BLOCK_TAGS and self._skip_depth == 0 \
+                and self._current is None:
+            self._current = []
+
+    def handle_endtag(self, tag):
+        if tag in _SKIP_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
+        elif tag in _BLOCK_TAGS and self._current is not None:
+            text = _normalise_block("".join(self._current))
+            if text:
+                self.blocks.append(text)
+            self._current = None
+
+    def handle_data(self, data):
+        if self._current is not None and self._skip_depth == 0:
+            self._current.append(data)
+
+
+def _normalise_block(text: str) -> str:
+    """One comparable text block: entities unescaped, every
+    whitespace run collapsed, ends stripped."""
+    return " ".join(html.unescape(str(text or "")).split())
+
+
+def html_to_blocks(content_html: str) -> list[str]:
+    """WP content HTML → the normalised block list (headings and
+    paragraphs in document order)."""
+    parser = _BlockExtractor()
+    parser.feed(str(content_html or ""))
+    parser.close()
+    return parser.blocks
+
+
+def sections_to_blocks(sections: list[dict]) -> list[str]:
+    """Draft sections → the SAME normalised block list the exporter
+    produced HTML from: heading block, then one block per paragraph
+    (build_content_html's blank-line split)."""
+    blocks: list[str] = []
+    for section in sections:
+        heading = _normalise_block(section.get("heading") or "")
+        if heading:
+            blocks.append(heading)
+        for block in re.split(r"\n\s*\n", str(section.get("text", ""))):
+            block = _normalise_block(block)
+            if block:
+                blocks.append(block)
+    return blocks
+
+
+def diff_blocks(original: list[str], edited: list[str]) -> dict:
+    """Block-level diff summary between the exported draft blocks
+    and the post's current blocks: how many blocks changed, and the
+    word counts added / removed inside the changed regions."""
+    matcher = difflib.SequenceMatcher(None, original, edited,
+                                      autojunk=False)
+    changed = added = removed = words_added = words_removed = 0
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            continue
+        changed += max(i2 - i1, j2 - j1) if op == "replace" \
+            else (i2 - i1) + (j2 - j1)
+        if op in ("replace", "delete"):
+            removed += i2 - i1
+            words_removed += sum(len(b.split())
+                                 for b in original[i1:i2])
+        if op in ("replace", "insert"):
+            added += j2 - j1
+            words_added += sum(len(b.split()) for b in edited[j1:j2])
+    return {"blocks_changed": changed, "blocks_added": added,
+            "blocks_removed": removed, "words_added": words_added,
+            "words_removed": words_removed}
