@@ -3,6 +3,8 @@ __pycache__/
 .pytest_cache/
 drafts/
 data/brand_drafts/
+data/wordpress_targets/
+data/wordpress_secrets.json
 .env
 *.env
 data/quality_profiles/

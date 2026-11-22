@@ -8,6 +8,7 @@ import re
 import tempfile
 import unicodedata
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -1149,4 +1150,110 @@ def load_taste_doc(brand_id: str) -> dict | None:
         return None
     return _require_stored_object(_load_json_file(path), path,
                                   "taste document", required="brand_id")
+
+
+# --- WordPress export targets (P3) ---
+# Per-brand NON-SECRET delivery config for the WordPress draft
+# exporter (pmdecisions 2026-11-22: finished articles are delivered
+# as drafts on the client's own WordPress site, never published).
+# The store holds ONLY: site base URL, WP username, REST post type,
+# an optional default category id. The Application Password is a
+# credential and NEVER lives here — it is read at export time from
+# the local secrets file / environment (content_core/wordpress.py).
+# Validation deliberately keeps ONLY the known fields: a hand-edited
+# target file cannot smuggle in a post status (or a credential) —
+# the exporter always creates drafts, by construction.
+# One JSON per brand at data/wordpress_targets/<brand-id>.json;
+# tests point CONTENT_CORE_WP_TARGETS_DIR at a tmp dir.
+
+
+def wordpress_targets_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_WP_TARGETS_DIR")
+    return Path(override) if override else DATA_DIR / "wordpress_targets"
+
+
+def _wordpress_target_path(brand_id: str) -> Path:
+    return wordpress_targets_dir() / f"{stored_file_stem(brand_id)}.json"
+
+
+def validate_wordpress_target(target: dict) -> dict:
+    """Schema-check + NORMALISE a WordPress target before it is
+    persisted. Returns a fresh dict with ONLY the known fields:
+    brand_id, site_url (http/https with a host, trailing slash
+    stripped), username, post_type (REST route base, default
+    "posts"), default_category_id (positive int or None). Raises
+    ValueError on anything malformed."""
+    if not isinstance(target, dict):
+        raise ValueError("wordpress target must be an object")
+    brand_id = str(target.get("brand_id") or "").strip()
+    if not brand_id:
+        raise ValueError("wordpress target needs a non-empty brand_id")
+    stored_file_stem(brand_id)  # validates the id is storable
+    site_url = str(target.get("site_url") or "").strip().rstrip("/")
+    parsed = urlparse(site_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(
+            f"site_url must be an http(s) URL with a host, "
+            f"got {target.get('site_url')!r}")
+    username = str(target.get("username") or "").strip()
+    if not username:
+        raise ValueError("wordpress target needs a non-empty username")
+    post_type = str(target.get("post_type") or "posts").strip()
+    if not re.fullmatch(r"[a-z0-9_-]+", post_type):
+        raise ValueError(
+            f"post_type must be a REST route base like 'posts', "
+            f"got {post_type!r}")
+    category = target.get("default_category_id")
+    if category is not None:
+        if isinstance(category, bool) or not isinstance(category, int) \
+                or category <= 0:
+            raise ValueError(
+                "default_category_id must be a positive int or None")
+    return {"brand_id": brand_id, "site_url": site_url,
+            "username": username, "post_type": post_type,
+            "default_category_id": category}
+
+
+def save_wordpress_target(target: dict) -> dict:
+    """Validate + persist a brand's WordPress target (atomic write).
+    Returns the normalised record with its updated_at stamp."""
+    record = validate_wordpress_target(target)
+    record["updated_at"] = _utc_now()
+    atomic_write_text(_wordpress_target_path(record["brand_id"]),
+                      json.dumps(record, ensure_ascii=False, indent=2))
+    return record
+
+
+def load_wordpress_target(brand_id: str) -> dict | None:
+    """Return the brand's stored WordPress target, normalised on
+    load (a hand-edited file is re-validated, so planted fields
+    never reach the exporter), or None."""
+    path = _wordpress_target_path(brand_id)
+    if not path.exists():
+        return None
+    stored = _require_stored_object(_load_json_file(path), path,
+                                    "wordpress target",
+                                    required="brand_id")
+    return validate_wordpress_target(stored)
+
+
+def list_wordpress_targets() -> list[dict]:
+    """Summaries of every stored WordPress target. Corrupt files are
+    listed as corrupt, never silently skipped (house discipline)."""
+    d = wordpress_targets_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        try:
+            target = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(target, dict):
+                raise ValueError("not a JSON object")
+        except (json.JSONDecodeError, OSError, ValueError):
+            out.append({"brand_id": path.stem, "corrupt": True})
+            continue
+        out.append({"brand_id": target.get("brand_id", path.stem),
+                    "site_url": target.get("site_url", ""),
+                    "corrupt": False})
+    return out
 

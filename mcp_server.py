@@ -104,6 +104,9 @@ from content_core.seo import seo_pass as _seo_pass
 from content_core import research as _research
 from content_core import taste as _taste
 from content_core import backup as _backup
+from content_core import wordpress as _wordpress
+from content_core.loaders import load_wordpress_target as _load_wp_target
+from content_core.loaders import save_wordpress_target as _save_wp_target
 from content_core.loaders import load_corpus_choice as _load_corpus_choice
 from content_core.loaders import load_corpus_entry as _load_corpus_entry
 from content_core.loaders import list_corpus_entries as _list_corpus_entries
@@ -2490,6 +2493,208 @@ def list_backups() -> dict:
     manifest cannot be read is listed as corrupt, never skipped."""
     backups = _backup.list_backups()
     return {"backups": backups, "count": len(backups)}
+
+
+# --------------------------------------------------------------------------
+# Tools — WordPress draft exporter (P3). Delivery decision
+# (pmdecisions 2026-11-22): finished articles are delivered as
+# DRAFTS on the client's own WordPress site — never published; the
+# client reviews and publishes. The target store holds only
+# non-secret config (site URL, username, post type, category); the
+# Application Password is read at export time from the local
+# secrets file / environment (content_core/wordpress.py) and never
+# stored, logged or returned. The created post's status is forced
+# to "draft" in wordpress.build_post_payload — there is no publish
+# path. All logic lives in content_core/wordpress.py + loaders;
+# these tools orchestrate draft state, in the {"error": ...}
+# dialect.
+# --------------------------------------------------------------------------
+
+@mcp.tool()
+def set_wordpress_target(brand_id: str, site_url: str, username: str,
+                         post_type: str = "posts",
+                         default_category_id: int | None = None) -> dict:
+    """Record a brand's WordPress delivery target — NON-SECRET
+    config only: the site's base URL, the WP username the
+    Application Password belongs to, the REST post type (default
+    "posts") and an optional default category id. The Application
+    Password itself is NEVER accepted or stored here: configure it
+    in the local secrets file or the BRANDFORGE_WP_PASSWORD_<BRAND>
+    environment variable (see content_core/wordpress.py). Returns
+    the stored target plus `credentials_configured` (a boolean —
+    whether a password is available for this brand)."""
+    try:
+        record = _save_wp_target({
+            "brand_id": brand_id, "site_url": site_url,
+            "username": username, "post_type": post_type,
+            "default_category_id": default_category_id})
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return {**record,
+            "credentials_configured":
+                _wordpress.credentials_configured(brand_id)}
+
+
+@mcp.tool()
+def get_wordpress_target(brand_id: str) -> dict:
+    """Return a brand's WordPress target (non-secret config) plus
+    `credentials_configured`. An unconfigured brand is a structured
+    error. The Application Password is never returned — it is not
+    in this store and this tool never reads it."""
+    try:
+        target = _load_wp_target(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    if target is None:
+        return {"error": f"no WordPress target configured for brand "
+                         f"{brand_id} — set one with "
+                         f"set_wordpress_target",
+                "brand_id": brand_id}
+    return {**target,
+            "credentials_configured":
+                _wordpress.credentials_configured(brand_id)}
+
+
+@mcp.tool()
+def export_draft_to_wordpress(brand_id: str, draft_id: str,
+                              force: bool = False) -> dict:
+    """Export a stored draft to the brand's WordPress site as a
+    DRAFT post (status is always "draft" — this tool cannot
+    publish): uploads the draft's images per its media manifest
+    (the featured image becomes the post's featured_media, alt text
+    / caption / description are set on each media item), builds the
+    post body from the draft's sections with in-content images
+    placed at their sections, creates the post, and records the
+    export on the draft (wordpress_export: site, post id, edit
+    link, media map).
+
+    Duplicate rule: a draft that already carries a wordpress_export
+    record is REFUSED — pass force=True to deliberately create a
+    fresh post and replace the record. A draft with no image plan
+    exports text-only; unfulfilled plan slots are reported as a
+    warning, never silently dropped. Errors are structured and
+    credential-free: WP failures name the HTTP status and WP's
+    message with the password scrubbed out."""
+    try:
+        target = _load_wp_target(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id,
+                "draft_id": draft_id}
+    if target is None:
+        return {"error": f"no WordPress target configured for brand "
+                         f"{brand_id} — set one with "
+                         f"set_wordpress_target",
+                "brand_id": brand_id, "draft_id": draft_id}
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            draft_brand = draft.get("brief", {}).get("brand_id") \
+                or "moc-brew"
+            if draft_brand != brand_id:
+                return {"error": f"draft {draft_id} belongs to brand "
+                                 f"{draft_brand}, not {brand_id}",
+                        "brand_id": brand_id, "draft_id": draft_id}
+            if draft.get("wordpress_export") and not force:
+                prev = draft["wordpress_export"]
+                return {"error": f"draft {draft_id} was already "
+                                 f"exported to {prev.get('site_url')} "
+                                 f"as WP post {prev.get('wp_post_id')} "
+                                 f"— pass force=True to export again",
+                        "brand_id": brand_id, "draft_id": draft_id}
+            password = _wordpress.load_app_password(brand_id)
+            if password is None:
+                return {"error": _wordpress.not_configured_message(
+                    brand_id), "brand_id": brand_id,
+                    "draft_id": draft_id}
+
+            state = _draft_images_state(draft)
+            manifest = (_build_image_manifest(state["plan"],
+                                              state["images"])
+                        if state["plan"] else [])
+            warnings: list[str] = []
+            if state["plan"] and len(manifest) < len(state["plan"]):
+                warnings.append(
+                    f"{len(state['plan']) - len(manifest)} image "
+                    f"slot(s) unfulfilled — exported without them")
+
+            uploaded: list[dict] = []
+            media_by_section: dict[str, dict] = {}
+            featured_media_id: int | None = None
+            for entry in manifest:
+                ref = str(entry.get("ref") or "")
+                if ref.startswith(("http://", "https://")):
+                    return {"error": f"image ref is a URL, not a "
+                                     f"local file — cannot upload: "
+                                     f"{ref}",
+                            "brand_id": brand_id, "draft_id": draft_id}
+                path = Path(ref)
+                if not path.is_file():
+                    return {"error": f"image file not found for "
+                                     f"manifest entry "
+                                     f"{entry.get('filename')}: {ref}",
+                            "brand_id": brand_id, "draft_id": draft_id}
+                media = _wordpress.upload_media(
+                    target, password,
+                    entry.get("filename") or path.name,
+                    path.read_bytes())
+                media_id = int(media["id"])
+                fields = {"alt_text": entry.get("alt_text", ""),
+                          "caption": entry.get("caption", ""),
+                          "description": entry.get("description", "")}
+                if any(fields.values()):
+                    _wordpress.update_media(target, password,
+                                            media_id, fields)
+                record = {"filename": entry.get("filename", ""),
+                          "role": entry.get("role", ""),
+                          "section_id": entry.get("section_id"),
+                          "wp_media_id": media_id,
+                          "source_url": media.get("source_url", "")}
+                uploaded.append(record)
+                if entry.get("role") == "featured":
+                    featured_media_id = media_id
+                elif entry.get("section_id"):
+                    media_by_section[str(entry["section_id"])] = {
+                        **entry, "source_url": media.get(
+                            "source_url", "")}
+
+            content = _wordpress.build_content_html(
+                _sections_of(draft), media_by_section)
+            title = draft.get("brief", {}).get("title") or \
+                draft.get("title") or "Untitled"
+            payload = _wordpress.build_post_payload(
+                title=title, content_html=content,
+                featured_media=featured_media_id,
+                category_id=target.get("default_category_id"))
+            post = _wordpress.create_post(target, password, payload)
+            post_id = int(post["id"])
+            record = {"brand_id": brand_id,
+                      "site_url": target["site_url"],
+                      "wp_post_id": post_id,
+                      "edit_link": _wordpress.edit_link(
+                          target["site_url"], post_id),
+                      "post_link": post.get("link", ""),
+                      "status": "draft",
+                      "exported_at": datetime.now(
+                          timezone.utc).isoformat(timespec="seconds"),
+                      "media": uploaded}
+            draft["wordpress_export"] = record
+            _store_draft(draft)
+            return {"brand_id": brand_id, "draft_id": draft_id,
+                    "wp_post_id": post_id,
+                    "edit_link": record["edit_link"],
+                    "post_link": record["post_link"],
+                    "status": "draft",
+                    "site_url": target["site_url"],
+                    "media_uploaded": len(uploaded),
+                    "media": uploaded, "warnings": warnings}
+    except _wordpress.WPError as exc:
+        return {"error": str(exc), "brand_id": brand_id,
+                "draft_id": draft_id}
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "brand_id": brand_id,
+                "draft_id": draft_id}
 
 
 @mcp.tool()

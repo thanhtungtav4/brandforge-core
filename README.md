@@ -1,4 +1,5 @@
-# Content Core — Phase 1 prototype (core-first, NO UI yet)
+# Content Core — the engine behind brandforge (P3 adds the app shell
+# in ../brandforge-app; this package stays the referee)
 
 The testable core of Smith's AI content-writing product. Product direction for
 later phases: Next.js + LangGraph + Postgres/pgvector (3–6 weeks part-time).
@@ -635,7 +636,7 @@ any host app's model can be the writer; the core stays the referee.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Tools (61)
+### Tools (64)
 
 | Tool | What it does |
 |---|---|
@@ -698,6 +699,9 @@ any host app's model can be the writer; the core stays the referee.
 | `get_taste_status(brand_id)` | Taste layer: verdict counts + whether a taste profile exists and what it was built from |
 | `export_core_data()` | Backup: snapshot ALL local stores into one timestamped zip under `backups/` with a manifest (per-store counts, per-file sha256); credential-pattern files are excluded and recorded in the manifest |
 | `list_backups()` | Backup: list archives (newest first) with manifest summaries; an unreadable archive is listed as corrupt, never skipped |
+| `set_wordpress_target(brand_id, site_url, username, post_type?, default_category_id?)` | WordPress exporter (P3): record a brand's NON-SECRET delivery target (site base URL, WP username, REST post type, optional category). The Application Password is never accepted or stored here — see the WordPress section below |
+| `get_wordpress_target(brand_id)` | WordPress exporter: the stored target + `credentials_configured` (boolean only; the password is never returned) |
+| `export_draft_to_wordpress(brand_id, draft_id, force=false)` | WordPress exporter: upload the draft's images per its media manifest (featured → `featured_media`, alt/caption/description set), create the post with status **"draft" — always; there is no publish path**, record the export on the draft (post id + edit link). A second export is refused unless `force=True` |
 
 ### Article images (hybrid library-first + style lock + vision grades)
 
@@ -856,6 +860,43 @@ in the manifest: the stores hold no credentials by design, and a
 planted one is reported, never silently archived. `list_backups`
 reads the manifests back.
 
+### WordPress draft exporter — delivery as drafts (P3)
+
+The delivery channel Smith settled (pmdecisions 2026-11-22):
+finished articles are posted as **drafts** into the client's own
+WordPress site; the client reviews and publishes. The exporter
+(`content_core/wordpress.py`, stdlib urllib) makes "never publish"
+structural, not a setting:
+
+- `build_post_payload` hard-codes status `"draft"` and ignores any
+  status passed to it; there is no publish code path.
+- The per-brand **target store** (`data/wordpress_targets/<brand-id>.json`,
+  gitignored) holds ONLY non-secret config — site base URL, WP
+  username, REST post type, optional default category — and its
+  validator keeps only those fields, so a hand-edited target file
+  cannot smuggle in a status or a credential.
+- The **Application Password** is read at export time only, from
+  the environment variable `BRANDFORGE_WP_PASSWORD_<BRAND>`
+  (brand id upper-cased, non-alphanumerics as `_`) or the local
+  secrets file `data/wordpress_secrets.json` (JSON
+  `{brand_id: "app password"}`; path overridable via
+  `CONTENT_CORE_WP_SECRETS_FILE`; gitignored, and its name matches
+  the backup exporter's credential-pattern exclusion). It is never
+  stored in any store, never logged, and every error is scrubbed
+  through `wordpress.redact` — password, wire form, base64 token
+  and full Authorization header — before it can surface.
+- Export flow: media manifest → upload each image (bytes from the
+  manifest's local ref; URL refs are refused) → set alt/caption/
+  description on each media item → featured image becomes
+  `featured_media` → post body built from the draft's sections
+  with in-content images at their sections → create post → record
+  `wordpress_export` {site, post id, edit link, media map} on the
+  draft. **Duplicate rule:** a draft with an export record is
+  refused; `force=True` deliberately creates a fresh post and
+  replaces the record. Tests run against a local mock WP REST
+  server (`tests/test_wordpress.py`): auth header shape, media +
+  alt, draft-only payload, 401/404 handling, redaction.
+
 ### Start the server / test it
 
 ```bash
@@ -998,6 +1039,9 @@ content_core/  state.py loaders.py writer.py linter.py fact_check.py seo.py
                               detection + resolution / apply invariants)
                taste.py   (taste layer: owner verdicts / taste profile build)
                backup.py   (local data backup: store snapshot zip + manifest)
+               wordpress.py   (WordPress draft exporter: secrets handling
+                             with redaction, REST client, draft-only
+                             payload + content builders)
 data/          persona_linh.json brand_mocbrew.yaml facts_lorebook.json
                craft_library.json exemplars.json domain_glossary.json   (Layer 4)
                model_golden.json   (model-written drafts + expected scores, P2a)
@@ -1012,6 +1056,10 @@ data/          persona_linh.json brand_mocbrew.yaml facts_lorebook.json
                corpus_registry/   (system-level genre corpora, tracked)
                corpus_choices/   (per-brand corpus choices, gitignored)
                taste/   (per-brand taste stores, gitignored)
+               wordpress_targets/   (per-brand WP delivery config —
+                             non-secret only, gitignored)
+               wordpress_secrets.json   (WP Application Passwords,
+                             local only, gitignored — NEVER tracked)
                persona_an.json   (trial persona: An, 25, Châu Đốc)
 tests/         test_linter.py test_fact_check.py test_gates.py test_golden.py
                test_mcp_server.py test_craft.py test_model_golden.py test_style.py
@@ -1025,6 +1073,8 @@ tests/         test_linter.py test_fact_check.py test_gates.py test_golden.py
                test_core_completion2.py   (core-completion round 2: research
                pack invariants / corpus registry / taste layer / draft
                admin / backup)
+               test_wordpress.py   (WP draft exporter: mock WP REST
+               server — auth shape / media+alt / draft-only / redaction)
                fixtures/dinhcao/ fixtures/som/   (two fictional coffee sites, HTML)
                fixtures/jsshell/ fixtures/jsshell2/   (JS-shell site fixtures)
 calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibration
@@ -1032,7 +1082,7 @@ calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibrati
                files are fixtures and which are local-only raw evidence)
 evaluation/    round-1..8 reports + SUMMARY.md + probes/   (the 8-round
                evaluation and its regression probes, all with exit codes)
-mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 61 tools) — the host app's model is the writer, tools are the hands + referee
+mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 64 tools) — the host app's model is the writer, tools are the hands + referee
 test_mcp_client.py   end-to-end MCP client test over stdio (24 checks)
 test_mcp_http.py     MCP HTTP smoke test (server on a test port, tools/list + get_quality_profile)
 fetch_sample.py      CLI helper: URL -> plain text for Style Extraction (server stays offline)
