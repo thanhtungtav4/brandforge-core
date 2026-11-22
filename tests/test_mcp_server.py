@@ -70,7 +70,9 @@ def test_tool_list_complete_over_stdio():
                 tools = await session.list_tools()
                 return {t.name for t in tools.tools}
 
-    assert EXPECTED_TOOLS <= asyncio.run(_run())
+    # Exact equality (review M19): the old subset assertion let the
+    # wire list grow tools the in-process list did not know about.
+    assert EXPECTED_TOOLS == asyncio.run(_run())
 
 
 # -- data / research / validation -------------------------------------------

@@ -72,6 +72,12 @@ def main() -> None:
                 by_kind[kind] += 1
     print(f"sweep cases: {total}")
     print(f"inversions: {inversions}  by injector: {by_kind}")
+    # Regression threshold (review L17): the 9 residual inversions are
+    # the documented layer-separation trade-off; the bound leaves
+    # noise room but catches a real monotonicity regression.
+    ok = inversions <= 12
+    print(f"thresholds: inversions<=12 -> {'OK' if ok else 'REGRESSED'}")
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

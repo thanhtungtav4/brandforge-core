@@ -547,22 +547,104 @@ def test_concurrent_final_gates_both_record_history(tmp_path, monkeypatch):
 
 
 def test_stale_lock_is_stolen_and_fresh_lock_errors(tmp_path, monkeypatch):
+    """PIN UPDATE (review-fix round, H3): this test used to pin the
+    OLD lockfile semantics — a bare file's presence meant 'held', an
+    old mtime meant 'stealable', and release unlinked the file. Those
+    semantics were the bug (H3): a live holder past 30 s was stolen
+    from, and its release deleted the thief's lock. The redesigned
+    lock (flock on a persistent file, token+heartbeat fallback) has
+    different observable behaviour, pinned here instead:
+    - a stale UNHELD lock file never wedges a draft (nothing holds
+      the flock, whatever the mtime says);
+    - a genuinely HELD lock is never stolen — not even with its mtime
+      backdated past the old 30 s staleness bound (the H3 repro);
+    - a killed holder's lock frees immediately (kernel release);
+    - the lock FILE persists after release (it is never unlinked:
+      unlinking a locked file would split the lock across inodes)."""
     monkeypatch.setenv("CONTENT_CORE_DRAFTS_DIR", str(tmp_path))
+    import fcntl
+    import subprocess
+    import threading
+
     import mcp_server as srv
     draft_id = srv.start_draft({"topic": "t", "format": "blog"})["draft_id"]
     lock_path = tmp_path / f"{draft_id}.lock"
-    # A lock left by a crashed writer (mtime 120s ago) must not wedge
-    # the draft: it is stolen and the save proceeds.
+    # Stale leftover file, nobody holding it: the save proceeds.
     lock_path.write_text("stale", encoding="utf-8")
     old = time.time() - 120
     os.utime(lock_path, (old, old))
     out = srv.save_section(draft_id, "s1", "H", "Hạt rang mùi thơm.")
     assert "error" not in out
-    assert not lock_path.exists()  # released after the save
-    # A FRESH lock held by a live writer: the save waits, then surfaces
-    # a structured error (timeout shrunk for the test).
+    assert lock_path.exists()  # the lock file persists by design
+
+    # A genuinely held lock (flock held by this process on a separate
+    # fd) with its mtime BACKDATED past the staleness bound: the old
+    # scheme stole this; the new one must time out with the structured
+    # error — a >30 s critical section never admits a second holder.
+    monkeypatch.setattr(srv, "_DRAFT_LOCK_TIMEOUT_S", 0.4)
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    os.utime(lock_path, (old, old))
+    out = srv.save_section(draft_id, "s2", "H", "Hạt rang mùi thơm.")
+    assert "error" in out and "locked" in out["error"]
+    fcntl.flock(fd, fcntl.LOCK_UN)
+    os.close(fd)
+    out = srv.save_section(draft_id, "s2", "H", "Hạt rang mùi thơm.")
+    assert "error" not in out  # free again after release
+
+    # A holder killed with SIGKILL frees the lock at once (the kernel
+    # releases flock on process death — no staleness window at all).
+    holder = subprocess.Popen(
+        [sys.executable, "-c",
+         "import fcntl, os, time;"
+         f"fd = os.open({str(lock_path)!r}, os.O_CREAT | os.O_RDWR);"
+         "fcntl.flock(fd, fcntl.LOCK_EX);"
+         "print('locked', flush=True); time.sleep(60)"],
+        stdout=subprocess.PIPE, text=True)
+    try:
+        assert holder.stdout.readline().strip() == "locked"
+        holder.kill()
+        holder.wait(timeout=10)
+    finally:
+        if holder.poll() is None:
+            holder.kill()
+    out = srv.save_section(draft_id, "s3", "H", "Hạt rang mùi thơm.")
+    assert "error" not in out
+
+
+def test_token_fallback_lock_steals_only_dead_holders(tmp_path, monkeypatch):
+    """The no-fcntl fallback (review H3): a token lockfile whose
+    heartbeat is long dead (mtime + token unchanged across the grace
+    re-read) is stolen; a fresh one is not."""
+    monkeypatch.setenv("CONTENT_CORE_DRAFTS_DIR", str(tmp_path))
+    import mcp_server as srv
+    monkeypatch.setattr(srv, "_FLOCK_AVAILABLE", False)
+    draft_id = srv.start_draft({"topic": "t", "format": "blog"})["draft_id"]
+    lock_path = tmp_path / f"{draft_id}.lock"
+    # Dead holder: token file, mtime 120 s ago, never refreshed.
+    lock_path.write_text("999999:deadbeef", encoding="utf-8")
+    old = time.time() - 120
+    os.utime(lock_path, (old, old))
+    out = srv.save_section(draft_id, "s1", "H", "Hạt rang mùi thơm.")
+    assert "error" not in out
+    assert not lock_path.exists()  # fallback release unlinks its own token
+    # Live holder: fresh mtime -> bounded wait -> structured error.
     monkeypatch.setattr(srv, "_DRAFT_LOCK_TIMEOUT_S", 0.3)
-    lock_path.write_text("live", encoding="utf-8")
+    lock_path.write_text("999998:live", encoding="utf-8")
     out = srv.save_section(draft_id, "s2", "H", "Hạt rang mùi thơm.")
     assert "error" in out and "locked" in out["error"]
     lock_path.unlink()
+
+
+def test_draft_lock_is_reentrant_in_one_thread(tmp_path, monkeypatch):
+    """Review M5: nested acquisition by the SAME thread (a tool
+    calling another lock-taking helper) must not deadlock against
+    the lock timeout."""
+    monkeypatch.setenv("CONTENT_CORE_DRAFTS_DIR", str(tmp_path))
+    import mcp_server as srv
+    draft_id = srv.start_draft({"topic": "t", "format": "blog"})["draft_id"]
+    with srv._draft_lock(draft_id):
+        with srv._draft_lock(draft_id):
+            pass
+    out = srv.save_section(draft_id, "s1", "H", "Hạt rang mùi thơm.")
+    assert "error" not in out

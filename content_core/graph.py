@@ -85,8 +85,13 @@ class Core:
     def research(self, state: ContentState) -> dict[str, Any]:
         """Keyword-triggered lorebook retrieval ONLY — no external sources."""
         haystack = str(state.get("brief", {})).lower()
-        sources = [e for e in self.facts["entries"]
-                   if e.get("constant") or any(k.lower() in haystack for k in e["keys"])]
+        # .get throughout (review M2): validate_facts accepts entries
+        # with only id+content, and load_facts now defaults `keys` at
+        # load — but a facts dict handed straight to Core (a test, an
+        # embedding caller) must not KeyError the whole flow either.
+        sources = [e for e in self.facts.get("entries", [])
+                   if e.get("constant")
+                   or any(k.lower() in haystack for k in e.get("keys") or [])]
         return {"sources": sources}
 
     def outline(self, state: ContentState) -> dict[str, Any]:

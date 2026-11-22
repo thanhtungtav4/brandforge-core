@@ -32,4 +32,4 @@ class ContentState(TypedDict, total=False):
     gate_history: list[dict[str, Any]]     # one entry per check pass, incl. failed first passes
     failing_sections: list[str]
     rewrite_count: int
-    status: str  # validated|awaiting_outline_approval|drafted|rewriting|approved|failed_gates|invalid_brief
+    status: str  # validated|refused|awaiting_outline_approval|drafted|rewriting|approved|failed_gates|invalid_brief

@@ -6,3 +6,11 @@ data/brand_drafts/
 .env
 *.env
 data/quality_profiles/
+# Raw calibration evidence scraped from the live site (review M16):
+# kept as LOCAL working-tree evidence only — never tracked, never
+# pushed. The curated calibration artefacts (pages_setB.json,
+# samples.json, writer_trial.txt, reports) stay tracked; see
+# calibration/work/README.md.
+calibration/work/homepage_raw.html
+calibration/work/bigscript.txt
+calibration/work/body_clean.txt

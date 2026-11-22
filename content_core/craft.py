@@ -299,17 +299,31 @@ def retrieve_cards(fmt: str = "", intent: str = "", text: str = "",
 # craft_check — deterministic prose-quality score (separate from brand score)
 # --------------------------------------------------------------------------
 
-def _find_phrase_hits(low_text: str, phrases: list[str]) -> list[dict]:
-    """Count phrase occurrences, longest phrases first, masking matched spans
-    so a long phrase ('thơm ngon') is not double-counted by its parts ('ngon')."""
-    masked = list(low_text)
+def _find_phrase_hits(text: str, phrases: list[str]) -> list[dict]:
+    """Count phrase occurrences, longest phrases first, masking matched
+    spans so a long phrase ('thơm ngon') is not double-counted by its
+    parts ('ngon').
+
+    Matching runs on the NORMALIZED text (review M3): the linter and
+    the fact checker were hardened in audit R2 precisely because
+    unaccented Vietnamese is common, but craft kept matching raw
+    substrings of text.lower() — so the SAME copy scored 67 accented
+    and 85 unaccented, and craft is a BLOCKING layer for blog/product.
+    Weak/filler/sensory matching now goes through the shared
+    normalize_for_match, with token-boundary guards on the normalized
+    form; hits still report the phrase's original (accented) form."""
+    norm = normalize_for_match(text)
+    pairs = sorted(((p, normalize_for_match(p)) for p in phrases if p),
+                   key=lambda pair: len(pair[1]), reverse=True)
+    masked = list(norm)
     hits: list[dict] = []
-    for phrase in sorted(phrases, key=len, reverse=True):
-        if not phrase:
+    for display, match in pairs:
+        if not match:
             continue
         haystack = "".join(masked)
-        for m in re.finditer(re.escape(phrase), haystack):
-            hits.append({"term": phrase, "index": m.start()})
+        for m in re.finditer(r"(?<![a-z0-9])" + re.escape(match)
+                             + r"(?![a-z0-9])", haystack):
+            hits.append({"term": display, "index": m.start()})
             for i in range(m.start(), m.end()):
                 masked[i] = " "
     hits.sort(key=lambda h: h["index"])
@@ -321,20 +335,22 @@ def _find_phrase_hits(low_text: str, phrases: list[str]) -> list[dict]:
 # richness. Bounded rule: an occurrence is negated when the text right
 # before it in its sentence ends with không/chẳng/chưa (+ có/hề/thấy)
 # (+ mùi/hương/vị) — "không có mùi cacao", "chẳng có hương hoa".
+# The pattern is in NORMALIZED form (review M3): it is applied to the
+# normalized sentence prefix, so unaccented denials count too.
 _SENSORY_NEGATION_RE = re.compile(
-    r"(không|chẳng|chưa)\s+(có|hề|thấy)?\s*(mùi|hương|vị)?\s*$")
+    r"(khong|chang|chua)\s+(co|he|thay)?\s*(mui|huong|vi)?\s*$")
 
 
-def _sensory_terms_used(low_text: str, terms: list[str]) -> list[str]:
+def _sensory_terms_used(text: str, terms: list[str]) -> list[str]:
     """Distinct sensory terms ACTUALLY used: longest-match counting (a
     "hậu cacao" mention counts once, as "hậu cacao" — the old substring
     set also counted its part "cacao" separately, inflating the metric),
     and negated mentions excluded (see _SENSORY_NEGATION_RE)."""
     used: set[str] = set()
-    for sentence in split_sentences(low_text):
-        s_low = sentence.lower()
-        for hit in _find_phrase_hits(s_low, terms):
-            if _SENSORY_NEGATION_RE.search(s_low[:hit["index"]]):
+    for sentence in split_sentences(text):
+        s_norm = normalize_for_match(sentence)
+        for hit in _find_phrase_hits(sentence, terms):
+            if _SENSORY_NEGATION_RE.search(s_norm[:hit["index"]]):
                 continue
             used.add(hit["term"])
     return sorted(used)
@@ -387,21 +403,20 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
             },
         }
     data = resolve_glossary(glossary, brand_id)
-    low = text.lower()
     violations: list[dict] = []
     score = 100.0
 
     # Weak / vague words (empty adjectives) — with suggested replacements.
     replacements = {str(w["word"]).lower(): w.get("replace_with", "")
                     for w in weak_word_entries(data)}
-    weak_hits = _find_phrase_hits(low, list(replacements))
+    weak_hits = _find_phrase_hits(text, list(replacements))
     for hit in weak_hits:
         violations.append({"type": "weak_word", "detail": hit["term"],
                            "replace_with": replacements[hit["term"]]})
     score -= min(30.0, 6.0 * len(weak_hits))
 
     # Filler phrases.
-    filler_hits = _find_phrase_hits(low, FILLER_PHRASES)
+    filler_hits = _find_phrase_hits(text, FILLER_PHRASES)
     for hit in filler_hits:
         violations.append({"type": "filler_phrase", "detail": hit["term"]})
     score -= min(12.0, 4.0 * len(filler_hits))
@@ -431,10 +446,9 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
     lengths = [len(s.split()) for s in sentences]
 
     def _carries_violation(sentence: str) -> bool:
-        s_low = sentence.lower()
-        if _find_phrase_hits(s_low, list(replacements)):
+        if _find_phrase_hits(sentence, list(replacements)):
             return True
-        if _find_phrase_hits(s_low, FILLER_PHRASES):
+        if _find_phrase_hits(sentence, FILLER_PHRASES):
             return True
         if banned_terms:
             norm = normalize_for_match(sentence)
@@ -481,7 +495,7 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
     # Sensory detail (product/blog only): longest-match counting,
     # negated mentions excluded (see _sensory_terms_used).
     terms = sensory_terms(data)
-    sensory_found = _sensory_terms_used(low, terms)
+    sensory_found = _sensory_terms_used(text, terms)
     if fmt in _SENSORY_FORMATS and not sensory_found:
         violations.append({"type": "no_sensory_detail",
                            "detail": f"no glossary sensory term used in a {fmt} text"})
@@ -523,18 +537,30 @@ def craft_check_sections(sections: list[dict], fmt: str,
     all_violations: list[dict] = []
     worst = 100.0
     failing: list[str] = []
-    total_metrics = {"sentence_count": 0, "weak_words_found": [], "sensory_terms_used": []}
+    # Same metric KEYS as craft_check (review, Info: this used to
+    # return a reduced dict — word_count/filler/rhythm were missing,
+    # so a consumer reading sections-metrics got a different shape
+    # than a consumer reading text-metrics). word_count sums;
+    # weak/filler/sensory aggregate; rhythm_stdev is the WORST
+    # section's (the section that set the score).
+    total_metrics: dict = {"word_count": 0, "sentence_count": 0,
+                           "rhythm_stdev": 0.0, "weak_words_found": [],
+                           "filler_found": [], "sensory_terms_used": []}
     for sec in sections:
         r = craft_check(sec.get("text", ""), fmt, glossary, brand_id,
                         max_sentence_words=max_sentence_words,
                         banned_terms=banned_terms)
         for v in r["violations"]:
             all_violations.append({**v, "section_id": sec.get("id", "")})
+        if r["score"] <= worst:
+            total_metrics["rhythm_stdev"] = r["metrics"]["rhythm_stdev"]
         worst = min(worst, r["score"])
         if r["score"] < CRAFT_PASS_SCORE:
             failing.append(sec.get("id", ""))
+        total_metrics["word_count"] += r["metrics"]["word_count"]
         total_metrics["sentence_count"] += r["metrics"]["sentence_count"]
         total_metrics["weak_words_found"].extend(r["metrics"]["weak_words_found"])
+        total_metrics["filler_found"].extend(r["metrics"]["filler_found"])
         total_metrics["sensory_terms_used"].extend(r["metrics"]["sensory_terms_used"])
     return {"score": worst, "violations": all_violations,
             "metrics": total_metrics, "failing_sections": failing}

@@ -305,6 +305,11 @@ def main() -> None:
         print("\nMARKED MISHANDLED:")
         for cat, text, types, n_flagged in marked_bad:
             print(f"  [{cat}] {text!r} -> issues={types} flagged={n_flagged}")
+    # Regression thresholds (review L17): exit non-zero on regression
+    # so a suite runner can gate on the probe, not just eyeball it.
+    ok = (tot_caught / tot_f >= 0.90) and (tot_ff / tot_t <= 0.10)
+    print(f"thresholds: recall>=90%, false-flag<=10% -> {'OK' if ok else 'REGRESSED'}")
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

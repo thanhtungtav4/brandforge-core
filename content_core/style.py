@@ -41,7 +41,10 @@ import statistics
 import unicodedata
 from collections import Counter
 
+from .linter import WORD_RE as _WORD_RE
 from .linter import is_table_like, split_sentences
+from .linter import word_tokens as _tokens
+from .loaders import slugify as _loaders_slugify
 
 #: Version of the fingerprint/consistency algorithm that built (or
 #: last refreshed) a profile. Bump when fingerprint or warning
@@ -103,17 +106,11 @@ STOPWORDS = {
     "chỉ", "vẫn", "đều", "cả", "hết", "tới", "nữa", "thôi", "thật",
 }
 
-_WORD_RE = re.compile(r"[a-zà-ỹ0-9]+")
-
 #: The qualitative schema a model fills in after reading the samples.
 #: Unknown keys are IGNORED on build (documented choice: forward-compatible
 #: with newer model outputs); missing keys default to empty.
 QUALITATIVE_FIELDS = ["tone_traits", "opening_patterns", "closing_patterns",
                       "signature_devices", "stance", "never_do"]
-
-
-def _tokens(text: str) -> list[str]:
-    return _WORD_RE.findall(text.lower())
 
 
 def _round(x: float) -> float:
@@ -320,9 +317,10 @@ def _divergence(per_sample_metrics: list[dict]) -> tuple[dict, list[str]]:
 # ---------------------------------------------------------------------------
 
 def _slugify(name: str) -> str:
-    nfkd = unicodedata.normalize("NFD", name.lower().replace("đ", "d"))
-    ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
-    return re.sub(r"[^a-z0-9]+", "-", ascii_only).strip("-") or "style"
+    # ONE slugify lives in loaders (review L2); this module's fallback
+    # word is "style", brand_extract's is "brand" — the fallback is
+    # the only difference the two private copies ever had.
+    return _loaders_slugify(name, fallback="style")
 
 
 def _validate_qualitative(qualitative: dict | None) -> dict:

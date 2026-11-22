@@ -53,6 +53,12 @@ def main() -> None:
         print(f"  EVADES: {n}")
     for n in caught:
         print(f"  caught: {n}")
+    # Regression threshold (review L17): every known evasion must
+    # stay caught — exit non-zero otherwise.
+    if evaded:
+        print(f"thresholds: evasions missed = {len(evaded)} -> REGRESSED")
+        sys.exit(1)
+    print("thresholds: evasions missed = 0 -> OK (exit code set at end of main)")
 
     pipe_text = ("Mùi hương thơm nhẹ lan tỏa trong không gian quán nhỏ yên tĩnh vô cùng | "
                  "ly nước ấm vị dịu hậu rõ từng ngụm bàn gỗ cửa sổ mở vườn xanh lá cây | "
@@ -73,6 +79,7 @@ def main() -> None:
         kinds = [(v["type"], bool(v.get("warning"))) for v in violations
                  if "banned" in v["type"]]
         print(f"banned context [{label}]: {kinds} score={score}")
+    sys.exit(0)
 
 
 if __name__ == "__main__":

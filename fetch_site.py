@@ -24,15 +24,17 @@ tests exercise this without a network.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import re
 import sys
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from collections import Counter
 from html.parser import HTMLParser
 
-from fetch_sample import _UA, detect_js_shell, strip_html
+from fetch_sample import _UA, decode_body, detect_js_shell, strip_html
 
 #: Internal paths containing one of these are fetched first (brand-relevant
 #: pages before generic ones). Order = priority.
@@ -223,28 +225,59 @@ def _link_priority(u: str) -> int:
     return len(PRIORITY_PATH_KEYWORDS)
 
 
+_UNRESERVED = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                  "0123456789-._~")
+
+
+def _normalize_pct_escapes(path: str) -> str:
+    """Normalise percent-escapes in a path (review L8): decode escapes
+    of UNRESERVED characters ('%7E' -> '~'), uppercase the hex of the
+    rest ('%2f' -> '%2F') — reserved escapes are never decoded, so the
+    path structure cannot change."""
+    def repl(m: re.Match) -> str:
+        ch = chr(int(m.group(1), 16))
+        return ch if ch in _UNRESERVED else "%" + m.group(1).upper()
+    return re.sub(r"%([0-9A-Fa-f]{2})", repl, path)
+
+
 def _canonical_url(url: str) -> str:
     """Canonical form for dedupe (evaluation R6-S6): scheme/host
     lowercased, default ports (:80 http, :443 https) dropped, a trailing
     /index.html or /index.php folded to its directory, and a trailing
     slash ignored (except the root '/'). '/a/index.html', '/a/' and
-    '/a' are the same page and must never be fetched as three."""
+    '/a' are the same page and must never be fetched as three.
+
+    Review L8 completions: IPv6 hosts keep their brackets, userinfo
+    survives, ';params' are preserved, the query is normalised
+    (pairs sorted, re-encoded consistently) and path percent-escapes
+    are normalised — two spellings of one URL dedupe to one fetch."""
     p = urllib.parse.urlparse(url)
     scheme = p.scheme.lower()
     host = (p.hostname or "").lower()
+    if ":" in host:
+        host = f"[{host}]"  # IPv6 literal: urlunparse needs the brackets
     try:
         port = p.port
     except ValueError:
         port = None
     if (scheme == "http" and port == 80) or (scheme == "https" and port == 443):
         port = None
-    netloc = host if port is None else f"{host}:{port}"
-    path = p.path or "/"
+    userinfo = ""
+    if p.username:
+        userinfo = p.username
+        if p.password:
+            userinfo += ":" + p.password
+        userinfo += "@"
+    netloc = userinfo + host if port is None else f"{userinfo}{host}:{port}"
+    path = _normalize_pct_escapes(p.path or "/")
     if path.lower().endswith(("/index.html", "/index.php")):
         path = path.rsplit("/", 1)[0] + "/"
     if path != "/":
         path = path.rstrip("/") or "/"
-    return urllib.parse.urlunparse((scheme, netloc, path, "", p.query, ""))
+    query = urllib.parse.urlencode(
+        sorted(urllib.parse.parse_qsl(p.query, keep_blank_values=True)),
+        quote_via=urllib.parse.quote)
+    return urllib.parse.urlunparse((scheme, netloc, path, p.params, query, ""))
 
 
 def _clean_candidate(root_url: str, href: str) -> str | None:
@@ -297,6 +330,48 @@ _ROBOTS_SITEMAP_RE = re.compile(r"(?im)^\s*sitemap\s*:\s*(\S+)\s*$")
 _MAX_SITEMAP_DOCS = 10
 
 
+def _parse_sitemap_locs(body: bytes) -> tuple[list[str], bool] | None:
+    """Parse a sitemap document with ElementTree (review M14):
+    (locs, is_index), or None when the document is not well-formed
+    XML. Namespaces are stripped by localname, so default/prefixed
+    sitemap namespaces all work; entities and CDATA are decoded by
+    the parser — the old <loc> regex silently DROPPED every URL
+    containing '&' (entity-escaped as &amp;) and every CDATA loc."""
+    try:
+        root_el = ET.fromstring(body)
+    except Exception:
+        return None
+
+    def local(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1].lower()
+
+    kind = local(root_el.tag)
+    if kind not in ("urlset", "sitemapindex"):
+        return None
+    locs: list[str] = []
+    for child in root_el:
+        if local(child.tag) in ("url", "sitemap"):
+            for sub in child:
+                if local(sub.tag) == "loc" and sub.text and sub.text.strip():
+                    locs.append(sub.text.strip())
+    return locs, kind == "sitemapindex"
+
+
+def _fetch_sitemap_locs(sitemap_url: str, timeout: int) -> tuple[list[str], bool]:
+    """(locs, is_index) for one sitemap document: '.xml.gz' children
+    are decompressed (review M14 — gzipped sitemaps are common on
+    real hosts and used to parse as binary noise); a malformed
+    document falls back to the <loc> regex on the decoded text."""
+    body, _final, _ctype, _trunc = _fetch_raw(sitemap_url, timeout)
+    if sitemap_url.lower().split("?")[0].endswith(".gz") or body[:2] == b"\x1f\x8b":
+        body = gzip.decompress(body)
+    parsed = _parse_sitemap_locs(body)
+    if parsed is not None:
+        return parsed
+    text, _enc = decode_body(body)
+    return _LOC_RE.findall(text), False
+
+
 def _discover_sitemap(root_url: str, timeout: int = 20) -> tuple[list[str], bool]:
     """(urls, truncated) from the site's sitemap(s). `truncated` is
     True when the document cap stopped the crawl with sitemap
@@ -312,7 +387,7 @@ def _discover_sitemap(root_url: str, timeout: int = 20) -> tuple[list[str], bool
         robots_url = urllib.parse.urljoin(root_url, "robots.txt")
         default_sitemap = urllib.parse.urljoin(root_url, "sitemap.xml")
     try:
-        robots, _final, _trunc = _fetch_html(robots_url, timeout)
+        robots, _final, _trunc, _enc = _fetch_html(robots_url, timeout)
         for m in _ROBOTS_SITEMAP_RE.finditer(robots):
             candidates.append(urllib.parse.urljoin(robots_url, m.group(1)))
     except Exception:
@@ -326,13 +401,14 @@ def _discover_sitemap(root_url: str, timeout: int = 20) -> tuple[list[str], bool
     while queue and docs_read < _MAX_SITEMAP_DOCS:
         sitemap_url = queue.pop(0)
         try:
-            xml, _final, _trunc = _fetch_html(sitemap_url, timeout)
+            locs, is_index = _fetch_sitemap_locs(sitemap_url, timeout)
         except Exception:
             continue
         docs_read += 1
-        for loc in _LOC_RE.findall(xml):
+        for loc in locs:
             resolved = urllib.parse.urljoin(sitemap_url, loc.strip())
-            if urllib.parse.urlparse(resolved).path.lower().endswith(".xml"):
+            path = urllib.parse.urlparse(resolved).path.lower()
+            if is_index or path.endswith((".xml", ".xml.gz")):
                 if resolved not in queue and resolved not in candidates:
                     if docs_read + len(queue) < _MAX_SITEMAP_DOCS:
                         queue.append(resolved)  # sitemap index child, one level
@@ -363,20 +439,47 @@ def discover_sitemap_urls(root_url: str, timeout: int = 20) -> list[str]:
     return urls
 
 
-def _fetch_html(url: str, timeout: int = 20,
-                max_bytes: int = 5_000_000) -> tuple[str, str, bool]:
-    """Fetch one page's HTML, capped at max_bytes (audit round 2: bounded
-    reads — together with max_pages this bounds a whole site fetch).
-
-    Returns (html, final_url, truncated): `final_url` is the URL after
-    any redirects (evaluation R6-S7: pages used to be recorded under
-    their pre-redirect URL, so the same content could be fetched twice
-    and cited wrongly); `truncated` says the body hit the byte cap."""
+def _fetch_raw(url: str, timeout: int = 20,
+                max_bytes: int = 5_000_000) -> tuple[bytes, str, str, bool]:
+    """Fetch one URL's raw bytes, capped: (body, final_url,
+    content_type, truncated)."""
     request = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         raw = response.read(max_bytes + 1)
-        return (raw[:max_bytes].decode("utf-8", errors="replace"),
-                response.geturl(), len(raw) > max_bytes)
+        try:
+            content_type = response.headers.get("Content-Type", "") or ""
+        except Exception:
+            content_type = ""
+        return raw[:max_bytes], response.geturl(), content_type, len(raw) > max_bytes
+
+
+def _fetch_html(url: str, timeout: int = 20,
+                max_bytes: int = 5_000_000,
+                expect_html: bool = False) -> tuple[str, str, bool, str]:
+    """Fetch one page's HTML, capped at max_bytes (audit round 2: bounded
+    reads — together with max_pages this bounds a whole site fetch).
+
+    Returns (html, final_url, truncated, encoding): `final_url` is the
+    URL after any redirects (evaluation R6-S7: pages used to be recorded
+    under their pre-redirect URL, so the same content could be fetched
+    twice and cited wrongly); `truncated` says the body hit the byte
+    cap; the body is decoded with its DECLARED charset (header, then
+    <meta> sniff — review M12, fetch_sample.decode_body) and `encoding`
+    says which encoding was used, so a legacy-encoded page is flagged
+    instead of silently analysed as mojibake.
+
+    With expect_html=True (page fetches), a response whose declared
+    Content-Type is present and not HTML raises ValueError (review
+    L9): a PDF or image linked from the homepage must land in
+    `errors`, never be stripped into garbage 'text'."""
+    raw, final_url, content_type, truncated = _fetch_raw(url, timeout, max_bytes)
+    if expect_html:
+        main_type = content_type.split(";")[0].strip().lower()
+        if main_type and main_type not in ("text/html",
+                                           "application/xhtml+xml"):
+            raise ValueError(f"non-HTML content-type: {main_type}")
+    html, encoding = decode_body(raw, content_type)
+    return html, final_url, truncated, encoding
 
 
 def fetch_site(root_url: str, max_pages: int = 8, timeout: int = 20,
@@ -396,15 +499,23 @@ def fetch_site(root_url: str, max_pages: int = 8, timeout: int = 20,
     recorded under their FINAL (post-redirect) URL, deduplicated by
     canonical URL, and carry a per-page `truncated` flag."""
     try:
-        root_html, root_final, root_truncated = _fetch_html(
-            root_url, timeout, max_bytes)
+        root_html, root_final, root_truncated, root_enc = _fetch_html(
+            root_url, timeout, max_bytes, expect_html=True)
     except Exception as exc:
         return {"root": root_url, "pages": [], "errors": [f"{root_url}: {exc}"]}
-    pages = [parse_page(root_final, root_html, truncated=root_truncated)]
+    root_page = parse_page(root_final, root_html, truncated=root_truncated)
+    if root_enc != "utf-8":
+        root_page["encoding"] = root_enc  # legacy charset: flagged, not hidden
+    pages = [root_page]
     seen = {_canonical_url(root_final)}
     errors: list[str] = []
-    links = discover_links(root_url, root_html)
-    sitemap_urls, sitemap_truncated = _discover_sitemap(root_url, timeout)
+    # Discovery resolves against the FINAL root URL (review M13): a
+    # root that redirects (http->https, www->apex, /old -> /new) used
+    # to have its robots/sitemap candidates and same-site checks
+    # computed from the PRE-redirect URL — on a cross-host redirect
+    # every candidate was filtered out as 'another site'.
+    links = discover_links(root_final, root_html)
+    sitemap_urls, sitemap_truncated = _discover_sitemap(root_final, timeout)
     extra = [u for u in sitemap_urls if u not in links]
     sitemap_fallback_used = bool(extra)
     if extra:
@@ -415,7 +526,8 @@ def fetch_site(root_url: str, max_pages: int = 8, timeout: int = 20,
         if _canonical_url(link) in seen:
             continue
         try:
-            html, final_url, truncated = _fetch_html(link, timeout, max_bytes)
+            html, final_url, truncated, enc = _fetch_html(
+                link, timeout, max_bytes, expect_html=True)
         except Exception as exc:
             errors.append(f"{link}: {exc}")
             continue
@@ -423,6 +535,8 @@ def fetch_site(root_url: str, max_pages: int = 8, timeout: int = 20,
             continue  # redirect landed on an already-fetched page
         seen.add(_canonical_url(final_url))
         page = parse_page(final_url, html, truncated=truncated)
+        if enc != "utf-8":
+            page["encoding"] = enc
         if final_url != link:
             page["requested_url"] = link
         pages.append(page)

@@ -83,7 +83,13 @@ def test_presets_sum_to_100_and_match_spec():
 def test_preset_profile_shape():
     p = preset_profile("blog")
     assert p["id"] == "preset-blog" and p["format"] == "blog"
-    assert p["floors"] == FLOORS and p["pass_total"] == 70
+    # The Smith-approved default floors as a LITERAL (review L20):
+    # comparing against quality.FLOORS was a tautology — the code
+    # copies that very dict, so a changed default could never fail.
+    assert p["floors"] == {"facts": 70, "voice": 60, "clarity": 60,
+                           "coherence": 60, "seo": 55, "persuasion": 55,
+                           "depth": 60}
+    assert p["pass_total"] == 70
 
 
 def test_profile_validation_rejects_bad_profiles():

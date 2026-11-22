@@ -23,10 +23,17 @@ Division of labour, same as Style Extraction:
 
 COMPETITOR RULE: a competitor's copy is analysis material only. Drafts
 built with source_type="competitor" mark every example passage
-reference_only=True, and draft_to_brand_yaml REFUSES to convert a draft
-that still contains reference_only examples — competitor text can never
-become an approved brand by accident; the user must replace/paraphrase
-those passages with the brand's own words first.
+reference_only=True (the marking is re-stamped at save time in
+loaders.save_brand_draft, so it cannot be stripped on the way in),
+and draft_to_brand_yaml REFUSES to convert while any example is still
+reference-only — for a competitor draft, a present-but-falsy flag
+(0, "", None) does not clear the passage; the user clears it by
+replacing the text and removing the flag (or setting it to an
+explicit boolean False).
+Honest scope (review M10): source_type is the user's own declaration
+— the guard makes conversion impossible BY ACCIDENT for a draft
+declared as a competitor's; it cannot detect a competitor site that
+was mislabelled "own_site" at build time.
 
 Fetching is NOT here: fetch_site.py (CLI helper, stdlib) turns a URL into
 pages = [{url, title, text, headings, html_meta}]; the MCP server stays
@@ -42,9 +49,14 @@ from collections import Counter
 
 import yaml
 
-from .fact_check import CLAIM_PHRASES, find_claim
+from .fact_check import CLAIM_PHRASES, find_claim_detail
+from .fact_check import _QUESTION_MARKERS_NORM
+from .linter import WORD_RE as _WORD_RE
+from .linter import normalize_for_match
 from .linter import split_sentences
+from .linter import word_tokens as _tokens
 from .loaders import load_brand, prohibited_claims
+from .loaders import slugify as _slugify
 from .style import STOPWORDS, fingerprint
 
 # ---------------------------------------------------------------------------
@@ -75,7 +87,6 @@ _GENERIC_NAME_WORDS = {
     "Liên", "Hệ", "Tin", "Tức", "Về", "Blog", "Home",
 }
 
-_WORD_RE = re.compile(r"[a-zà-ỹ0-9]+")
 _CAP_TOKEN_RE = re.compile(r"[A-ZÀ-Ỹ][\wà-ỹ]*")
 
 #: Superlative/claim patterns scanned on the site itself: the fact_checker's
@@ -84,16 +95,6 @@ _CAP_TOKEN_RE = re.compile(r"[A-ZÀ-Ỹ][\wà-ỹ]*")
 #: approved brand claims.
 _DEFAULT_REQUIRES_EVIDENCE = ["mọi số liệu", "mọi khẳng định về sức khỏe",
                               "mọi so sánh với đối thủ"]
-
-
-def _slugify(name: str) -> str:
-    nfkd = unicodedata.normalize("NFD", (name or "").lower().replace("đ", "d"))
-    ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
-    return re.sub(r"[^a-z0-9]+", "-", ascii_only).strip("-") or "brand"
-
-
-def _tokens(text: str) -> list[str]:
-    return _WORD_RE.findall((text or "").lower())
 
 
 def _claim_patterns() -> list[str]:
@@ -367,7 +368,13 @@ def _capitalized_names(pages: list[dict]) -> list[str]:
                     trimmed.pop(0)
                 while trimmed and trimmed[-1] in _GENERIC_NAME_WORDS:
                     trimmed.pop()
-                if len(trimmed) >= 2:
+                # Model-code runs are not names (review L13): a
+                # heading listing grinder models ("W180 W240 W320")
+                # produced a 'brand name' made of pure letter+digit
+                # codes. A candidate whose EVERY token is a code is
+                # equipment, not vocabulary.
+                if len(trimmed) >= 2 and not all(
+                        re.fullmatch(r"[A-ZÀ-Ỹ]?\d+", t) for t in trimmed):
                     name = " ".join(trimmed)
                     if name not in found:
                         found.append(name)
@@ -428,6 +435,30 @@ def extract_vocabulary(pages: list[dict]) -> dict:
 # The site's own claims — review material, never approved claims
 # ---------------------------------------------------------------------------
 
+def _claim_excerpt(sentence: str, phrase: str) -> str:
+    """The stored provenance text for a claim hit (review M15): a
+    plain sentence is stored as-is (<= 200 chars), but a FLATTENED
+    TABLE sentence used to be stored as mangled table prose truncated
+    mid-cell — unreadable as review evidence. For pipe-flattened
+    sentences, store the CELL containing the claim; for other
+    over-long sentences (tables flattened without separators), store
+    a window centred on the claim phrase."""
+    text = sentence.strip()
+    if "|" in text:
+        phrase_norm = normalize_for_match(phrase)
+        cells = [c.strip() for c in text.split("|") if c.strip()]
+        for cell in cells:
+            if phrase_norm and phrase_norm in normalize_for_match(cell):
+                return cell[:200]
+        return text[:200]
+    if len(text) > 200:
+        idx = text.lower().find(phrase.lower())
+        if idx >= 0:
+            start = max(0, idx - 60)
+            return ("…" if start else "") + text[start:start + 200]
+    return text[:200]
+
+
 def find_site_claims(pages: list[dict]) -> list[dict]:
     """Sentences on the site containing superlative/claim phrases (the
     fact_check CLAIM_PHRASES + the house prohibited-claim patterns). Each
@@ -442,15 +473,23 @@ def find_site_claims(pages: list[dict]) -> list[dict]:
             # Same matcher as fact_check: normalized (diacritics-free copy
             # still counts), digit-boundary guarded ("số 12" is not a
             # claim), negation-aware (a denied claim is not a claim).
-            hit = find_claim(sentence, patterns)
-            if hit:
-                claim = sentence.strip()[:200]
-                key = (claim, p.get("url", ""))
-                if key not in seen:
-                    seen.add(key)
-                    out.append({"claim": claim, "phrase": hit,
-                                "source_url": p.get("url", ""),
-                                "risk": "needs_evidence"})
+            detail = find_claim_detail(sentence, patterns)
+            if not detail:
+                continue
+            hit, start, norm = detail
+            # A claim inside a QUESTION the site is asking ("Cà phê
+            # rang xong bao lâu thì uống ngon nhất" — a heading, not
+            # an assertion) is not a site claim (review M15).
+            if any(marker in norm[:start][-48:]
+                   for marker in _QUESTION_MARKERS_NORM):
+                continue
+            claim = _claim_excerpt(sentence, hit)
+            key = (claim, p.get("url", ""))
+            if key not in seen:
+                seen.add(key)
+                out.append({"claim": claim, "phrase": hit,
+                            "source_url": p.get("url", ""),
+                            "risk": "needs_evidence"})
     return out
 
 
@@ -635,30 +674,95 @@ def build_brand_draft(pages: list[dict], qualitative: dict | None = None,
 _DRAFT_ONLY_BRAND_KEYS = ("review_status", "source_type", "source_urls")
 
 
+#: Generic font families / CSS-wide keywords — mirrors the fetch
+#: layer's _GENERIC_FAMILIES (fetch_site.py): valid font-family values
+#: that name no actual family and carry no brand signal.
+_GENERIC_FONT_FAMILIES = {"inherit", "initial", "unset", "revert",
+                          "sans-serif", "serif", "monospace", "cursive",
+                          "fantasy", "system-ui", "ui-sans-serif",
+                          "ui-serif", "ui-monospace", "ui-rounded",
+                          "-apple-system", "blinkmacsystemfont",
+                          "emoji", "math", "fangsong"}
+
+
+def _is_brand_family(name: str) -> bool:
+    """Mirror of fetch_site._is_brand_family (review L10): the
+    sanitizer claimed to 're-apply the extraction rules' but only
+    dropped var(--…) — generic families like 'sans-serif'/'inherit'
+    passed conversion although extraction would have rejected them."""
+    low = str(name or "").strip().lower()
+    return bool(low) and "var(" not in low and low not in _GENERIC_FONT_FAMILIES
+
+
+def _logo_filename_ok(value: str) -> bool:
+    """The approved-logo rule (review L10): 'logo' must be a token of
+    the FILENAME — the old rule ('logo' anywhere in the path) kept a
+    banner living under a 'logo-ish/' directory as the brand logo."""
+    filename = urllib.parse.urlparse(str(value)).path.rsplit("/", 1)[-1].lower()
+    return bool(re.search(r"(^|[-_.])logo", filename))
+
+
 def _sanitize_brand_kit(kit: dict) -> dict:
     """The kit that lands in an APPROVED brand file (calibration F9):
     conversion used to pass the draft's kit through untouched, baking
     extraction artefacts (a blog-thumbnail 'logo', a var(--…) 'font')
     into the approved brand. Conversion now re-applies the extraction
     rules to whatever kit the (reviewed) draft carries:
-    - fonts: CSS variable references and generic families are dropped;
-    - logo_url: kept only when the URL itself carries a positive logo
-      signal ('logo' in its path, the strong-signal rule of the fetch
-      layer) — otherwise nulled, because an approved brand must not
-      point at an article thumbnail.
+    - fonts: CSS variable references AND generic families are dropped
+      (the extraction rule, fetch_site._is_brand_family — review L10);
+    - logo_url: kept only when the URL's FILENAME carries 'logo' as a
+      token (review L10) — otherwise nulled, because an approved brand
+      must not point at an article thumbnail or a directory name.
     Everything else (name, colors, theme, og_image, source_urls) passes
     through exactly as reviewed."""
     kit = dict(kit or {})
     fonts = [f for f in kit.get("fonts", [])
-             if "var(" not in str(f.get("family", "")).lower()]
+             if _is_brand_family(f.get("family", ""))]
     if fonts != kit.get("fonts"):
         kit["fonts"] = fonts
     logo = dict(kit.get("logo_url") or {})
     value = logo.get("value")
-    if value and "logo" not in urllib.parse.urlparse(str(value)).path.lower():
+    if value and not _logo_filename_ok(str(value)):
         logo["value"] = None
         kit["logo_url"] = logo
     return kit
+
+
+def _blocks_conversion(entry: dict, competitor_draft: bool) -> bool:
+    """True when an example/anti-example entry still carries
+    competitor copy into conversion (review M10). Two ways to block:
+    - the entry is marked reference_only with ANY truthy value
+      (True, "yes", 1 — the old check's truthiness is kept for marks);
+    - the draft is a COMPETITOR draft and the entry carries a
+      reference_only key whose value is not an explicit boolean
+      False: a PRESENT-but-falsy spelling (0, "", None) is an
+      ambiguous marking, not a clearance, and still blocks. The two
+      clearances are the documented ones: remove the key after
+      replacing the passage (the original flow), or set it to False
+      explicitly."""
+    flag = entry.get("reference_only")
+    if flag:
+        return True
+    return (competitor_draft and "reference_only" in entry
+            and flag is not False)
+
+
+def _reference_only_entries(draft: dict) -> list[dict]:
+    """Every entry the conversion guard inspects: examples AND
+    anti-examples (review M10: the guard used to look only at
+    `examples` — competitor text parked in anti_examples[].bad
+    converted untouched), including dicts nested in an anti-example's
+    `bad` list."""
+    competitor = (draft.get("brand", {}).get("source_type") == "competitor"
+                  or "competitor_warning" in draft)
+    entries = list(draft.get("examples", []))
+    for anti in draft.get("anti_examples", []):
+        if isinstance(anti, dict):
+            entries.append(anti)
+            bad = anti.get("bad")
+            if isinstance(bad, list):
+                entries.extend(e for e in bad if isinstance(e, dict))
+    return [e for e in entries if _blocks_conversion(e, competitor)]
 
 
 def draft_to_brand_yaml(draft: dict) -> str:
@@ -667,22 +771,33 @@ def draft_to_brand_yaml(draft: dict) -> str:
     source_urls, review_notes, claims_and_guardrails.site_claims_to_review,
     qualitative working notes).
 
-    REFUSES (ValueError) when any example is still reference_only:
-    competitor copy must be replaced/paraphrased by the user first — it can
-    never become an approved brand by accident."""
-    ref_only = [e for e in draft.get("examples", []) if e.get("reference_only")]
+    REFUSES (ValueError) while any example/anti-example still carries
+    competitor copy (see _blocks_conversion): competitor text must be
+    replaced/paraphrased by the user first, and the passage's flag
+    then removed (or set to an explicit false)."""
+    ref_only = _reference_only_entries(draft)
     if ref_only:
         raise ValueError(
             f"draft still contains {len(ref_only)} reference_only example(s) "
             f"from a competitor site — replace or paraphrase them with the "
-            f"brand's own words (and remove the reference_only flag) before "
+            f"brand's own words and remove the reference_only flag before "
             f"converting to an approved brand")
 
     brand_in = draft.get("brand", {})
     brand = {"id": brand_in.get("id", "brand"), "name": brand_in.get("name", ""),
              "simulated": False, "version": 1}
     voice_in = draft.get("voice", {})
+    guard_in = draft.get("claims_and_guardrails", {})
     rules_in = voice_in.get("sentence_rules", {})
+    # prohibited_claims lives in TWO places in a draft (voice + the
+    # guardrails block); conversion takes the UNION (review M11): a
+    # claim the user added only to claims_and_guardrails.prohibited_
+    # claims used to vanish from the approved brand silently.
+    prohibited: list = []
+    for claim in list(voice_in.get("prohibited_claims", [])) \
+            + list(guard_in.get("prohibited_claims", [])):
+        if claim not in prohibited:
+            prohibited.append(claim)
     voice = {
         "traits": voice_in.get("traits", []),
         "pov": voice_in.get("pov", ""),
@@ -694,7 +809,7 @@ def draft_to_brand_yaml(draft: dict) -> str:
         },
         "formatting_rules": voice_in.get("formatting_rules", []),
         "banned_terms": voice_in.get("banned_terms", []),
-        "prohibited_claims": voice_in.get("prohibited_claims", []),
+        "prohibited_claims": prohibited,
     }
     examples = []
     for e in draft.get("examples", []):
@@ -705,7 +820,6 @@ def draft_to_brand_yaml(draft: dict) -> str:
         if e.get("source_url"):
             entry["source_url"] = e["source_url"]
         examples.append(entry)
-    guard_in = draft.get("claims_and_guardrails", {})
     clean = {
         "brand": brand,
         "voice": voice,

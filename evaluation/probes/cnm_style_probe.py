@@ -46,11 +46,13 @@ def main() -> None:
     cnm_profile = load_style_profile("cao-nguyen-moc-blog-voice-dd5678")
 
     total_violations = 0
+    craft_scores = []
     print(f"{'post':<38} {'craft':>6} {'brand':>6} {'viol':>5} {'style':>6}")
     for post in posts:
         text = post.get("text") or post.get("content") or ""
         slug = (post.get("slug") or post.get("url") or "?")[-38:]
         craft = craft_check(text, "blog", brand_id="cao-nguyen-moc")
+        craft_scores.append(craft["score"])
         violations, brand_score, _f = lint_draft(
             [{"id": "s1", "text": text}], "blog", cnm_brand)
         total_violations += len(violations)
@@ -71,6 +73,12 @@ def main() -> None:
     out = style_match(hype_text, moc_profile)
     print(f"Đỉnh Cao hype vs mocbrew profile: {out['score']} "
           f"(metrics failed: {[m['metric'] for m in out['metrics'] if not m['within_range']]})")
+    # Regression thresholds (review L17): the calibrated CNM corpus
+    # must keep its craft scores and violation total.
+    ok = all(s >= 90 for s in craft_scores) and total_violations <= 10
+    print(f"thresholds: every post craft>=90, violations<={10} -> "
+          f"{'OK' if ok else 'REGRESSED'}")
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

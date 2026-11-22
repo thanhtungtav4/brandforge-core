@@ -28,9 +28,16 @@ import contextlib
 import json
 import os
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
+
+try:
+    import fcntl
+    _FLOCK_AVAILABLE = True
+except ImportError:  # non-POSIX platform: token-lockfile fallback below
+    _FLOCK_AVAILABLE = False
 
 from mcp.server.fastmcp import FastMCP
 
@@ -45,7 +52,7 @@ from content_core.fact_check import find_refused_claims
 # Gate policy lives in ONE place: content_core/gates.py (BRAND_PASS_SCORE,
 # MAX_REWRITES, and the craft constants re-exported from craft.py). Both
 # this server's final_gate and the LangGraph graph call gates.evaluate_gate.
-from content_core.gates import CRAFT_PASS_SCORE, MAX_REWRITES
+from content_core.gates import BRAND_PASS_SCORE, CRAFT_PASS_SCORE, MAX_REWRITES
 from content_core.gates import evaluate_gate as _evaluate_gate
 from content_core.graph import Core
 from content_core.linter import lint_draft as _lint_draft
@@ -188,24 +195,49 @@ def _load_draft(draft_id: str) -> dict:
     path = _draft_path(draft_id)
     if not path.exists():
         raise ValueError(f"draft not found: {draft_id}")
+    # Error messages name the FILE only, never the absolute path
+    # (review M7: the corrupt-JSON message used to leak the server's
+    # directory layout into tool results).
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"corrupt JSON in draft file {path}: {exc}") from None
+        raise ValueError(f"corrupt JSON in draft file {path.name}: {exc}") from None
     if not isinstance(data, dict) or not ({"draft_id", "brief", "sections"} & set(data)):
         raise ValueError(
-            f"corrupt draft file {path}: expected a JSON object with "
+            f"corrupt draft file {path.name}: expected a JSON object with "
             f"draft keys (draft_id / brief / sections)")
     if not isinstance(data.get("sections", []), list):
-        raise ValueError(f"corrupt draft file {path}: 'sections' must be a list")
+        raise ValueError(f"corrupt draft file {path.name}: 'sections' must be a list")
     if not isinstance(data.get("brief", {}), dict):
-        raise ValueError(f"corrupt draft file {path}: 'brief' must be an object")
+        raise ValueError(f"corrupt draft file {path.name}: 'brief' must be an object")
     for key, default in (("brief", {}), ("outline", []), ("sections", []),
                          ("gate_history", []), ("awaiting_rewrite", [])):
         data.setdefault(key, type(default)())
     data.setdefault("rewrite_count", 0)
     data.setdefault("status", "drafting")
     data.setdefault("draft_id", draft_id)
+    # Entry shapes (review M8): a section/outline ENTRY of the wrong
+    # type (a string where an object belongs) used to load fine and
+    # then crash consumers with 'str' object has no attribute 'get' —
+    # the exact failure class this loader exists to prevent. Entries
+    # must be objects; missing fields get the consumers' defaults.
+    for i, entry in enumerate(data["sections"]):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"corrupt draft file {path.name}: section {i} must be an object")
+        entry.setdefault("id", f"s{i + 1}")
+        entry.setdefault("heading", "")
+        entry.setdefault("intent", "")
+        entry.setdefault("target_words", 0)
+        entry.setdefault("text", "")
+    for i, entry in enumerate(data["outline"]):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"corrupt draft file {path.name}: outline item {i} must be an object")
+        entry.setdefault("id", f"s{i + 1}")
+        entry.setdefault("heading", "")
+        entry.setdefault("intent", "")
+        entry.setdefault("target_words", 0)
     return data
 
 
@@ -233,57 +265,186 @@ def _store_draft(draft: dict) -> dict:
 # per AI-app session, so two processes can write ONE draft — and
 # load→modify→store was not atomic across processes (measured: 2
 # processes x 15 save_section -> 29/30 sections survived; concurrent
-# final_gates lost gate_history entries). An O_EXCL lockfile per
-# draft serialises the critical section. Single-writer use is
-# unaffected: an uncontended acquire is one syscall.
+# final_gates lost gate_history entries).
+#
+# LOCK REDESIGN (code review H3/M5, 2026-11-22). The first scheme —
+# an O_EXCL lockfile stolen when its mtime passed 30 s and unlinked
+# unconditionally on release — was unsound in three ways: a LIVE
+# holder inside a >30 s critical section (a slow gate run) had its
+# lock stolen, and its unconditional release-unlink then deleted the
+# THIEF's lock, so exclusion could collapse entirely mid-flight; the
+# check-then-unlink steal raced; and nested same-process acquisition
+# deadlocked against the 10 s timeout. The sound scheme:
+# - PRIMARY (POSIX): flock(LOCK_EX) on a persistent per-draft lock
+#   file held via an open fd for the whole critical section. The
+#   kernel releases it when the holder exits — however it exits — so
+#   there is no staleness to judge and nothing to steal. The lock
+#   file is NEVER unlinked: unlinking a locked file would let a
+#   newcomer create and lock a NEW inode while the old holder still
+#   holds the old one.
+# - FALLBACK (no fcntl): a token lockfile. The file carries the
+#   owner's pid+uuid token; a heartbeat thread refreshes its mtime
+#   every _DRAFT_LOCK_HEARTBEAT_S; a waiter may steal ONLY after the
+#   mtime is older than _DRAFT_LOCK_STALE_S AND a grace re-read
+#   proves token+mtime unchanged (a live holder's heartbeat would
+#   have moved the mtime); release unlinks ONLY when the token is
+#   still ours — a holder never unlinks another holder's lock.
+# - REENTRANCY: a per-process registry makes same-thread nested
+#   acquisition a depth increment instead of a self-deadlock.
 _DRAFT_LOCK_TIMEOUT_S = 10.0   # bounded retry before a structured error
-_DRAFT_LOCK_STALE_S = 30.0     # a lock older than this is a crashed holder's
+_DRAFT_LOCK_STALE_S = 30.0     # fallback only: heartbeat older than this
 _DRAFT_LOCK_POLL_S = 0.05
+_DRAFT_LOCK_HEARTBEAT_S = 5.0  # fallback only: holder mtime refresh
+
+_HELD_LOCKS: dict[str, list] = {}   # lock path -> [owner thread ident, depth]
+_HELD_LOCKS_GUARD = threading.Lock()
+
+
+def _lock_timeout_error(draft_id: str) -> ValueError:
+    return ValueError(
+        f"draft {draft_id} is locked by another writer — "
+        f"retry shortly (lock timeout {_DRAFT_LOCK_TIMEOUT_S:.0f}s)")
+
+
+def _acquire_flock(lock_path: Path, draft_id: str):
+    """flock acquire with a bounded wait; returns a release callable."""
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    deadline = time.monotonic() + _DRAFT_LOCK_TIMEOUT_S
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                raise _lock_timeout_error(draft_id) from None
+            time.sleep(_DRAFT_LOCK_POLL_S)
+    try:  # owner identity, for humans debugging a stuck lock
+        os.ftruncate(fd, 0)
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.write(fd, f"pid={os.getpid()} uuid={uuid.uuid4().hex}\n".encode())
+    except OSError:
+        pass
+
+    def release() -> None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(fd)  # the file itself stays: never unlink a lock file
+
+    return release
+
+
+def _acquire_token_lock(lock_path: Path, draft_id: str):
+    """Token-lockfile fallback (see the design note above); returns a
+    release callable."""
+    token = f"{os.getpid()}:{uuid.uuid4().hex}".encode()
+    deadline = time.monotonic() + _DRAFT_LOCK_TIMEOUT_S
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            stolen = False
+            try:
+                st1 = lock_path.stat()
+                content1 = lock_path.read_bytes()
+            except OSError:
+                st1, content1 = None, None  # vanished mid-check: retry
+            if st1 is not None and \
+                    time.time() - st1.st_mtime > _DRAFT_LOCK_STALE_S:
+                # Grace re-read: steal only if token AND mtime are
+                # unchanged — a live holder heartbeats every ~5 s, so
+                # an unchanged stale mtime across the grace proves the
+                # holder is gone (a check-then-unlink without this
+                # re-read was the old scheme's race).
+                time.sleep(0.25)
+                try:
+                    st2 = lock_path.stat()
+                    content2 = lock_path.read_bytes()
+                except OSError:
+                    st2, content2 = None, None
+                if st2 is not None and st2.st_mtime == st1.st_mtime \
+                        and content2 == content1:
+                    try:
+                        lock_path.unlink()
+                        stolen = True
+                    except OSError:
+                        pass
+            if stolen:
+                continue
+            if time.monotonic() >= deadline:
+                raise _lock_timeout_error(draft_id)
+            time.sleep(_DRAFT_LOCK_POLL_S)
+            continue
+        try:
+            os.write(fd, token)
+        finally:
+            os.close(fd)
+        break
+
+    stop = threading.Event()
+
+    def _heartbeat() -> None:
+        while not stop.wait(_DRAFT_LOCK_HEARTBEAT_S):
+            try:
+                if lock_path.read_bytes() == token:
+                    os.utime(lock_path, None)
+            except OSError:
+                pass
+
+    threading.Thread(target=_heartbeat, daemon=True).start()
+
+    def release() -> None:
+        stop.set()
+        try:  # unlink ONLY if the lock is still ours
+            if lock_path.read_bytes() == token:
+                lock_path.unlink()
+        except OSError:
+            pass
+
+    return release
 
 
 @contextlib.contextmanager
 def _draft_lock(draft_id: str):
-    """Hold the per-draft lock (see the constants above). Bounded
-    retry; a stale lock (mtime older than _DRAFT_LOCK_STALE_S) is
-    stolen; the lock is always released in finally. Timeout raises
-    ValueError, which the tools surface as {"error": ...}."""
+    """Hold the per-draft lock (see the design note above). Timeout
+    raises ValueError, which the tools surface as {"error": ...}."""
     try:
         stem = stored_file_stem(draft_id)
     except ValueError:
         raise ValueError("invalid draft_id") from None
     lock_path = drafts_dir() / f"{stem}.lock"
-    deadline = time.monotonic() + _DRAFT_LOCK_TIMEOUT_S
-    fd = None
-    while fd is None:
+    key = str(lock_path)
+    ident = threading.get_ident()
+    with _HELD_LOCKS_GUARD:
+        held = _HELD_LOCKS.get(key)
+        if held is not None and held[0] == ident:
+            held[1] += 1
+            nested = True
+        else:
+            nested = False
+    if nested:
         try:
-            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            try:
-                age = time.time() - lock_path.stat().st_mtime
-            except OSError:
-                age = 0.0  # vanished mid-check: retry the acquire
-            if age > _DRAFT_LOCK_STALE_S:
-                try:
-                    lock_path.unlink()
-                except OSError:
-                    pass
-                continue
-            if time.monotonic() >= deadline:
-                raise ValueError(
-                    f"draft {draft_id} is locked by another writer — "
-                    f"retry shortly (lock timeout "
-                    f"{_DRAFT_LOCK_TIMEOUT_S:.0f}s)")
-            time.sleep(_DRAFT_LOCK_POLL_S)
+            yield
+        finally:
+            with _HELD_LOCKS_GUARD:
+                entry = _HELD_LOCKS.get(key)
+                if entry is not None:
+                    entry[1] -= 1
+                    if entry[1] <= 0:
+                        del _HELD_LOCKS[key]
+        return
+    release = (_acquire_flock(lock_path, draft_id) if _FLOCK_AVAILABLE
+               else _acquire_token_lock(lock_path, draft_id))
+    with _HELD_LOCKS_GUARD:
+        _HELD_LOCKS[key] = [ident, 1]
     try:
         yield
     finally:
-        try:
-            os.close(fd)
-        finally:
-            try:
-                lock_path.unlink()
-            except OSError:
-                pass
+        with _HELD_LOCKS_GUARD:
+            _HELD_LOCKS.pop(key, None)
+        release()
 
 
 def _sections_of(draft: dict) -> list[dict]:
@@ -385,9 +546,12 @@ def save_facts(brand_id: str, facts: dict) -> dict:
     doc["brand_id"] = brand_id
     try:
         _validate_facts(doc)
+        return _save_facts_file(doc)
     except ValueError as exc:
+        # The save itself sat OUTSIDE the try (review M6): a store-level
+        # ValueError (e.g. an unusable brand_id) escaped as a protocol
+        # exception while its sibling tools returned {"error": ...}.
         return {"error": str(exc)}
-    return _save_facts_file(doc)
 
 
 @mcp.tool()
@@ -526,9 +690,9 @@ def save_style_profile(name: str, samples: list[str], qualitative: dict | None =
     try:
         profile = _build_profile(name, samples, qualitative=qualitative,
                                  store_excerpts=store_excerpts, brand_id=brand_id)
-    except ValueError as exc:  # e.g. zero usable samples
+        return _save_style_profile_file(profile)
+    except ValueError as exc:  # e.g. zero usable samples / unusable name
         return {"error": str(exc)}
-    return _save_style_profile_file(profile)
 
 
 @mcp.tool()
@@ -536,14 +700,19 @@ def get_style_profile(profile_id: str = "") -> dict:
     """Return a stored Style Profile by id ('default' → the shipped
     mocbrew-blog-voice profile). With no id: the list of available
     profiles plus the default profile (or null when none is stored)."""
-    if profile_id:
-        pid = DEFAULT_STYLE_PROFILE_ID if profile_id == "default" else profile_id
-        profile = _load_style_profile(pid)
-        if profile is None:
-            return {"error": f"style profile not found: {profile_id}",
-                    "available": _list_style_profiles()}
-        return _refresh_style_profile(profile)
-    default_profile = _load_style_profile(DEFAULT_STYLE_PROFILE_ID)
+    try:
+        if profile_id:
+            pid = DEFAULT_STYLE_PROFILE_ID if profile_id == "default" else profile_id
+            profile = _load_style_profile(pid)
+            if profile is None:
+                return {"error": f"style profile not found: {profile_id}",
+                        "available": _list_style_profiles()}
+            return _refresh_style_profile(profile)
+        default_profile = _load_style_profile(DEFAULT_STYLE_PROFILE_ID)
+    except ValueError as exc:
+        # A corrupt stored profile is a structured error (review M6),
+        # not a protocol exception.
+        return {"error": str(exc), "available": _list_style_profiles()}
     return {"profiles": _list_style_profiles(),
             "default_id": DEFAULT_STYLE_PROFILE_ID,
             "default": _refresh_style_profile(default_profile)
@@ -558,7 +727,10 @@ def style_match(text: str = "", draft_id: str = "", profile_id: str = "default")
     reader rates, number density. Returns a 0-100 closeness score,
     per-metric in/out-of-range, and concrete fix advice. ADVISORY: it
     measures closeness to the sample voice, never blocks a gate in v1."""
-    profile = _resolve_style_profile(profile_id)
+    try:
+        profile = _resolve_style_profile(profile_id)
+    except ValueError as exc:  # corrupt stored profile (review M6)
+        return {"error": str(exc), "available": _list_style_profiles()}
     if profile is None:
         return {"error": f"style profile not found: {profile_id}",
                 "available": _list_style_profiles()}
@@ -593,12 +765,18 @@ def analyze_site_brand(pages: list[dict]) -> dict:
     if claims:
         warnings.append(f"site makes {len(claims)} claim(s) needing evidence — "
                         f"they are listed for review, never approved silently")
+    # The kit is computed ONCE (review L12): _suggest_voice_rules
+    # used to re-extract it internally just to read the brand name —
+    # it now receives the name from this kit.
+    kit = _extract_brand_kit(pages)
     return {"corpus": {"page_count": corpus["page_count"],
                        "total_words": corpus["total_words"],
                        "per_page": corpus["per_page"]},
             "fingerprint": fp,
-            "brand_kit": _extract_brand_kit(pages),
-            "voice_suggestions": _suggest_voice_rules(corpus["all_text"]),
+            "brand_kit": kit,
+            "voice_suggestions": _suggest_voice_rules(
+                corpus["all_text"],
+                brand_name=(kit.get("brand_name") or {}).get("value")),
             "vocabulary": _extract_vocabulary(pages),
             "site_claims": claims,
             "warnings": warnings}
@@ -622,9 +800,12 @@ def save_brand_draft(pages: list[dict], qualitative: dict | None = None,
     source_type="competitor", every example is marked reference_only and
     the draft carries a competitor_warning: competitor copy is analysis
     material, never an approved brand."""
-    draft = _build_brand_draft(pages, qualitative=qualitative,
-                               source_type=source_type, brand_name=brand_name)
-    return _save_brand_draft_file(draft)
+    try:
+        draft = _build_brand_draft(pages, qualitative=qualitative,
+                                   source_type=source_type, brand_name=brand_name)
+        return _save_brand_draft_file(draft)
+    except ValueError as exc:  # bad source_type / unusable draft (review M6)
+        return {"error": str(exc)}
 
 
 @mcp.tool()
@@ -632,7 +813,10 @@ def get_brand_draft(draft_id: str = "") -> dict:
     """Return a stored brand draft by id (the brand slug, e.g. "som-coffee").
     With no id: the list of available brand drafts."""
     if draft_id:
-        draft = _load_brand_draft(draft_id)
+        try:
+            draft = _load_brand_draft(draft_id)
+        except ValueError as exc:  # corrupt stored draft (review M6)
+            return {"error": str(exc), "available": _list_brand_drafts()}
         if draft is None:
             return {"error": f"brand draft not found: {draft_id}",
                     "available": _list_brand_drafts()}
@@ -774,8 +958,11 @@ def assemble_context(brief: dict, format: str | None = None,
     style_profile = None
     style_error = None
     if style_profile_id:
-        style_profile = _resolve_style_profile(style_profile_id)
-        if style_profile is None:
+        try:
+            style_profile = _resolve_style_profile(style_profile_id)
+        except ValueError as exc:  # corrupt stored profile (review M6)
+            style_error = str(exc)
+        if style_profile is None and style_error is None:
             style_error = f"style profile not found: {style_profile_id}"
 
     parts = [("persona", persona_text), ("brand_rules", brand_text),
@@ -820,8 +1007,19 @@ def make_outline(brief: dict, proposed_outline: list[dict] | None = None,
     if proposed_outline is not None:
         outline = []
         for i, item in enumerate(proposed_outline):
+            if not isinstance(item, dict):
+                return {"ok": False,
+                        "error": f"outline item {i} must be an object with a heading",
+                        "outline": []}
             if not str(item.get("heading", "")).strip():
                 return {"ok": False, "error": f"outline item {i} has no heading", "outline": []}
+            # bool is an int subclass (review L4): True must not
+            # silently become a 1-word target.
+            if isinstance(item.get("target_words", 120), bool):
+                return {"ok": False,
+                        "error": f"outline item {i} has a non-numeric target_words: "
+                                 f"{item.get('target_words')!r}",
+                        "outline": []}
             try:
                 target_words = int(item.get("target_words", 120))
             except (TypeError, ValueError):
@@ -897,6 +1095,11 @@ def save_section(draft_id: str, section_id: str, heading: str, text: str,
 def _save_section_impl(draft_id: str, section_id: str, heading: str, text: str,
                        intent: str | None = None,
                        target_words: int | None = None) -> dict:
+    # bool is an int subclass (review L4): target_words=True used to
+    # be stored as the int 1.
+    if isinstance(target_words, bool):
+        return {"error": f"target_words must be an int, got {target_words!r}",
+                "draft_id": draft_id}
     draft, error = _load_draft_or_error(draft_id)
     if error:
         return error
@@ -960,7 +1163,15 @@ def brand_check(text: str = "", format: str = "blog", draft_id: str = "") -> dic
         return {"score": score, "violations": violations, "failing_sections": failing,
                 "banned_found": [v["detail"] for v in violations if v["type"] == "banned_term"]}
     violations, score = _lint_section(text, format, brand, "text")
-    return {"score": score, "violations": violations, "failing_sections": ["text"] if violations else [],
+    # The free-text path applies the SAME failing rule as the draft
+    # path (review L7): lint_draft fails a section on a non-warning
+    # violation or a score under the pass mark — the old
+    # `if violations` here marked a warning-only text (score 100)
+    # as failing, so the two paths disagreed about the same copy.
+    failing = bool(violations) and (
+        any(not v.get("warning") for v in violations) or score < BRAND_PASS_SCORE)
+    return {"score": score, "violations": violations,
+            "failing_sections": ["text"] if failing else [],
             "banned_found": [v["detail"] for v in violations if v["type"] == "banned_term"]}
 
 
@@ -1044,9 +1255,11 @@ def save_quality_profile(format: str, weights: dict, floors: dict | None = None,
     try:
         profile = _make_quality_profile(format, weights, floors, pass_total,
                                         profile_id or None)
+        return _save_quality_profile_file(profile)
     except ValueError as exc:
+        # The save sat outside the try (review M6) — same dialect fix
+        # as save_facts.
         return {"error": str(exc)}
-    return _save_quality_profile_file(profile)
 
 
 @mcp.tool()
@@ -1133,6 +1346,9 @@ def final_gate(draft_id: str, quality_profile: str = "",
         return {"error": str(exc), "draft_id": draft_id}
 
 
+_GATE_HISTORY_CAP = 50   # review L6: stored gate_history bound
+
+
 def _final_gate_impl(draft_id: str, quality_profile: str = "",
                      judged_scores: dict | None = None) -> dict:
     draft, error = _load_draft_or_error(draft_id)
@@ -1193,7 +1409,11 @@ def _final_gate_impl(draft_id: str, quality_profile: str = "",
                         "profile_id": style_profile["id"]}
 
     history = list(draft.get("gate_history", []))
-    entry = {"pass": len(history) + 1, "brand_score": hard["brand_score"],
+    # Pass numbers stay monotonic even once the history is capped
+    # (review L6): derive from the last entry, not the list length.
+    entry = {"pass": (history[-1].get("pass", len(history)) + 1
+                      if history else 1),
+             "brand_score": hard["brand_score"],
              "brand_violations": len(hard["brand_violations"]),
              "fact_issues": len(hard["fact_issues"]), "passed": passed,
              "craft_score": craft["score"], "craft_blocking": craft_blocking,
@@ -1207,7 +1427,9 @@ def _final_gate_impl(draft_id: str, quality_profile: str = "",
                             "quality_pass": quality["quality_pass"],
                             "floors_failed": quality["floors_failed"]}
     history.append(entry)
-    draft["gate_history"] = history
+    # Bounded (review L6): a long-lived draft's gate_history used to
+    # grow without limit and bloat every get_draft response.
+    draft["gate_history"] = history[-_GATE_HISTORY_CAP:]
 
     if passed:
         draft["status"] = "approved"
@@ -1243,7 +1465,7 @@ def _final_gate_impl(draft_id: str, quality_profile: str = "",
                    "craft_blocking": craft_blocking, "craft_advisory": not craft_blocking,
                    "rewrite_count": draft.get("rewrite_count", 0),
                    "rewrites_remaining": max(0, MAX_REWRITES - draft.get("rewrite_count", 0)),
-                   "gate_history": history,
+                   "gate_history": draft["gate_history"],
                    "instruction": instruction}
     if quality is not None:
         gate_result["quality"] = quality
@@ -1275,16 +1497,10 @@ def run_golden() -> dict:
             "results": results}
 
 
-TOOL_NAMES = ["get_persona", "get_brand", "research_facts", "assemble_context",
-              "validate_brief", "make_outline", "start_draft", "save_section",
-              "get_draft", "brand_check", "fact_check", "seo_check",
-              "final_gate", "run_golden",
-              "get_craft_cards", "get_exemplars", "get_domain_glossary", "craft_check",
-              "analyze_style", "save_style_profile", "get_style_profile", "style_match",
-              "analyze_site_brand", "save_brand_draft", "get_brand_draft",
-              "compare_brand_voice",
-              "get_quality_profile", "save_quality_profile", "quality_score",
-              "get_facts", "save_facts"]
+#: The tool list is DERIVED from the FastMCP registry (review M19):
+#: the hand-maintained literal this replaces had already drifted from
+#: the README once (29 vs 31) — a derived list cannot drift.
+TOOL_NAMES = sorted(t.name for t in mcp._tool_manager.list_tools())
 
 
 if __name__ == "__main__":
@@ -1301,15 +1517,25 @@ if __name__ == "__main__":
     if args.transport == "http":
         # Localhost ONLY in v1: there is no auth. Host/port come from the
         # environment so the app/tunnel setup controls them; the defaults
-        # bind 127.0.0.1:8765 and nothing else. Never expose this port
-        # beyond localhost without a tunnel the user controls.
+        # bind 127.0.0.1:8765 and nothing else. The loopback default is
+        # now ENFORCED, not just documented (review M9): a non-loopback
+        # CONTENT_CORE_HTTP_HOST refuses to start unless the operator
+        # explicitly sets CONTENT_CORE_ALLOW_NONLOCALHOST=1 — binding
+        # an unauthenticated server to the LAN must be a deliberate act.
         host = os.environ.get("CONTENT_CORE_HTTP_HOST", "127.0.0.1")
         port = int(os.environ.get("CONTENT_CORE_HTTP_PORT", "8765"))
+        if host not in ("127.0.0.1", "::1", "localhost") and \
+                os.environ.get("CONTENT_CORE_ALLOW_NONLOCALHOST") != "1":
+            print(f"refusing to bind non-loopback host {host!r}: this "
+                  f"server has NO authentication. Set "
+                  f"CONTENT_CORE_ALLOW_NONLOCALHOST=1 to override "
+                  f"(only behind a tunnel you control).", file=sys.stderr)
+            sys.exit(2)
         mcp.settings.host = host
         mcp.settings.port = port
         print(f"content-core MCP (streamable-http) on http://{host}:{port}"
-              f"{mcp.settings.streamable_http_path} — localhost only, no auth",
-              file=sys.stderr)
+              f"{mcp.settings.streamable_http_path} — bound to {host}, "
+              f"NO AUTHENTICATION", file=sys.stderr)
         mcp.run(transport="streamable-http")
     else:
         mcp.run(transport="stdio")

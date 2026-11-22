@@ -6,7 +6,11 @@ later phases: Next.js + LangGraph + Postgres/pgvector (3–6 weeks part-time).
 content-writing core must be solid before any infrastructure wraps it.
 
 Testbed brand is **simulated**: "Mộc Brew", small-batch coffee for Vietnamese
-office workers. No real client data anywhere in this repo.
+office workers. The repo ALSO contains one documented calibration run against
+a real public site (Cao Nguyên Mộc, `calibration/`), including that site's
+verified public prices in `data/facts_profiles/cao-nguyen-moc.json` — see the
+calibration section below. Raw scrape captures from that run are kept as
+local-only evidence and are not tracked (see `calibration/work/README.md`).
 
 ## Run it
 
@@ -739,8 +743,11 @@ documented" below.)
 # host/port overridable: CONTENT_CORE_HTTP_HOST / CONTENT_CORE_HTTP_PORT
 ```
 
-**There is NO auth in v1 — the HTTP server is localhost-only by
-design.** Do not bind it to a LAN/public interface. **ChatGPT** connects
+**There is NO auth in v1 — the HTTP server binds loopback only, and
+that is now enforced, not just documented:** a non-loopback
+`CONTENT_CORE_HTTP_HOST` makes the server refuse to start unless
+`CONTENT_CORE_ALLOW_NONLOCALHOST=1` is set explicitly. Do not bind it
+to a LAN/public interface. **ChatGPT** connects
 to MCP servers as *remote* servers over HTTPS, so using this local
 server from ChatGPT requires exposing it through a tunnel **the user
 controls** (e.g. Cloudflare Tunnel) and pointing ChatGPT at the
@@ -759,7 +766,7 @@ use a tunnel only when the app leaves no other route.
 ### Tested vs documented-from-spec
 
 - **TESTED in this repo**: the stdio transport end-to-end
-  (`test_mcp_client.py`, 22 checks, official SDK client) and the HTTP
+  (`test_mcp_client.py`, 24 checks, official SDK client) and the HTTP
   transport smoke test (`test_mcp_http.py`: real server on a test port,
   tools/list + `get_quality_profile` over streamable HTTP).
 - **Documented from the apps' public MCP specs, NOT clicked through**:
@@ -804,15 +811,27 @@ data/          persona_linh.json brand_mocbrew.yaml facts_lorebook.json
                model_golden.json   (model-written drafts + expected scores, P2a)
                style_samples_mocbrew.json   (3 original samples for the default profile)
                style_profiles/mocbrew-blog-voice.json   (built-in Style Profile)
+               style_profiles/cao-nguyen-moc-blog-voice-dd5678.json   (calibration site's profile)
+               facts_profiles/cao-nguyen-moc.json   (per-brand fact base, calibration brand)
                brand_drafts/   (Brand Builder drafts, gitignored)
                quality_profiles/   (custom Quality Profiles, gitignored)
 tests/         test_linter.py test_fact_check.py test_gates.py test_golden.py
                test_mcp_server.py test_craft.py test_model_golden.py test_style.py
                test_brand_extract.py   (Brand Builder: kit/voice/claims/drafts/compare/MCP)
                test_quality.py   (Quality Profile + unified gate parity)
+               test_audit_fixes.py test_backlog_fixes.py   (audit/backlog rounds)
+               test_calibration_fixes.py   (calibration-round fixes)
+               test_core_closing.py test_core_completion.py   (core-completion round)
+               test_review_fixes.py   (2026-11-22 code-review round)
                fixtures/dinhcao/ fixtures/som/   (two fictional coffee sites, HTML)
-mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 29 tools) — the host app's model is the writer, tools are the hands + referee
-test_mcp_client.py   end-to-end MCP client test over stdio (22 checks)
+               fixtures/jsshell/ fixtures/jsshell2/   (JS-shell site fixtures)
+calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibration
+               run: corpus, samples, writer trial; work/README.md says which
+               files are fixtures and which are local-only raw evidence)
+evaluation/    round-1..8 reports + SUMMARY.md + probes/   (the 8-round
+               evaluation and its regression probes, all with exit codes)
+mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 31 tools) — the host app's model is the writer, tools are the hands + referee
+test_mcp_client.py   end-to-end MCP client test over stdio (24 checks)
 test_mcp_http.py     MCP HTTP smoke test (server on a test port, tools/list + get_quality_profile)
 fetch_sample.py      CLI helper: URL -> plain text for Style Extraction (server stays offline)
 fetch_site.py        CLI helper: site URL -> pages + html_meta for the Brand Builder (server stays offline)

@@ -4,7 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
+import unicodedata
 from pathlib import Path
 
 import yaml
@@ -12,21 +14,74 @@ import yaml
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
+def _fsync_dir(dir_path: Path) -> None:
+    """Best-effort fsync of a directory so a rename inside it is durable
+    across a power loss, not just a process crash (review L5: the file
+    fsync alone does not make the directory entry durable). Platforms
+    that cannot open/fsync a directory simply skip it."""
+    try:
+        dfd = os.open(dir_path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dfd)
+    except OSError:
+        pass
+    finally:
+        os.close(dfd)
+
+
+#: Orphan temp files from a SIGKILL/power-loss mid-write are swept once
+#: they are this old (review L5): a live writer's temp is seconds old,
+#: so an hour is far beyond any in-flight write.
+_TEMP_ORPHAN_AGE_S = 3600.0
+
+
+def _sweep_stale_temps(dir_path: Path) -> None:
+    """Remove orphaned `*.tmp` files older than _TEMP_ORPHAN_AGE_S from
+    a store directory (best-effort: any error is ignored — sweeping
+    must never break a write)."""
+    import time as _time
+    try:
+        entries = list(dir_path.glob("*.tmp"))
+    except OSError:
+        return
+    now = _time.time()
+    for entry in entries:
+        try:
+            if now - entry.stat().st_mtime > _TEMP_ORPHAN_AGE_S:
+                entry.unlink()
+        except OSError:
+            pass
+
+
 def atomic_write_text(path: Path, text: str) -> None:
     """Write `text` to `path` atomically: write a temp file in the SAME
-    directory, fsync, then os.replace over the target. A crash mid-write
-    leaves the previous file intact (at worst an orphan temp file), never
-    a half-written JSON. Versioning/locking is a separate, deferred
-    concern (P3) — this is rename atomicity only."""
+    directory, fsync, then os.replace over the target, then fsync the
+    directory so the rename itself is durable. A crash mid-write
+    leaves the previous file intact (at worst an orphan temp file,
+    swept once it is an hour old), never a half-written JSON.
+
+    File mode (review L5): mkstemp creates the temp at 0600, which used
+    to propagate silently to every stored file. An existing target's
+    mode is preserved; a new file gets 0644 (subject to umask) like
+    any ordinary data file."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    _sweep_stale_temps(path.parent)
     fd, tmp_name = tempfile.mkstemp(dir=str(path.parent),
                                     prefix=path.name + ".", suffix=".tmp")
     try:
+        try:
+            mode = path.stat().st_mode & 0o777
+        except OSError:
+            mode = 0o644
+        os.chmod(tmp_name, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(tmp_name, path)
+        _fsync_dir(path.parent)
     except BaseException:
         try:
             os.unlink(tmp_name)
@@ -73,11 +128,33 @@ def _load_json_file(path: Path) -> dict:
     """json.loads with a human-actionable error: a corrupt stored file
     (interrupted write, hand edit) must surface as a clear ValueError
     naming the file, not a bare JSONDecodeError from deep in a tool call
-    (audit round 2)."""
+    (audit round 2). The error names the FILE only, never the absolute
+    path (review L6: tool errors are shown to the writing model and
+    logged; the store's filesystem layout is not the caller's business
+    — the R7 fix removed paths from id errors, this closes the twin)."""
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"corrupt JSON in stored file {path}: {exc}") from None
+        raise ValueError(f"corrupt JSON in stored file {path.name}: {exc}") from None
+
+
+def _require_stored_object(data: object, path: Path, kind: str,
+                           required: str | None = None) -> dict:
+    """Stored-shape validation on LOAD (review M7): every store's file
+    must contain a JSON OBJECT (and, when `required` is named, that
+    key) — a file containing `[]` or `{}` used to be returned verbatim
+    by some stores while drafts/quality validated theirs, so the same
+    corruption produced a clean error in one tool and a downstream
+    AttributeError (or a silently 'refreshed' husk) in another."""
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"corrupt {kind} file {path.name}: expected a JSON object, "
+            f"got {type(data).__name__}")
+    if required is not None and required not in data:
+        raise ValueError(
+            f"corrupt {kind} file {path.name}: missing required key "
+            f"{required!r}")
+    return data
 
 
 def load_persona(path: Path | None = None) -> dict:
@@ -181,11 +258,15 @@ def load_facts_profile(brand_id: str) -> dict | None:
     path = _facts_profile_path(brand_id)
     if not path.exists():
         return None
-    return _load_json_file(path)
+    return _require_stored_object(_load_json_file(path), path,
+                                  "facts profile", required="facts")
 
 
 def list_facts_profiles() -> list[dict]:
-    """Summaries of every stored facts profile: brand_id, price."""
+    """Summaries of every stored facts profile: brand_id, price.
+    A corrupt file is LISTED as corrupt (review L6) — silently
+    skipping it made a broken profile vanish from every listing while
+    a direct get errored, the worst of both worlds."""
     d = facts_profiles_dir()
     if not d.exists():
         return []
@@ -193,12 +274,54 @@ def list_facts_profiles() -> list[dict]:
     for path in sorted(d.glob("*.json")):
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            if not isinstance(doc, dict):
+                raise ValueError("not a JSON object")
+        except (json.JSONDecodeError, OSError, ValueError):
+            out.append({"brand_id": path.stem, "corrupt": True})
             continue
+        facts = doc.get("facts") if isinstance(doc.get("facts"), dict) else {}
         out.append({"brand_id": doc.get("brand_id", path.stem),
-                    "price_display": doc.get("facts", {}).get("price_display", ""),
-                    "simulated": doc.get("simulated", False)})
+                    "price_display": facts.get("price_display", ""),
+                    "simulated": doc.get("simulated", False),
+                    "corrupt": False})
     return out
+
+
+def format_vnd(amount: int) -> str:
+    """185000 -> '185.000đ' (the display form the facts files use)."""
+    return f"{amount:,}".replace(",", ".") + "đ"
+
+
+def normalize_facts_doc(doc: dict) -> dict:
+    """Derive/default the fields consumers index, AT LOAD TIME
+    (review M1/M2 — the validator/checker contract fix).
+
+    validate_facts accepts a facts doc with `price_vnd_per_250g` and
+    NO `price_display` (an either/or rule), and lorebook entries with
+    only `id` + `content`. Two consumers used to index the missing
+    fields directly — fact_check's wrong_price detail did
+    `f['price_display']` (KeyError) and the graph research node did
+    `e['keys']` (KeyError) — so a document the validator explicitly
+    accepted crashed the checker and the whole graph flow. The
+    contract now lives HERE, at the single load choke point: any doc
+    load_facts returns carries a derived price_display (formatted
+    from the int price) and a `keys` list on every entry. The stored
+    file is not rewritten; the derivation is deterministic."""
+    if not isinstance(doc, dict):
+        return doc
+    facts = doc.get("facts")
+    if isinstance(facts, dict):
+        price = facts.get("price_vnd_per_250g")
+        if not facts.get("price_display") \
+                and isinstance(price, int) and not isinstance(price, bool) \
+                and price > 0:
+            facts["price_display"] = format_vnd(price)
+    entries = doc.get("entries")
+    if isinstance(entries, list):
+        for entry in entries:
+            if isinstance(entry, dict):
+                entry.setdefault("keys", [])
+    return doc
 
 
 def load_facts(brand_id: str = "moc-brew", path: Path | None = None) -> dict:
@@ -210,12 +333,12 @@ def load_facts(brand_id: str = "moc-brew", path: Path | None = None) -> dict:
     brand_id raises ValueError: NEVER a silent fallback to another
     brand's facts — a wrong fact base is worse than no fact base."""
     if path is not None:
-        return _load_json_file(path)
+        return normalize_facts_doc(_load_json_file(path))
     stored = load_facts_profile(brand_id)
     if stored is not None:
-        return stored
+        return normalize_facts_doc(stored)
     if brand_id == "moc-brew":
-        return _load_json_file(DATA_DIR / "facts_lorebook.json")
+        return normalize_facts_doc(_load_json_file(DATA_DIR / "facts_lorebook.json"))
     raise ValueError(
         f"no facts stored for brand_id {brand_id!r} — save a facts "
         f"profile first (save_facts); refusing to fall back to "
@@ -264,15 +387,22 @@ def save_style_profile(profile: dict) -> dict:
 
 
 def load_style_profile(profile_id: str) -> dict | None:
-    """Return the stored profile, or None when no such profile exists."""
+    """Return the stored profile, or None when no such profile exists.
+    The stored shape is validated (review M7): a non-object file, or
+    an object with no 'id', is the named corrupt-file error — a `{}`
+    profile used to be silently 'refreshed' into a husk with no
+    id/name/fingerprint and served as if it were a real profile."""
     path = _style_profile_path(profile_id)
     if not path.exists():
         return None
-    return _load_json_file(path)
+    return _require_stored_object(_load_json_file(path), path,
+                                  "style profile", required="id")
 
 
 def list_style_profiles() -> list[dict]:
-    """Summaries of every stored profile: id, name, brand, sample stats."""
+    """Summaries of every stored profile: id, name, brand, sample stats.
+    Corrupt files are listed as corrupt, never silently skipped
+    (review L6 — see list_facts_profiles)."""
     d = style_profiles_dir()
     if not d.exists():
         return []
@@ -280,12 +410,17 @@ def list_style_profiles() -> list[dict]:
     for path in sorted(d.glob("*.json")):
         try:
             p = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            if not isinstance(p, dict):
+                raise ValueError("not a JSON object")
+        except (json.JSONDecodeError, OSError, ValueError):
+            out.append({"id": path.stem, "corrupt": True})
             continue
+        created = p.get("created_from") if isinstance(p.get("created_from"), dict) else {}
         out.append({"id": p.get("id", path.stem), "name": p.get("name", ""),
                     "brand_id": p.get("brand_id", ""),
-                    "sample_count": p.get("created_from", {}).get("sample_count", 0),
-                    "total_words": p.get("created_from", {}).get("total_words", 0)})
+                    "sample_count": created.get("sample_count", 0),
+                    "total_words": created.get("total_words", 0),
+                    "corrupt": False})
     return out
 
 
@@ -305,24 +440,63 @@ def _brand_draft_path(draft_id: str) -> Path:
     return brand_drafts_dir() / f"{stored_file_stem(draft_id)}.json"
 
 
+def validate_brand_draft(draft: dict) -> dict:
+    """Schema-check a brand draft BEFORE it is persisted (review M10:
+    save_brand_draft used to persist ANY dict — contrast save_facts,
+    which validates — so a hand-crafted draft could strip the
+    competitor guard's markings and later become a live gate brand
+    via _resolve_brand_facts). Rules: the draft is an object with a
+    `brand` object carrying a non-empty id; `examples` /
+    `anti_examples`, when present, are lists of objects; and for a
+    COMPETITOR draft every example is (re)stamped reference_only=True
+    — the marking is enforced here, at the persistence boundary, not
+    merely trusted from the builder. Raises ValueError; returns the
+    (possibly stamped) draft."""
+    if not isinstance(draft, dict):
+        raise ValueError("brand draft must be an object")
+    brand = draft.get("brand")
+    if not isinstance(brand, dict) or not str(brand.get("id") or "").strip():
+        raise ValueError("brand draft needs a 'brand' object with a non-empty id")
+    for key in ("examples", "anti_examples"):
+        entries = draft.get(key)
+        if entries is not None and not (
+                isinstance(entries, list)
+                and all(isinstance(e, dict) for e in entries)):
+            raise ValueError(f"brand draft {key} must be a list of objects")
+    if brand.get("source_type") == "competitor":
+        for entry in draft.get("examples", []):
+            entry["reference_only"] = True
+    return draft
+
+
 def save_brand_draft(draft: dict) -> dict:
-    """Persist a brand draft dict (keyed by draft['brand']['id']).
-    Returns the draft."""
+    """Validate + persist a brand draft dict (keyed by
+    draft['brand']['id']). Returns the draft."""
+    validate_brand_draft(draft)
     atomic_write_text(_brand_draft_path(draft["brand"]["id"]),
                       json.dumps(draft, ensure_ascii=False, indent=2))
     return draft
 
 
 def load_brand_draft(draft_id: str) -> dict | None:
-    """Return the stored brand draft, or None when it does not exist."""
+    """Return the stored brand draft, or None when it does not exist.
+    Stored shape is validated like every other store (review M7):
+    an object with a `brand` object, or the named corrupt error."""
     path = _brand_draft_path(draft_id)
     if not path.exists():
         return None
-    return _load_json_file(path)
+    data = _require_stored_object(_load_json_file(path), path,
+                                  "brand draft", required="brand")
+    if not isinstance(data.get("brand"), dict):
+        raise ValueError(
+            f"corrupt brand draft file {path.name}: 'brand' must be an object")
+    return data
 
 
 def list_brand_drafts() -> list[dict]:
-    """Summaries of every stored brand draft: id, name, source, status."""
+    """Summaries of every stored brand draft: id, name, source, status.
+    Corrupt files are listed as corrupt, never silently skipped
+    (review L6 — see list_facts_profiles)."""
     d = brand_drafts_dir()
     if not d.exists():
         return []
@@ -330,14 +504,18 @@ def list_brand_drafts() -> list[dict]:
     for path in sorted(d.glob("*.json")):
         try:
             draft = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            if not isinstance(draft, dict):
+                raise ValueError("not a JSON object")
+        except (json.JSONDecodeError, OSError, ValueError):
+            out.append({"id": path.stem, "corrupt": True})
             continue
-        brand = draft.get("brand", {})
+        brand = draft.get("brand") if isinstance(draft.get("brand"), dict) else {}
         out.append({"id": brand.get("id", path.stem),
                     "name": brand.get("name", ""),
                     "source_type": brand.get("source_type", ""),
                     "review_status": brand.get("review_status", ""),
-                    "source_urls": brand.get("source_urls", [])})
+                    "source_urls": brand.get("source_urls", []),
+                    "corrupt": False})
     return out
 
 
@@ -365,15 +543,21 @@ def save_quality_profile(profile: dict) -> dict:
 
 
 def load_quality_profile(profile_id: str) -> dict | None:
-    """Return the stored quality profile, or None when it does not exist."""
+    """Return the stored quality profile, or None when it does not
+    exist. Non-object files are the named corrupt error (review M7);
+    field-level validation stays in quality.validate_profile, which
+    get_profile applies to whatever this returns."""
     path = _quality_profile_path(profile_id)
     if not path.exists():
         return None
-    return _load_json_file(path)
+    return _require_stored_object(_load_json_file(path), path,
+                                  "quality profile")
 
 
 def list_quality_profiles() -> list[dict]:
-    """Summaries of every stored custom quality profile: id, format."""
+    """Summaries of every stored custom quality profile: id, format.
+    Corrupt files are listed as corrupt, never silently skipped
+    (review L6 — see list_facts_profiles)."""
     d = quality_profiles_dir()
     if not d.exists():
         return []
@@ -381,11 +565,47 @@ def list_quality_profiles() -> list[dict]:
     for path in sorted(d.glob("*.json")):
         try:
             p = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            if not isinstance(p, dict):
+                raise ValueError("not a JSON object")
+        except (json.JSONDecodeError, OSError, ValueError):
+            out.append({"id": path.stem, "corrupt": True})
             continue
         out.append({"id": p.get("id", path.stem), "format": p.get("format", ""),
-                    "pass_total": p.get("pass_total")})
+                    "pass_total": p.get("pass_total"), "corrupt": False})
     return out
+
+
+def slugify(name: str | None, fallback: str = "brand") -> str:
+    """URL/id slug for a display name: lowercase, Vietnamese diacritics
+    folded to ASCII, non-alphanumeric runs become single dashes. ONE
+    implementation (review L2): style.py and brand_extract.py each
+    carried a private copy that differed in the fallback word and in
+    None handling — exactly the kind of twin that drifts."""
+    nfkd = unicodedata.normalize("NFD", (name or "").lower().replace("đ", "d"))
+    ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "-", ascii_only).strip("-") or fallback
+
+
+def brand_check_context(brand: dict) -> tuple[str | None, int | None, list[str] | None]:
+    """(brand_id, max_sentence_words, banned_terms) for the checking
+    layers — the brand-derived context craft needs from the brand dict
+    (evaluation R3-S4 wiring). ONE implementation (review L2):
+    gates.py and quality.py each carried a verbatim copy of this
+    extraction; the R3-S4 bug class was precisely this wiring being
+    present in one path and missing in another, and two hand-kept
+    copies invite the same drift again. Missing/malformed pieces
+    degrade to None (the checkers' documented defaults), never raise."""
+    brand_id = (brand.get("brand") or {}).get("id")
+    try:
+        max_sentence_words = int(
+            brand["voice"]["sentence_rules"]["max_sentence_words"])
+    except (KeyError, TypeError, ValueError):
+        max_sentence_words = None
+    try:
+        terms: list[str] | None = banned_terms(brand)
+    except (KeyError, TypeError):
+        terms = None
+    return brand_id, max_sentence_words, terms
 
 
 def banned_terms(brand: dict) -> list[str]:

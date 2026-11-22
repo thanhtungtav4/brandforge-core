@@ -201,6 +201,37 @@ def _phrase_regexes(phrase: str) -> list[re.Pattern]:
     return out
 
 
+from functools import lru_cache as _lru_cache
+
+
+@_lru_cache(maxsize=256)
+def _phrase_regexes_cached(phrase: str) -> tuple[re.Pattern, ...]:
+    """Cached _phrase_regexes (review M4): the phrase vocabularies
+    (banned terms, claim phrases) are small and fixed per brand, but
+    the uncached builder re-derived the whole regex family for every
+    (term × sentence) pair — the linter's dominant constant factor on
+    long drafts. The cache is keyed by the phrase string only."""
+    return tuple(_phrase_regexes(phrase))
+
+
+def _fuzzy_spans_prepared(norm: str, regexes: tuple[re.Pattern, ...],
+                          term_norm: str) -> list[tuple[int, int]]:
+    """fuzzy_phrase_spans with the phrase's regexes + normalized form
+    prepared ONCE by the caller — the hot-loop variant (review M4)."""
+    spans: list[tuple[int, int]] = []
+
+    def _add(span: tuple[int, int]) -> None:
+        if not any(span[0] < e and s < span[1] for s, e in spans):
+            spans.append(span)
+
+    for rx in regexes:
+        for m in rx.finditer(norm):
+            _add((m.start(), m.end()))
+    for span in _split_token_spans(norm, term_norm):
+        _add(span)
+    return sorted(spans)
+
+
 def _split_token_spans(norm: str, term_norm: str) -> list[tuple[int, int]]:
     """Spans where a single-token term (>= 5 chars) is split across 2-3
     adjacent tokens: 'seam less' -> 'seamless'. Concatenation must equal
@@ -225,26 +256,23 @@ def fuzzy_phrase_spans(norm: str, phrase: str) -> list[tuple[int, int]]:
     """Every match span of `phrase` in NORMALIZED text: exact matches
     plus the bounded fuzzy variants above, de-duplicated by overlap
     (exact matches win). Coordinates are in `norm`."""
-    spans: list[tuple[int, int]] = []
-
-    def _add(span: tuple[int, int]) -> None:
-        if not any(span[0] < e and s < span[1] for s, e in spans):
-            spans.append(span)
-
-    for rx in _phrase_regexes(phrase):
-        for m in rx.finditer(norm):
-            _add((m.start(), m.end()))
-    for span in _split_token_spans(norm, normalize_for_match(phrase)):
-        _add(span)
-    return sorted(spans)
+    return _fuzzy_spans_prepared(norm, _phrase_regexes_cached(phrase),
+                                 normalize_for_match(phrase))
 
 
-def count_phrase(text: str, phrase: str) -> int:
-    return len(phrase_spans(text, phrase))
+# (review L3: count_phrase / phrase_in used to live here — dead code
+# with no production caller; removed rather than kept as a trap.)
 
 
-def phrase_in(text: str, phrase: str) -> bool:
-    return bool(phrase_spans(text, phrase))
+# Shared word tokenisation (review L2): style.py and brand_extract.py
+# each carried a private copy of this regex + finder. ONE definition,
+# here with the other text primitives; both modules alias it.
+WORD_RE = re.compile(r"[a-zà-ỹ0-9]+")
+
+
+def word_tokens(text: str) -> list[str]:
+    """Lowercased word tokens (Vietnamese syllables + digits)."""
+    return WORD_RE.findall((text or "").lower())
 
 
 # A claim/term immediately preceded by one of these negations (optionally
@@ -422,6 +450,20 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
     # only the negation rule classifies (conservative direction).
     sentences = split_sentences(text)
     asserted_banned_sentences: set[int] = set()
+    # Per-sentence preparation happens ONCE (review M4): the old loop
+    # re-ran strip_markup + normalize + the quote-map construction for
+    # every (term × sentence) pair, and re-derived each term's regex
+    # family per sentence — a ~50x constant factor on long drafts.
+    # Each sentence is now prepared a single time up front, and each
+    # term's regexes are built once (cached) for all sentences.
+    prepared: list[tuple[str, list[bool] | None]] = []
+    for sentence in sentences:
+        clean = strip_markup(sentence)
+        raw_norm = normalize_for_match(clean)
+        norm = collapse_letter_spacing(raw_norm)
+        indexed = _normalize_indexed(clean)
+        quote_flags = indexed[1] if norm == raw_norm and indexed[0] == raw_norm else None
+        prepared.append((norm, quote_flags))
     # Whole-text scan coordinates: letter-DOTTED terms ("e.l.e.v.a.t.e")
     # are torn apart by sentence splitting (every dot is a boundary), so
     # the per-sentence scan below can never see them; the normalized
@@ -437,16 +479,13 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
                          if whole_norm == whole_raw_norm
                          and whole_indexed[0] == whole_raw_norm else None)
     for term in banned_terms(brand):
-        if _phrase_regex(term) is None:
+        regexes = _phrase_regexes_cached(term)
+        if not regexes:
             continue
+        term_norm = normalize_for_match(term)
         term_seen = False
-        for si, sentence in enumerate(sentences):
-            clean = strip_markup(sentence)
-            raw_norm = normalize_for_match(clean)
-            norm = collapse_letter_spacing(raw_norm)
-            indexed = _normalize_indexed(clean)
-            quote_flags = indexed[1] if norm == raw_norm and indexed[0] == raw_norm else None
-            for span in fuzzy_phrase_spans(norm, term):
+        for si, (norm, quote_flags) in enumerate(prepared):
+            for span in _fuzzy_spans_prepared(norm, regexes, term_norm):
                 term_seen = True
                 if _banned_hit_is_context_only(norm, span, quote_flags):
                     violations.append({"section_id": section_id,
@@ -459,7 +498,7 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
                     asserted_banned_sentences.add(si)
         if term_seen:
             continue
-        for span in fuzzy_phrase_spans(whole_norm, term):
+        for span in _fuzzy_spans_prepared(whole_norm, regexes, term_norm):
             if _banned_hit_is_context_only(whole_norm, span, whole_quote_flags):
                 violations.append({"section_id": section_id,
                                    "type": "banned_term_context",
@@ -504,7 +543,12 @@ def lint_section(text: str, fmt: str, brand: dict, section_id: str = "") -> tupl
 def lint_draft(sections: list[dict], fmt: str, brand: dict) -> tuple[list[dict], float, list[str]]:
     """Lint all sections. Overall score = worst section score (a chain is its weakest section).
     A section is 'failing' when it carries a non-warning violation or scores
-    below 85 — warnings alone (banned_term_context) never force a rewrite."""
+    below 85 — warnings alone (banned_term_context) never force a rewrite.
+
+    WARNING for direct consumers (review, Info): lint_draft([]) returns
+    a score of 100.0 — "no sections" trivially has no violations. The
+    GATE (gates.evaluate_gate) guards that case with its vacuity rule;
+    a future caller must not read this 100 as an approval."""
     all_violations: list[dict] = []
     failing: list[str] = []
     worst = 100.0

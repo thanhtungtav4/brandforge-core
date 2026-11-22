@@ -46,7 +46,7 @@ import json
 from .craft import craft_check
 from .fact_check import check_draft
 from .linter import lint_draft
-from .loaders import banned_terms as _brand_banned_terms
+from .loaders import brand_check_context as _brand_check_context
 from .loaders import load_quality_profile
 from .seo import seo_pass
 from .style import style_match
@@ -218,15 +218,30 @@ def _as_sections(draft) -> list[dict]:
     return list(draft)
 
 
-def _facts_score(sections: list[dict], facts: dict, brand: dict) -> tuple[float, dict]:
-    issues, flagged, _ = check_draft(sections, facts, brand)
+def _facts_score(sections: list[dict], facts: dict, brand: dict,
+                 precomputed: dict | None = None) -> tuple[float, dict]:
+    """Facts axis from check_draft — or from the gate's ALREADY-RUN
+    check_draft when the caller supplies it (review M4: the quality
+    layer used to re-run every checker from scratch inside
+    evaluate_gate, doubling the gate's cost; the results are the same
+    function's outputs on the same inputs, so reuse cannot change a
+    single score)."""
+    if precomputed is not None:
+        issues = precomputed.get("fact_issues", [])
+        flagged = precomputed.get("fact_flagged", [])
+    else:
+        issues, flagged, _ = check_draft(sections, facts, brand)
     score = max(0.0, 100.0 - 30.0 * len(issues) - 10.0 * len(flagged))
     return score, {"unflagged_issues": len(issues), "flagged_claims": len(flagged)}
 
 
 def _voice_score(sections: list[dict], fmt: str, brand: dict,
-                 style_profile: dict | None) -> tuple[float, dict]:
-    _violations, brand_score, _failing = lint_draft(sections, fmt, brand)
+                 style_profile: dict | None,
+                 precomputed: dict | None = None) -> tuple[float, dict]:
+    if precomputed is not None and "brand_score" in precomputed:
+        brand_score = precomputed["brand_score"]
+    else:
+        _violations, brand_score, _failing = lint_draft(sections, fmt, brand)
     detail: dict = {"brand_score": brand_score}
     if style_profile is not None:
         joined = "\n\n".join(s.get("text", "") for s in sections)
@@ -252,7 +267,8 @@ def _seo_score(sections: list[dict], brief: dict | None) -> tuple[float, dict]:
 def evaluate_quality(draft, fmt: str, profile: dict, judged: dict | None,
                      brand: dict, facts: dict,
                      style_profile: dict | None = None,
-                     brief: dict | None = None) -> dict:
+                     brief: dict | None = None,
+                     _precomputed: dict | None = None) -> dict:
     """Score a draft on the profile's seven axes.
 
     `draft` is a list of section dicts or one text string. `profile` is a
@@ -270,20 +286,15 @@ def evaluate_quality(draft, fmt: str, profile: dict, judged: dict | None,
     # Clarity judges with the ACTIVE brand's glossary + sentence cap
     # (evaluation R3-S4 — same wiring as gates.evaluate_gate: judging
     # another brand with Mộc Brew's vocabulary was the calibration F8
-    # false positive, here inside the quality layer).
-    brand_id = (brand.get("brand") or {}).get("id")
-    try:
-        max_sentence_words = int(
-            brand["voice"]["sentence_rules"]["max_sentence_words"])
-    except (KeyError, TypeError, ValueError):
-        max_sentence_words = None
-    try:
-        quality_banned_terms = _brand_banned_terms(brand)
-    except (KeyError, TypeError):
-        quality_banned_terms = None
+    # false positive, here inside the quality layer). The extraction
+    # itself is loaders.brand_check_context — ONE implementation
+    # shared with gates.py (review L2).
+    brand_id, max_sentence_words, quality_banned_terms = \
+        _brand_check_context(brand)
     measured: dict[str, tuple[float, dict]] = {
-        "facts": _facts_score(sections, facts, brand),
-        "voice": _voice_score(sections, fmt, brand, style_profile),
+        "facts": _facts_score(sections, facts, brand, _precomputed),
+        "voice": _voice_score(sections, fmt, brand, style_profile,
+                              _precomputed),
         "clarity": (float(craft_check(
             "\n\n".join(s.get("text", "") for s in sections), fmt,
             brand_id=brand_id,
@@ -297,8 +308,12 @@ def evaluate_quality(draft, fmt: str, profile: dict, judged: dict | None,
         if axis not in JUDGED_AXES:
             raise ValueError(f"{axis!r} is not a judged axis (judged: {JUDGED_AXES})")
         # bool is an int subclass (True == 1): without the explicit guard a
-        # JSON true would silently grade as 1 (audit round 2).
-        if isinstance(grade, bool) or grade not in GRADE_SCORES:
+        # JSON true would silently grade as 1 (audit round 2). A float
+        # 2.0 is rejected too (review L4): `2.0 in GRADE_SCORES` is
+        # True in Python, so the membership test alone let it through
+        # — grades are ints, full stop.
+        if isinstance(grade, bool) or not isinstance(grade, int) \
+                or grade not in GRADE_SCORES:
             raise ValueError(f"judged grade for {axis} must be 0, 1 or 2, got {grade!r}")
 
     axes: list[dict] = []

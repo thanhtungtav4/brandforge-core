@@ -165,21 +165,11 @@ def test_craft_check_no_sensory_penalty_outside_product_blog():
 
 # -- MCP layer ---------------------------------------------------------------------
 
-EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_context",
-                  "validate_brief", "make_outline", "start_draft", "save_section",
-                  "get_draft", "brand_check", "fact_check", "seo_check",
-                  "final_gate", "run_golden",
-                  "get_craft_cards", "get_exemplars", "get_domain_glossary", "craft_check",
-                  "analyze_style", "save_style_profile", "get_style_profile", "style_match",
-                  "analyze_site_brand", "save_brand_draft", "get_brand_draft",
-                  "compare_brand_voice",
-                  "get_quality_profile", "save_quality_profile", "quality_score",
-                  "get_facts", "save_facts"}
-
-
-def test_mcp_tool_list_now_29():
-    # (Name kept from the 29-tool round; the count is now 31 after the
-    # core-completion round added get_facts/save_facts.)
+def test_mcp_tool_list_matches_canonical():
+    # ONE canonical literal (review M19): tests/test_mcp_server.py's
+    # EXPECTED_TOOLS. This file used to carry a second copy plus a
+    # stale 'now_29' test name from an older round — duplicates drift.
+    from test_mcp_server import EXPECTED_TOOLS
     assert set(srv.TOOL_NAMES) == EXPECTED_TOOLS
     assert len(srv.TOOL_NAMES) == 31
     for name in EXPECTED_TOOLS:

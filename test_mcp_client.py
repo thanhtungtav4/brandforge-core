@@ -103,12 +103,15 @@ async def main() -> int:
         print(f"{'PASS' if ok else 'FAIL'}  {name:<28} {detail}")
         failures += 0 if ok else 1
 
-    # Isolate style-profile writes: save_style_profile in this test must not
-    # drop files into the shipped data/style_profiles/ directory.
+    # Isolate ALL writable stores (review L15): style profiles, brand
+    # drafts, quality profiles — and drafts + facts too, which this
+    # test used to write into the project's real directories.
     env = {**get_default_environment(), **os.environ,
            "CONTENT_CORE_STYLE_PROFILES_DIR": str(Path(tempfile.mkdtemp()) / "profiles"),
            "CONTENT_CORE_BRAND_DRAFTS_DIR": str(Path(tempfile.mkdtemp()) / "brand_drafts"),
-           "CONTENT_CORE_QUALITY_PROFILES_DIR": str(Path(tempfile.mkdtemp()) / "quality_profiles")}
+           "CONTENT_CORE_QUALITY_PROFILES_DIR": str(Path(tempfile.mkdtemp()) / "quality_profiles"),
+           "CONTENT_CORE_DRAFTS_DIR": str(Path(tempfile.mkdtemp()) / "drafts"),
+           "CONTENT_CORE_FACTS_PROFILES_DIR": str(Path(tempfile.mkdtemp()) / "facts")}
     params = StdioServerParameters(
         command=sys.executable, args=[str(PROJECT_DIR / "mcp_server.py")],
         cwd=str(PROJECT_DIR), env=env)
@@ -120,17 +123,11 @@ async def main() -> int:
 
             tools = await session.list_tools()
             names = [t.name for t in tools.tools]
-            expected = ["get_persona", "get_brand", "research_facts", "assemble_context",
-                        "validate_brief", "make_outline", "start_draft", "save_section",
-                        "get_draft", "brand_check", "fact_check", "seo_check",
-                        "final_gate", "run_golden",
-                        "get_craft_cards", "get_exemplars", "get_domain_glossary", "craft_check",
-                        "analyze_style", "save_style_profile", "get_style_profile", "style_match",
-                        "analyze_site_brand", "save_brand_draft", "get_brand_draft",
-                        "compare_brand_voice",
-                        "get_quality_profile", "save_quality_profile", "quality_score",
-                        "get_facts", "save_facts"]
-            check("tools/list", all(n in names for n in expected) and len(names) == 31,
+            # Exact comparison against the server's own registry-derived
+            # list (review M19) — no third hand-maintained literal.
+            import mcp_server as _srv
+            check("tools/list", set(names) == set(_srv.TOOL_NAMES)
+                  and len(names) == len(_srv.TOOL_NAMES),
                   f"{len(names)} tools: {names}")
 
             brand = _parse(await session.call_tool("get_brand", {}))
@@ -276,6 +273,27 @@ async def main() -> int:
             check("save_quality_profile", custom.get("id", "").startswith("custom-blog-")
                   and fetched["weights"]["seo"] == 20,
                   f"id={custom.get('id')}")
+
+            # Per-brand facts flow (review L15: get_facts/save_facts had
+            # no end-to-end coverage): save a minimal doc — price as an
+            # int, no price_display, entries without keys — and read it
+            # back fully consumable (the M1/M2 load-time contract).
+            saved_facts = _parse(await session.call_tool("save_facts", {
+                "brand_id": "client-test",
+                "facts": {"facts": {"price_vnd_per_250g": 99000,
+                                    "pack_weight_g": 250,
+                                    "origins": ["Arabica Cầu Đất"]},
+                          "entries": [{"id": "p", "content": "Giá 99.000đ."}]}}))
+            got_facts = _parse(await session.call_tool(
+                "get_facts", {"brand_id": "client-test"}))
+            check("save_facts + get_facts", "error" not in saved_facts
+                  and got_facts["facts"]["price_display"] == "99.000đ"
+                  and got_facts["entries"][0]["keys"] == [],
+                  f"display={got_facts.get('facts', {}).get('price_display')}")
+            unknown = _parse(await session.call_tool(
+                "get_facts", {"brand_id": "no-such-brand"}))
+            check("get_facts unknown brand", "error" in unknown,
+                  f"error={unknown.get('error', '')[:50]}")
 
     print(f"\n{total - failures}/{total} MCP client checks passed")
     return 1 if failures else 0

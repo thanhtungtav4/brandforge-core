@@ -1,7 +1,9 @@
 """Deterministic fact checker.
 
-Facts live ONLY in data/facts_lorebook.json. Any number/claim in a draft that
-does not match that file is an issue. Claims marked [NEEDS SOURCE] are recorded
+Facts live in the ACTIVE brand's fact base (per-brand profiles in
+data/facts_profiles/, with data/facts_lorebook.json as the shipped
+moc-brew base — see loaders.load_facts). Any number/claim in a draft that
+does not match that fact base is an issue. Claims marked [NEEDS SOURCE] are recorded
 as flagged_claims and do NOT block the gate; unmarked unsupported claims do.
 
 Coverage (P1b):
@@ -97,7 +99,7 @@ import re
 from .linter import (NEGATED_PREFIX_RE, _phrase_regex, collapse_letter_spacing,
                      fuzzy_phrase_spans, normalize_for_match, split_sentences,
                      strip_markup)
-from .loaders import prohibited_claims
+from .loaders import format_vnd, prohibited_claims
 
 # Weight mentions in every common form: "250g", "300 gam", "300gr",
 # "0,3kg", "250,5g" (evaluation R1: the old integer-only, g-only pattern
@@ -244,6 +246,20 @@ def _fact_price(facts: dict) -> int:
     return int(re.sub(r"\D", "", str(f.get("price_display", ""))) or 0)
 
 
+def _price_display(facts: dict) -> str:
+    """The fact price's display form for issue details. NEVER indexes
+    the field directly (review M1): validate_facts accepts a doc with
+    only `price_vnd_per_250g`, and while load_facts derives the
+    display at load time, a facts dict built in-process (a test, a
+    caller with its own doc) must not KeyError the checker — derive
+    here too."""
+    f = facts.get("facts") or {}
+    if f.get("price_display"):
+        return str(f["price_display"])
+    price = _fact_price(facts)
+    return format_vnd(price) if price else "the fact price"
+
+
 # ---------------------------------------------------------------------------
 # Money ROLES (evaluation R1): not every amount in a draft is the product
 # price. An amount explicitly framed as one of the roles below is NOT a
@@ -260,8 +276,11 @@ def _fact_price(facts: dict) -> int:
 #                  consistent, not wrong.
 # Anything else that differs from the fact price is still wrong_price —
 # a bare "giá 200.000đ" for the pack keeps flagging. Role markers are
-# matched on the NORMALIZED text before the amount (within ~90 chars,
-# i.e. the same clause); a marker AFTER the amount does not reframe it.
+# matched on the NORMALIZED text before the amount, within ~90 chars
+# AND within the amount's own sentence (review H1: the sentence bound
+# is what the "same sentence window" wording always promised — a
+# marker in a PREVIOUS sentence does not reframe this amount); a
+# marker AFTER the amount does not reframe it either.
 # ---------------------------------------------------------------------------
 
 _MONEY_ROLE_RES = [
@@ -272,17 +291,64 @@ _MONEY_ROLE_RES = [
 ]
 
 
+def _is_sentence_boundary(text: str, i: int) -> bool:
+    """True when text[i] ends a sentence for money-role scoping
+    (review H1). A boundary is a newline, or sentence punctuation
+    (. ! ? … ;) followed by whitespace and an uppercase letter (or
+    the end of the text). The '.' inside '185.000đ' is followed by a
+    digit — never a boundary; the '.' in 'theo đơn. Gói…' is followed
+    by a capital — always one. Edited Vietnamese copy capitalises
+    sentence starts, so the capital test is the reliable signal."""
+    ch = text[i]
+    if ch == "\n":
+        return True
+    if ch not in ".!?…;":
+        return False
+    j = i + 1
+    while j < len(text) and text[j] in " \t\r":
+        j += 1
+    if j >= len(text):
+        return True
+    if j == i + 1:
+        return False  # punctuation glued to the next char: not a break
+    return text[j].isupper() or text[j] in "«\"“"
+
+
+def _sentence_span(text: str, start: int, end: int) -> tuple[int, int]:
+    """(lo, hi) character span of the sentence containing
+    text[start:end], per _is_sentence_boundary."""
+    lo = 0
+    for i in range(start - 1, -1, -1):
+        if _is_sentence_boundary(text, i):
+            lo = i + 1
+            break
+    hi = len(text)
+    for i in range(end, len(text)):
+        if _is_sentence_boundary(text, i):
+            hi = i + 1
+            break
+    return lo, hi
+
+
 def _money_role(text: str, start: int, end: int, value: int,
                 price: int, pack_weight_g: float) -> str | None:
     """The role framing the amount at text[start:end], or None when the
-    amount is presented as the product price itself."""
+    amount is presented as the product price itself.
+
+    Role markers are searched ONLY inside the amount's own sentence
+    (review H1): the search used to run over the previous ~90 raw
+    characters with no boundary check, so 'Phí ship được tính riêng
+    theo đơn. Gói 250g có giá 200.000đ' excused the wrong price — the
+    shipping sentence 'framed' an amount in the NEXT sentence. The
+    ~90-char distance bound still applies within the sentence."""
     if text[:start].count("~~") % 2 == 1:
         return "old_price"  # inside a ~~struck-through~~ span
-    before = normalize_for_match(text[max(0, start - 90):start])
+    sent_lo, sent_hi = _sentence_span(text, start, end)
+    before = normalize_for_match(text[max(sent_lo, start - 90):start])
     for role, rx in _MONEY_ROLE_RES:
         if rx.search(before):
             return role
-    window = text[max(0, start - 90):end + 40]
+    window = text[max(sent_lo, start - 90):min(sent_hi, end + 40)]
     for grams in _weights_in_grams(window):
         if grams and value * pack_weight_g == price * grams:
             return "bulk"
@@ -309,7 +375,7 @@ _ROAST_NEGATED_RE = re.compile(r"khong\s+(?:phai\s+)?(?:la\s+)?rang")
 # doc (see _origin_pairs): per-brand fact bases (core-completion round)
 # mean a second brand's beans pair with ITS regions, not Mộc Brew's.
 _DEFAULT_ORIGIN_PAIRS_NORM = {"arabica": "cau dat", "robusta": "dak lak"}
-_ORIGIN_PAIRS_NORM = _DEFAULT_ORIGIN_PAIRS_NORM  # legacy alias
+
 
 
 def _origin_pairs(facts: dict) -> dict[str, str]:
@@ -434,13 +500,76 @@ def _word_numeral_variant(phrase: str) -> str | None:
 # Speech-act denials govern a claim that follows within a few words,
 # not only one glued to them: "không khẳng định hạt ngon nhất" puts the
 # object noun "hạt" between the denial and the claim. Bounded: the
-# denial verb must appear within 24 chars before the claim with NO
+# denial verb must appear within 40 chars before the claim with NO
 # clause boundary (comma/semicolon/sentence punctuation) in between —
 # "không khẳng định gì, hạt này tốt nhất" crosses a comma and still
-# counts as an assertion.
+# counts as an assertion. (Review M15: the window was 24 chars and
+# the verb list missed "không bao giờ (nhận)", "không hề", "không
+# dám" — distant denials still flagged as assertions. "không phải"
+# belongs here too: "không phải cà phê tốt nhất Việt Nam đâu" puts
+# the object noun between the denial and the claim exactly the same
+# way, and the anchored prefix regex cannot see it.)
 _DISTANT_DENIAL_RE = re.compile(
     r"(khong khang dinh|khong cong nhan|khong thua nhan"
-    r"|chua tung nhan|khong nhan|khong dam nhan)[^.!?,;]{0,24}$")
+    r"|chua tung nhan|khong nhan|khong dam nhan"
+    r"|khong bao gio|khong he|khong dam"
+    r"|khong phai|chang phai)[^.!?,;]{0,40}$")
+
+# SUFFIX denial (review M15): Vietnamese also denies AFTER the claim —
+# "ngon nhất đâu" / "tốt nhất đâu phải" puts the negation particle
+# "đâu" (or "không phải") right behind the superlative. Bounded: the
+# particle must appear within the first 3 tokens after the claim span
+# with no clause boundary in between; "tốt nhất Việt Nam" (scope, not
+# denial) has no such particle and still flags.
+_SUFFIX_DENIAL_HEAD_RE = re.compile(r"^(khong phai|khong dung)\b")
+
+# Time units for the freshness-window rule below (normalized forms).
+_TIME_UNIT_TOKENS = {"ngay", "tuan", "thang", "nam", "gio", "phut", "dem"}
+
+
+def _suffix_denied(norm: str, end: int) -> bool:
+    """True when the claim ending at `end` in normalized text is
+    denied by what follows it (see _SUFFIX_DENIAL_HEAD_RE note).
+    The particle test is deliberately narrow: "đâu" (denial) and
+    "đậu" (beans — a noun this domain uses constantly) both
+    normalize to "dau", so a bare "dau" token is not enough — it
+    must close the clause or pair with "có"/"phải"/"mà", the shapes
+    the denial particle actually takes ("…đâu", "…đâu có rẻ",
+    "…đâu phải")."""
+    tail = norm[end:end + 40].strip()
+    if _SUFFIX_DENIAL_HEAD_RE.match(tail):
+        return True
+    tokens = tail.split()
+    for i, tok in enumerate(tokens[:3]):
+        if tok != "dau":
+            continue
+        if i == len(tokens) - 1 or tokens[i + 1] in ("co", "phai", "ma"):
+            return True
+        # "ngon nhất đâu, đừng tin…" — clause-initial "đâu" followed
+        # by "đừng" (normalized "dung") is the denial closing its
+        # clause before the comma (invisible after normalization).
+        # Position-0 only: mid-tail "dau dung" is "đậu dùng…" (beans
+        # being used), ordinary prose.
+        if i == 0 and tokens[i + 1] == "dung":
+            return True
+    return False
+
+
+def _is_freshness_window(norm: str, end: int) -> bool:
+    """True when a bare superlative ("ngon nhất") is followed by
+    "trong <time>" — a FRESHNESS window, not a superlative claim:
+    "ngon nhất trong vài tuần đầu" says when the coffee tastes best,
+    not that it outranks everything (review M15: 3 of the 5 shipped
+    CNM review claims were this shape). Bounded: "trong" must be the
+    very next token and a time marker (khoảng/vài/a digit/a time
+    unit) must follow within two tokens — "tốt nhất trong khu vực"
+    (best IN THE REGION) is a scope claim and still flags."""
+    tokens = norm[end:end + 40].split()
+    if len(tokens) < 2 or tokens[0] != "trong":
+        return False
+    following = tokens[1:3]
+    return any(t in _TIME_UNIT_TOKENS or t in ("khoang", "vai")
+               or t.isdigit() for t in following)
 
 
 def find_claim_detail(sentence: str, phrases: list[str]) -> tuple[str, int, str] | None:
@@ -460,11 +589,26 @@ def find_claim_detail(sentence: str, phrases: list[str]) -> tuple[str, int, str]
         for variant in [phrase, _word_numeral_variant(phrase)]:
             if variant:
                 spans += fuzzy_phrase_spans(norm, variant)
-        for start, _end in sorted(set(spans)):
+        phrase_norm = normalize_for_match(phrase)
+        for start, end in sorted(set(spans)):
             prefix = norm[:start].rstrip()
             if _NEGATED_PREFIX_RE.search(prefix) \
                     or _DISTANT_DENIAL_RE.search(prefix):
                 continue  # denied, not asserted — try the next occurrence
+            if "khong chi" not in prefix and _suffix_denied(norm, end):
+                continue  # denied AFTER the claim ("ngon nhất đâu") —
+                # but "không chỉ … đâu" AFFIRMS ("Không chỉ tốt nhất
+                # Việt Nam đâu" = "not ONLY the best in Vietnam"):
+                # the affirmation wins, the trailing "đâu" is mere
+                # emphasis there (pinned by test_core_closing).
+            if phrase_norm == "tot nhat" and start == 0 \
+                    and norm[end:end + 3] == " la":
+                continue  # sentence-initial "Tốt nhất là…" = "had
+                # better…" — advice idiom, not a superlative claim
+            if phrase_norm.split()[-1:] == ["nhat"] \
+                    and _is_freshness_window(norm, end):
+                continue  # "ngon nhất trong vài tuần" = freshness
+                # window, not a ranking claim
             return phrase, start, norm
     return None
 
@@ -483,11 +627,22 @@ def find_claim(sentence: str, phrases: list[str]) -> str | None:
 # purpose: customer praise quoted approvingly ("khách khen đây là hạt
 # ngon nhất") still blocks, exactly as R1 labelled it — the claim
 # appears in the copy as an endorsement.
+# Interrogative frames (review M15): a claim inside a QUESTION the
+# copy is asking ("Cà phê rang xong bao lâu thì uống ngon nhất",
+# "vì sao hạt này ngon nhất?") is reported speech, not an assertion
+# by the brand — the same reasoning as the "có phải" case, widened
+# to the question words Vietnamese headings actually use. Bounded
+# to the 48 chars before the claim, like "co phai" always was.
+_QUESTION_MARKERS_NORM = ("co phai", "bao lau", "phai khong",
+                          "hay khong", "vi sao", "tai sao", "lam sao",
+                          "the nao", "khi nao")
+
+
 def _claim_attributed(norm: str, start: int) -> bool:
     prefix = norm[:start]
     if "doi thu" in prefix:
         return True
-    if "co phai" in prefix[-48:]:
+    if any(marker in prefix[-48:] for marker in _QUESTION_MARKERS_NORM):
         return True
     return False
 
@@ -623,7 +778,7 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
         if value not in known_prices and _money_role(text, start, end, value, price,
                                                      pack_weight) is None:
             issues.append({"section_id": section_id, "type": "wrong_price",
-                           "detail": f"{raw} = {value}đ != fact {f['price_display']}"})
+                           "detail": f"{raw} = {value}đ != fact {_price_display(facts)}"})
 
     # --- weight / delivery ---
     allowed_weights = _allowed_weights(facts)
@@ -772,7 +927,7 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
             region_hit = next((r for r in _OTHER_REGIONS_NORM if r in cnorm), None)
             if region_hit and any(marker in cnorm for marker in _SOURCING_MARKERS_NORM):
                 issues.append({"section_id": section_id, "type": "unknown_origin",
-                               "detail": f"{region_hit} presented as bean source; facts: {', '.join(f['origins'])}"})
+                               "detail": f"{region_hit} presented as bean source; facts: {', '.join(f.get('origins') or [])}"})
                 break
 
         # --- claims: prohibited phrases block, evidence-requiring phrases and
@@ -805,8 +960,15 @@ def check_section(text: str, facts: dict, brand: dict, section_id: str = "") -> 
             claim_found = True
         elif _record_claim(CLAIM_PHRASES, "unsupported_claim"):
             claim_found = True
-        pct = PERCENT.search(sentence)
-        if not claim_found and pct and not _is_composition_percent(sentence, pct):
+        # EVERY percent in the sentence is examined (review L1): the
+        # old code looked at the FIRST percent only, so a composition
+        # percent first ("100% hạt Arabica, tăng 20% doanh số") made
+        # the genuinely unsupported second percent invisible. The
+        # first NON-composition percent decides, exactly as the first
+        # percent used to — one entry per sentence, as before.
+        pct = next((m for m in PERCENT.finditer(sentence)
+                    if not _is_composition_percent(sentence, m)), None)
+        if not claim_found and pct:
             if marked:
                 # A marked percent claim is FLAGGED, never silently
                 # dropped (evaluation R1: "tăng 20% doanh số [NEEDS

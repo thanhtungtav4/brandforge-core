@@ -157,15 +157,59 @@ def detect_js_shell(html: str, text: str) -> bool:
     return script_bytes >= 0.5 * total
 
 
+_CHARSET_META_RE = re.compile(rb"charset\s*=\s*[\"']?\s*([A-Za-z0-9._-]+)",
+                              re.IGNORECASE)
+
+
+def decode_body(body: bytes, content_type: str = "") -> tuple[str, str]:
+    """Decode a response body to text (review M12, shared with
+    fetch_site): the charset comes from the Content-Type header when
+    present, else a <meta charset> sniff of the first bytes, else
+    UTF-8. Returns (text, encoding_used) so callers can FLAG non-UTF-8
+    encodings instead of silently analysing mojibake — legacy
+    Vietnamese hosting (windows-1258) decoded as UTF-8/replace used to
+    produce replacement-char garbage that flowed straight into brand
+    and style extraction."""
+    charset = ""
+    m = re.search(r"charset\s*=\s*[\"']?([^\"';\s]+)", content_type or "",
+                  re.IGNORECASE)
+    if m:
+        charset = m.group(1)
+    if not charset:
+        m = _CHARSET_META_RE.search(body[:4096])
+        if m:
+            charset = m.group(1).decode("ascii", "replace")
+    for candidate in ([charset] if charset else []) + ["utf-8"]:
+        try:
+            return body.decode(candidate), candidate.lower()
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return body.decode("utf-8", errors="replace"), "utf-8"
+
+
 def fetch_url(url: str, timeout: int = 20, max_bytes: int = MAX_BYTES) -> dict:
     request = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         raw = response.read(max_bytes + 1)
+        final_url = response.geturl()  # review L11: record where we landed
+        try:
+            content_type = response.headers.get("Content-Type", "") or ""
+        except Exception:
+            content_type = ""
     truncated = len(raw) > max_bytes
-    html = raw[:max_bytes].decode("utf-8", errors="replace")
+    html, encoding = decode_body(raw[:max_bytes], content_type)
     title, text = strip_html(html)
-    return {"url": url, "title": title, "text": text,
+    # Binary suspicion (review L9): a non-text Content-Type, or NUL
+    # bytes in the body — the sampler flags it instead of stripping a
+    # PDF/image into garbage "text" without a word.
+    main_type = content_type.split(";")[0].strip().lower()
+    binary_suspected = bool(
+        (main_type and not main_type.startswith("text/")
+         and main_type not in ("application/xhtml+xml",))
+        or b"\x00" in raw[:4096])
+    return {"url": url, "final_url": final_url, "title": title, "text": text,
             "word_count": len(text.split()), "truncated": truncated,
+            "encoding": encoding, "binary_suspected": binary_suspected,
             "js_shell_suspected": detect_js_shell(html, text)}
 
 

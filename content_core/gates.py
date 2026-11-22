@@ -36,7 +36,7 @@ from __future__ import annotations
 from .craft import CRAFT_BLOCKING_FORMATS, CRAFT_PASS_SCORE, craft_check_sections
 from .fact_check import check_draft
 from .linter import lint_draft, word_count
-from .loaders import banned_terms as _brand_banned_terms
+from .loaders import brand_check_context as _brand_check_context
 from .quality import evaluate_quality
 
 # The gate constants live HERE now (graph.py and mcp_server.py import
@@ -79,19 +79,14 @@ def evaluate_gate(sections: list[dict], fmt: str, brand: dict, facts: dict,
     # brand's own max sentence length (for the rhythm statistic) come
     # from the brand dict this gate already receives; the MCP
     # final_gate inherits both automatically.
-    brand_id = (brand.get("brand") or {}).get("id")
-    try:
-        max_sentence_words = int(
-            brand["voice"]["sentence_rules"]["max_sentence_words"])
-    except (KeyError, TypeError, ValueError):
-        max_sentence_words = None
-    # The brand's banned terms go to craft so a sentence carrying one
-    # is excluded from the rhythm statistic (monotonicity, R5
-    # residual) — the gate is the path where that gaming mattered.
-    try:
-        gate_banned_terms = _brand_banned_terms(brand)
-    except (KeyError, TypeError):
-        gate_banned_terms = None
+    # The brand context (id, sentence cap, banned terms) comes from
+    # loaders.brand_check_context — ONE implementation shared with
+    # quality.py (review L2). The brand's banned terms go to craft so
+    # a sentence carrying one is excluded from the rhythm statistic
+    # (monotonicity, R5 residual) — the gate is the path where that
+    # gaming mattered.
+    brand_id, max_sentence_words, gate_banned_terms = \
+        _brand_check_context(brand)
     craft = craft_check_sections(sections, fmt, brand_id=brand_id,
                                  max_sentence_words=max_sentence_words,
                                  banned_terms=gate_banned_terms)
@@ -136,8 +131,16 @@ def evaluate_gate(sections: list[dict], fmt: str, brand: dict, facts: dict,
         if profile is None:
             from .quality import preset_profile
             profile = preset_profile(fmt)
-        quality = evaluate_quality(sections, fmt, profile, judged, brand, facts,
-                                   style_profile=style_profile, brief=brief)
+        # The quality layer REUSES this gate's own checker results
+        # (review M4): lint_draft/check_draft were just run on these
+        # exact sections — re-running them inside evaluate_quality
+        # doubled the gate's cost on long drafts for identical numbers.
+        quality = evaluate_quality(
+            sections, fmt, profile, judged, brand, facts,
+            style_profile=style_profile, brief=brief,
+            _precomputed={"fact_issues": issues, "fact_flagged": flagged,
+                          "brand_violations": violations,
+                          "brand_score": brand_score})
 
     passed = (hard_passed and not craft_failed
               and (quality is None or quality["quality_pass"]))
