@@ -33,7 +33,16 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "plan_images", "set_image", "image_check",
                   "record_vision_check", "get_image_manifest",
                   "add_library_image", "list_library_images",
-                  "fulfil_images_from_library"}
+                  "fulfil_images_from_library",
+                  "list_drafts", "delete_draft",
+                  "create_research_pack", "add_pack_source",
+                  "build_pack_proposals", "propose_pack_item", "get_pack",
+                  "decide_pack_item", "resolve_contradiction", "apply_pack",
+                  "register_corpus", "list_corpora", "get_corpus",
+                  "set_corpus_choice", "get_corpus_choice",
+                  "import_taste_articles", "mark_article_verdict",
+                  "build_taste_profile", "get_taste_status",
+                  "export_core_data", "list_backups"}
 
 CLEAN_TEXT = (
     "Mộc Brew rang cà phê vào thứ Ba hàng tuần cho bạn. "

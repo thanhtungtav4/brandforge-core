@@ -1,0 +1,11 @@
+{
+  "id": "mien-tay-van-hoa",
+  "version": 1,
+  "title": "Văn hoá – du lịch miền Tây (báo chí)",
+  "kind": "press",
+  "profile_id": "mien-tay-van-hoa-voice",
+  "legitimacy_basis": "32 bài từ 7 nguồn báo/tạp chí chính thống (VOV, Heritage, Dân Việt, Amazing Vietnam, Sóng Trẻ, VietnamPlus, TITC). Chỉ trích xuất thống kê + đặc điểm văn phong; không lưu đoạn trích (store_excerpts=False).",
+  "word_count": 39619,
+  "sample_count": 32,
+  "status": "active"
+}

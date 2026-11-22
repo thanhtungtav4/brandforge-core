@@ -830,3 +830,323 @@ def list_image_library(brand_id: str) -> list[dict]:
     The brand id is validated at the boundary like every store."""
     stored_file_stem(brand_id)  # raises ValueError for unusable ids
     return load_image_library(brand_id)["images"]
+
+
+def _utc_now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# --- Research packs (specs/research-config-feature.md) ---
+# The pack is the ONE new core artefact of the research &
+# configuration feature: a per-brand PRE-APPROVAL store. Nothing in a
+# pack is live configuration — items become live only when apply
+# writes them through the existing save paths (save_brand_draft /
+# save_facts / save_style_profile / persona files / corpus choices).
+# One JSON per brand at data/research_packs/<brand-id>.json; tests
+# point CONTENT_CORE_RESEARCH_PACKS_DIR at a tmp dir.
+
+PACK_ITEM_KINDS = ("brand_rule", "fact", "style_candidate",
+                   "persona_frame", "corpus_choice")
+PACK_ITEM_STATUSES = ("proposed", "approved", "edited", "rejected",
+                      "applied")
+PACK_SOURCE_KINDS = ("own", "competitor", "genre", "factual")
+
+
+def research_packs_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_RESEARCH_PACKS_DIR")
+    return Path(override) if override else DATA_DIR / "research_packs"
+
+
+def _research_pack_path(brand_id: str) -> Path:
+    return research_packs_dir() / f"{stored_file_stem(brand_id)}.json"
+
+
+def validate_research_pack(pack: dict) -> dict:
+    """Schema-check a research pack BEFORE it is persisted (the
+    save_facts / save_brand_draft discipline). Required: brand_id;
+    sources / items / contradictions / quality_rejections are lists
+    of objects; every item carries a known kind + status; every FACT
+    item carries a provenance source_url (spec US-1: a fact item
+    without a source URL must not exist in a pack). Raises ValueError;
+    returns the pack."""
+    if not isinstance(pack, dict):
+        raise ValueError("research pack must be an object")
+    if not str(pack.get("brand_id") or "").strip():
+        raise ValueError("research pack needs a non-empty brand_id")
+    for key in ("sources", "items", "contradictions", "quality_rejections"):
+        entries = pack.get(key, [])
+        if not isinstance(entries, list) \
+                or not all(isinstance(e, dict) for e in entries):
+            raise ValueError(f"research pack {key} must be a list of objects")
+    for item in pack.get("items", []):
+        if item.get("kind") not in PACK_ITEM_KINDS:
+            raise ValueError(
+                f"pack item kind must be one of {PACK_ITEM_KINDS}, "
+                f"got {item.get('kind')!r}")
+        if item.get("status") not in PACK_ITEM_STATUSES:
+            raise ValueError(
+                f"pack item status must be one of {PACK_ITEM_STATUSES}, "
+                f"got {item.get('status')!r}")
+        if not isinstance(item.get("payload"), dict):
+            raise ValueError("pack item payload must be an object")
+        provenance = item.get("provenance")
+        if not isinstance(provenance, dict):
+            raise ValueError("pack item provenance must be an object")
+        if item["kind"] == "fact" \
+                and not str(provenance.get("source_url") or "").strip():
+            raise ValueError(
+                "fact items need a provenance source_url (spec US-1: "
+                "a fact without a source must not exist in a pack)")
+    for source in pack.get("sources", []):
+        if source.get("kind") not in PACK_SOURCE_KINDS:
+            raise ValueError(
+                f"pack source kind must be one of {PACK_SOURCE_KINDS}, "
+                f"got {source.get('kind')!r}")
+    return pack
+
+
+def save_research_pack(pack: dict) -> dict:
+    """Validate + persist a research pack (atomic write). Returns it."""
+    validate_research_pack(pack)
+    pack["updated_at"] = _utc_now()
+    atomic_write_text(_research_pack_path(pack["brand_id"]),
+                      json.dumps(pack, ensure_ascii=False, indent=2))
+    return pack
+
+
+def load_research_pack(brand_id: str) -> dict | None:
+    """Return the stored pack for a brand, or None. Stored shape is
+    validated like every other store (review M7)."""
+    path = _research_pack_path(brand_id)
+    if not path.exists():
+        return None
+    return _require_stored_object(_load_json_file(path), path,
+                                  "research pack", required="brand_id")
+
+
+def list_research_packs() -> list[dict]:
+    """Summaries of every stored pack: brand_id, version, item counts.
+    Corrupt files are listed as corrupt, never silently skipped."""
+    d = research_packs_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        try:
+            pack = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(pack, dict):
+                raise ValueError("not a JSON object")
+        except (json.JSONDecodeError, OSError, ValueError):
+            out.append({"brand_id": path.stem, "corrupt": True})
+            continue
+        out.append({"brand_id": pack.get("brand_id", path.stem),
+                    "version": pack.get("version", 1),
+                    "items": len(pack.get("items", [])),
+                    "corrupt": False})
+    return out
+
+
+# --- Corpus registry (system-level, Smith's decision 2026-11-22) ---
+# Genre corpora are registered ONCE at system level; brands then
+# CHOOSE a corpus (see corpus choices below) and the AI uses the
+# chosen corpus's distilled style profile as the reference sample set.
+# The registry records provenance for the corpus itself: what it is,
+# which style profile it feeds, the legitimacy basis for using it,
+# and its measured size. One JSON per corpus at
+# data/corpus_registry/<corpus-id>.json; tests point
+# CONTENT_CORE_CORPUS_REGISTRY_DIR at a tmp dir.
+
+CORPUS_KINDS = ("press", "literature", "genre", "other")
+
+
+def corpus_registry_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_CORPUS_REGISTRY_DIR")
+    return Path(override) if override else DATA_DIR / "corpus_registry"
+
+
+def _corpus_entry_path(corpus_id: str) -> Path:
+    return corpus_registry_dir() / f"{stored_file_stem(corpus_id)}.json"
+
+
+def validate_corpus_entry(entry: dict) -> dict:
+    """Schema-check a corpus registry entry BEFORE it is persisted.
+    Required: id, version (positive int), title, kind, profile_id
+    (the style profile the corpus feeds), legitimacy_basis (why the
+    corpus may be used — a corpus without a recorded basis must not
+    be registered), word_count (non-negative int). Raises ValueError;
+    returns the entry."""
+    if not isinstance(entry, dict):
+        raise ValueError("corpus entry must be an object")
+    if not str(entry.get("id") or "").strip():
+        raise ValueError("corpus entry needs a non-empty id")
+    version = entry.get("version")
+    if not (isinstance(version, int) and not isinstance(version, bool)
+            and version > 0):
+        raise ValueError("corpus entry version must be a positive int")
+    for key in ("title", "profile_id", "legitimacy_basis"):
+        if not str(entry.get(key) or "").strip():
+            raise ValueError(f"corpus entry needs a non-empty {key}")
+    if entry.get("kind") not in CORPUS_KINDS:
+        raise ValueError(
+            f"corpus kind must be one of {CORPUS_KINDS}, "
+            f"got {entry.get('kind')!r}")
+    words = entry.get("word_count")
+    if not (isinstance(words, int) and not isinstance(words, bool)
+            and words >= 0):
+        raise ValueError("corpus entry word_count must be a non-negative int")
+    return entry
+
+
+def save_corpus_entry(entry: dict) -> dict:
+    """Validate + persist a registry entry (atomic write)."""
+    validate_corpus_entry(entry)
+    atomic_write_text(_corpus_entry_path(entry["id"]),
+                      json.dumps(entry, ensure_ascii=False, indent=2))
+    return entry
+
+
+def load_corpus_entry(corpus_id: str) -> dict | None:
+    """Return the registry entry for a corpus, or None."""
+    path = _corpus_entry_path(corpus_id)
+    if not path.exists():
+        return None
+    return _require_stored_object(_load_json_file(path), path,
+                                  "corpus entry", required="id")
+
+
+def list_corpus_entries() -> list[dict]:
+    """Every registered corpus entry (full records — the registry is
+    small and reference data). Corrupt files are listed as corrupt."""
+    d = corpus_registry_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        try:
+            entry = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(entry, dict):
+                raise ValueError("not a JSON object")
+        except (json.JSONDecodeError, OSError, ValueError):
+            out.append({"id": path.stem, "corrupt": True})
+            continue
+        entry.setdefault("corrupt", False)
+        out.append(entry)
+    return out
+
+
+# --- Brand corpus choices ---
+# The per-brand half of the corpus decision: which registered corpus
+# (and version) a brand has chosen, and which style profile that
+# resolves to. One JSON per brand at
+# data/corpus_choices/<brand-id>.json; tests point
+# CONTENT_CORE_CORPUS_CHOICES_DIR at a tmp dir. assemble_context reads
+# the choice as a DEFAULT style profile only — an explicit
+# style_profile_id in the brief always wins.
+
+def corpus_choices_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_CORPUS_CHOICES_DIR")
+    return Path(override) if override else DATA_DIR / "corpus_choices"
+
+
+def _corpus_choice_path(brand_id: str) -> Path:
+    return corpus_choices_dir() / f"{stored_file_stem(brand_id)}.json"
+
+
+def save_corpus_choice(brand_id: str, choice: dict) -> dict:
+    """Validate + persist a brand's corpus choice. The choice records
+    corpus_id, version and the resolved profile_id so the default is
+    stable even if the registry entry is later edited. Returns it."""
+    if not isinstance(choice, dict):
+        raise ValueError("corpus choice must be an object")
+    if not str(choice.get("corpus_id") or "").strip():
+        raise ValueError("corpus choice needs a corpus_id")
+    if not str(choice.get("profile_id") or "").strip():
+        raise ValueError("corpus choice needs a profile_id")
+    record = {"brand_id": brand_id,
+              "corpus_id": choice["corpus_id"],
+              "version": choice.get("version"),
+              "profile_id": choice["profile_id"],
+              "source": choice.get("source", "direct"),
+              "set_at": _utc_now()}
+    atomic_write_text(_corpus_choice_path(brand_id),
+                      json.dumps(record, ensure_ascii=False, indent=2))
+    return record
+
+
+def load_corpus_choice(brand_id: str) -> dict | None:
+    """Return the brand's stored corpus choice, or None. When no
+    choice record exists, a brand DRAFT carrying a `corpus_choice`
+    key is honoured as a fallback (the choice stamped onto the
+    brand's config at apply time)."""
+    path = _corpus_choice_path(brand_id)
+    if path.exists():
+        return _require_stored_object(_load_json_file(path), path,
+                                      "corpus choice", required="corpus_id")
+    draft = load_brand_draft(brand_id)
+    if draft is not None and isinstance(draft.get("corpus_choice"), dict) \
+            and draft["corpus_choice"].get("corpus_id"):
+        return draft["corpus_choice"]
+    return None
+
+
+# --- Taste stores (learning loop, core side) ---
+# Per-brand record of the OWNER's verdicts on finished articles:
+# approved unchanged, or edited (both versions kept — the diff is the
+# learning signal). Imported-but-unmarked articles sit at verdict
+# "pending": they are candidates, NOT approvals, and never feed a
+# taste profile until the owner marks them. One JSON per brand at
+# data/taste/<brand-id>.json; tests point CONTENT_CORE_TASTE_DIR at a
+# tmp dir.
+
+TASTE_VERDICTS = ("pending", "approved_unchanged", "edited")
+
+
+def taste_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_TASTE_DIR")
+    return Path(override) if override else DATA_DIR / "taste"
+
+
+def _taste_path(brand_id: str) -> Path:
+    return taste_dir() / f"{stored_file_stem(brand_id)}.json"
+
+
+def validate_taste_doc(doc: dict) -> dict:
+    """Schema-check a taste document BEFORE it is persisted. Required:
+    brand_id; entries a list of objects each carrying a known verdict
+    and the article text snapshot. Raises ValueError; returns doc."""
+    if not isinstance(doc, dict):
+        raise ValueError("taste document must be an object")
+    if not str(doc.get("brand_id") or "").strip():
+        raise ValueError("taste document needs a non-empty brand_id")
+    entries = doc.get("entries", [])
+    if not isinstance(entries, list) \
+            or not all(isinstance(e, dict) for e in entries):
+        raise ValueError("taste entries must be a list of objects")
+    for entry in entries:
+        if entry.get("verdict") not in TASTE_VERDICTS:
+            raise ValueError(
+                f"taste verdict must be one of {TASTE_VERDICTS}, "
+                f"got {entry.get('verdict')!r}")
+        if not str(entry.get("text") or "").strip():
+            raise ValueError("taste entry needs the article text snapshot")
+    return doc
+
+
+def save_taste_doc(doc: dict) -> dict:
+    """Validate + persist a taste document (atomic write)."""
+    validate_taste_doc(doc)
+    atomic_write_text(_taste_path(doc["brand_id"]),
+                      json.dumps(doc, ensure_ascii=False, indent=2))
+    return doc
+
+
+def load_taste_doc(brand_id: str) -> dict | None:
+    """Return the brand's taste document, or None when the brand has
+    no taste store yet."""
+    path = _taste_path(brand_id)
+    if not path.exists():
+        return None
+    return _require_stored_object(_load_json_file(path), path,
+                                  "taste document", required="brand_id")
+

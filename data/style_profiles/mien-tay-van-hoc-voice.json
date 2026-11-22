@@ -1,0 +1,353 @@
+{
+  "id": "mien-tay-van-hoc-voice",
+  "name": "Văn học miền Tây — giọng kể của người trong cuộc",
+  "brand_id": "mambagiaokhoe",
+  "algorithm_version": 2,
+  "created_from": {
+    "sample_count": 31,
+    "total_words": 95507
+  },
+  "fingerprint": {
+    "word_count": 95507,
+    "sentence_count": 5397,
+    "sentence_len": {
+      "median": 14.0,
+      "mean": 17.72,
+      "stdev": 14.98
+    },
+    "short_sentence_share": 0.18,
+    "long_sentence_share": 0.33,
+    "paragraph_len_median": 25.0,
+    "question_rate": 8.93,
+    "exclamation_rate": 6.43,
+    "first_person_rate": 2.05,
+    "reader_rate": 0.07,
+    "number_density": 0.1,
+    "transition_freq": [
+      {
+        "term": "nhưng",
+        "count": 287
+      },
+      {
+        "term": "sau đó",
+        "count": 19
+      },
+      {
+        "term": "cuối cùng",
+        "count": 17
+      },
+      {
+        "term": "đầu tiên",
+        "count": 14
+      },
+      {
+        "term": "đặc biệt",
+        "count": 13
+      },
+      {
+        "term": "nhất là",
+        "count": 7
+      },
+      {
+        "term": "tuy nhiên",
+        "count": 5
+      },
+      {
+        "term": "vì vậy",
+        "count": 4
+      },
+      {
+        "term": "hóa ra",
+        "count": 2
+      },
+      {
+        "term": "thực ra",
+        "count": 1
+      }
+    ],
+    "type_token_ratio": 0.67,
+    "top_words": [
+      {
+        "word": "tôi",
+        "count": 1480
+      },
+      {
+        "word": "ông",
+        "count": 634
+      },
+      {
+        "word": "nó",
+        "count": 579
+      },
+      {
+        "word": "nói",
+        "count": 518
+      },
+      {
+        "word": "bà",
+        "count": 391
+      },
+      {
+        "word": "anh",
+        "count": 374
+      },
+      {
+        "word": "hai",
+        "count": 372
+      },
+      {
+        "word": "nhà",
+        "count": 365
+      },
+      {
+        "word": "mình",
+        "count": 348
+      },
+      {
+        "word": "nước",
+        "count": 331
+      },
+      {
+        "word": "em",
+        "count": 312
+      },
+      {
+        "word": "ăn",
+        "count": 300
+      },
+      {
+        "word": "thấy",
+        "count": 298
+      },
+      {
+        "word": "tay",
+        "count": 297
+      },
+      {
+        "word": "năm",
+        "count": 297
+      }
+    ]
+  },
+  "consistency_warnings": [
+    "samples diverge on sentence_median (CV 0.4 > 0.35) — possibly mixed authors",
+    "samples diverge on sentence_stdev (CV 0.46 > 0.35) — possibly mixed authors",
+    "samples diverge on first_person_rate (CV 0.63 > 0.35) — possibly mixed authors"
+  ],
+  "consistency_detail": {
+    "divergence_cv": {
+      "sentence_median": 0.4,
+      "sentence_stdev": 0.46,
+      "first_person_rate": 0.63
+    },
+    "per_sample": [
+      {
+        "sentence_median": 21.0,
+        "sentence_stdev": 11.76,
+        "first_person_rate": 2.98
+      },
+      {
+        "sentence_median": 15.0,
+        "sentence_stdev": 9.65,
+        "first_person_rate": 2.63
+      },
+      {
+        "sentence_median": 16.0,
+        "sentence_stdev": 18.02,
+        "first_person_rate": 3.66
+      },
+      {
+        "sentence_median": 15.0,
+        "sentence_stdev": 11.29,
+        "first_person_rate": 3.96
+      },
+      {
+        "sentence_median": 16.0,
+        "sentence_stdev": 11.09,
+        "first_person_rate": 3.79
+      },
+      {
+        "sentence_median": 12.0,
+        "sentence_stdev": 9.19,
+        "first_person_rate": 0.77
+      },
+      {
+        "sentence_median": 11.0,
+        "sentence_stdev": 7.39,
+        "first_person_rate": 1.84
+      },
+      {
+        "sentence_median": 11.0,
+        "sentence_stdev": 7.14,
+        "first_person_rate": 2.36
+      },
+      {
+        "sentence_median": 9.0,
+        "sentence_stdev": 7.02,
+        "first_person_rate": 1.96
+      },
+      {
+        "sentence_median": 13.0,
+        "sentence_stdev": 12.97,
+        "first_person_rate": 2.65
+      },
+      {
+        "sentence_median": 11.0,
+        "sentence_stdev": 11.89,
+        "first_person_rate": 2.96
+      },
+      {
+        "sentence_median": 13.0,
+        "sentence_stdev": 19.29,
+        "first_person_rate": 2.36
+      },
+      {
+        "sentence_median": 15.0,
+        "sentence_stdev": 13.77,
+        "first_person_rate": 3.73
+      },
+      {
+        "sentence_median": 12.0,
+        "sentence_stdev": 9.9,
+        "first_person_rate": 0.66
+      },
+      {
+        "sentence_median": 9.0,
+        "sentence_stdev": 9.28,
+        "first_person_rate": 2.94
+      },
+      {
+        "sentence_median": 19.0,
+        "sentence_stdev": 15.42,
+        "first_person_rate": 0.3
+      },
+      {
+        "sentence_median": 29.0,
+        "sentence_stdev": 21.09,
+        "first_person_rate": 0.38
+      },
+      {
+        "sentence_median": 42.0,
+        "sentence_stdev": 33.46,
+        "first_person_rate": 0.79
+      },
+      {
+        "sentence_median": 27.5,
+        "sentence_stdev": 31.07,
+        "first_person_rate": 1.74
+      },
+      {
+        "sentence_median": 22.0,
+        "sentence_stdev": 15.82,
+        "first_person_rate": 1.99
+      },
+      {
+        "sentence_median": 13.0,
+        "sentence_stdev": 13.55,
+        "first_person_rate": 0.97
+      },
+      {
+        "sentence_median": 17.0,
+        "sentence_stdev": 12.08,
+        "first_person_rate": 1.78
+      },
+      {
+        "sentence_median": 16.0,
+        "sentence_stdev": 12.21,
+        "first_person_rate": 0.64
+      },
+      {
+        "sentence_median": 13.0,
+        "sentence_stdev": 9.74,
+        "first_person_rate": 0.54
+      },
+      {
+        "sentence_median": 23.0,
+        "sentence_stdev": 14.73,
+        "first_person_rate": 2.44
+      },
+      {
+        "sentence_median": 10.0,
+        "sentence_stdev": 11.81,
+        "first_person_rate": 1.23
+      },
+      {
+        "sentence_median": 16.0,
+        "sentence_stdev": 9.12,
+        "first_person_rate": 5.4
+      },
+      {
+        "sentence_median": 13.0,
+        "sentence_stdev": 8.54,
+        "first_person_rate": 1.67
+      },
+      {
+        "sentence_median": 17.0,
+        "sentence_stdev": 9.69,
+        "first_person_rate": 0.12
+      },
+      {
+        "sentence_median": 21.0,
+        "sentence_stdev": 11.0,
+        "first_person_rate": 1.05
+      },
+      {
+        "sentence_median": 19.0,
+        "sentence_stdev": 10.63,
+        "first_person_rate": 4.25
+      }
+    ]
+  },
+  "qualitative": {
+    "tone_traits": [
+      {
+        "trait": "người trong cuộc kể chuyện xứ mình",
+        "do": "kể như người sinh ra ở xứ đó: biết việc, biết mùa nước, biết tính người; xưng tôi/em tự nhiên, không giới thiệu quê mình cho người lạ",
+        "dont": "không đứng ngoài quan sát như phóng viên, không thuyết minh du lịch, không 'đưa bạn đến với...'"
+      },
+      {
+        "trait": "chậm rãi, tin vào chi tiết",
+        "do": "để một cảnh, một việc nhỏ tự nói điều lớn; gọi đúng tên con cá, thứ rau, món đồ nghề trước mắt",
+        "dont": "không chồng tính từ, không kết luận to tát thay cho chi tiết, không gắn nhãn xứ sở lặp đi lặp lại"
+      },
+      {
+        "trait": "hài hước khô và thương người",
+        "do": "cười bằng một câu hạ giọng cuối đoạn; thương người qua việc họ làm và cách họ nói, không qua lời bình",
+        "dont": "không châm biếm cay nghiệt, không ủy mị khóc lóc, không rao giảng đạo lý"
+      },
+      {
+        "trait": "phương ngữ là giọng của người kể, không phải gia vị rắc đều",
+        "do": "người kể dùng thưa các từ thân mật (ổng, bả, gởi, nè, hông) — corpus 95,5 nghìn từ đo được khoảng 0,9/1.000 từ trong lời dẫn; nhân vật nói tiếng của họ trong lời thoại",
+        "dont": "không rải hổng/nghen/hén khắp bài; không bắt mọi câu dẫn đều mang thổ ngữ"
+      }
+    ],
+    "opening_patterns": [
+      "Mở thẳng vào một cảnh đang diễn ra: mùa nước về, một buổi sớm, một việc nhà đang làm dở — không lời chào, không câu hỏi khơi gợi",
+      "Mở bằng thói quen của cả xóm, cả xứ (cách liệt kê 'bởi... cũng có') rồi mới thu về một nhà, một người, một món",
+      "Mở bằng mốc thời gian và một việc cụ thể, như người kể chuyện bắt đầu bằng 'hồi đó, vào một buổi trưa...'"
+    ],
+    "closing_patterns": [
+      "Khép bằng một hình ảnh nhỏ và yên: tiếng gió, mặt nước, gian bếp sau hè — để dư âm tự ở lại, không tổng kết",
+      "Khép bằng một câu hạ giọng, hơi hóm hỉnh hoặc hơi buồn",
+      "Với bài của tiệm: khép bằng ký ức quê của người kể, không bằng lời kêu gọi mua hàng"
+    ],
+    "signature_devices": [
+      "Gọi đúng tên sự vật của xứ trước mắt: con nước, khạp, ghe, rạch, tên cá, tên rau đồng — cụ thể thay vì nhãn chung chung",
+      "Câu ngắn 3-8 từ chen giữa câu dài để ngắt nhịp, như người kể dừng lấy hơi (corpus: khoảng 18% câu ngắn, trung vị câu 14 từ, độ lệch chuẩn 15)",
+      "Âm thanh đi trước hình ảnh: nghe tiếng nước, tiếng chim, tiếng người gọi nhau rồi mới thấy cảnh",
+      "Người kể gọi nhân vật bằng ổng, bả, thầy, dì — như kể chuyện xóm mình cho người quen nghe",
+      "Chuyện trôi theo cảnh và thời gian, gần như không dùng từ nối luận văn (tuy nhiên, vì vậy, tóm lại)"
+    ],
+    "stance": "Người kể là người trong cuộc: sinh ở xứ, làm cùng nghề, ăn cùng mâm. Trong corpus không có người dẫn chuyện ngoài cuộc — Đoàn Giỏi kể bằng mắt đứa trẻ lưu lạc, Sơn Nam bằng giọng người kể chuyện xóm, Nguyễn Ngọc Tư bằng 'chúng tôi' của một gia đình làm ruộng, Vương Hồng Sển bằng ông già ly hương nhớ quê. Giọng kể tin người đọc: không giải thích miền Tây cho người ngoài, không bán xứ sở của mình.",
+    "never_do": [
+      "Không rải từ phương ngữ (hổng, nghen, hén, chớ) đều khắp lời dẫn — văn học thật tổng khoảng 1,8/1.000 từ ở các tác giả hiện đại (2,8/1.000 khi tính cả văn xuôi đầu thế kỷ XX, phần tăng nằm ở lời thoại), riêng lời dẫn chỉ khoảng 0,9/1.000 từ, và phần lớn nằm trong lời thoại",
+      "Không lặp từ khóa du lịch (chợ nổi, mùa nước nổi, sông nước) làm màu nền — văn học gọi đúng tên sự vật trước mắt",
+      "Không dùng từ nối luận văn để đẩy ý; để cảnh và việc tự nối nhau",
+      "Không chồng tính từ cảm quan — một chi tiết đúng (một tiếng, một mùi, một màu) hơn năm tính từ",
+      "Không kết bài bằng khẩu hiệu hay kêu gọi mua hàng; không siêu việt hóa món ăn (ngon nhất, số một, đẳng cấp)",
+      "Không viết đoạn văn dài đều tăm tắp kiểu báo chí — đoạn văn học ngắn (trung vị khoảng 25 từ), xen đoạn một câu"
+    ]
+  },
+  "exemplars": [],
+  "excerpts_note": "excerpts not stored — fingerprint + distilled traits only (default; use store_excerpts=True only for your own/licensed samples)"
+}

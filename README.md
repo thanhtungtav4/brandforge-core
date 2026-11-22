@@ -635,7 +635,7 @@ any host app's model can be the writer; the core stays the referee.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Tools (39)
+### Tools (60)
 
 | Tool | What it does |
 |---|---|
@@ -678,6 +678,25 @@ any host app's model can be the writer; the core stays the referee.
 | `add_library_image(brand_id, ref, description, tags?, source?)` | Images: add one image to a brand's own image library (`data/image_library/<brand-id>/`, refs only). The description is what ranking and alt suggestions read |
 | `list_library_images(brand_id)` | Images: list a brand's library entries |
 | `fulfil_images_from_library(draft_id)` | Images: library-first fulfilment — rank the draft brand's library per slot by token overlap, fulfil above the match threshold (one entry never serves two slots), report the rest as `needs_generation` with style-locked prompts |
+| `list_drafts()` | Draft admin: every stored draft (draft_id, brand, status, updated); corrupt files listed as corrupt, never skipped |
+| `delete_draft(draft_id, confirm?)` | Draft admin: delete one draft under the per-draft lock; an APPROVED draft requires `confirm=True` |
+| `create_research_pack(brand_id)` | Research pack: create (or version-bump) a brand's pre-approval setup store — sources, proposed items, contradictions, quality rejections. Never touches live config |
+| `add_pack_source(brand_id, url, kind, …)` | Research pack: record one gathered source with its legitimacy basis and quality verdict; a reject verdict also lands in `quality_rejections[]`. Fetched `pages` ride on own sources (the server never fetches) |
+| `build_pack_proposals(brand_id)` | Research pack: deterministic proposals from accepted own sources — one brand_rule item + one fact item per needs-evidence site claim |
+| `propose_pack_item(brand_id, kind, payload, provenance, reference?)` | Research pack: propose one item (brand_rule / fact / style_candidate / persona_frame / corpus_choice) with provenance; a fact without `source_url` is refused; competing facts spawn a contradiction |
+| `get_pack(brand_id)` | Research pack: the full pack + counts by status/kind + open-contradiction count (the review checklist in one call) |
+| `decide_pack_item(brand_id, item_id, decision, edited_payload?, note?)` | Research pack: the owner's MANUAL per-item decision — approve / edit (edited payload stored, original kept for audit) / reject. No bulk approval exists, by design. Items locked by an open contradiction cannot be decided |
+| `resolve_contradiction(brand_id, contradiction_id, chosen_item_id, note?)` | Research pack: close a contradiction by choosing one item — chosen becomes approved, the rest are rejected and survive only as pack history |
+| `apply_pack(brand_id)` | Research pack: apply approved/edited items into live stores through the existing save paths. Invariants: proposed/rejected never apply; open-contradiction items blocked; reference material refused (brand drafts fail at the `draft_to_brand_yaml` gate); style items forced `store_excerpts=False`; idempotent; returns exactly which ids landed |
+| `register_corpus(corpus_id, version, title, kind, profile_id, legitimacy_basis, word_count, sample_count?)` | Corpus registry: register a genre corpus ONCE at system level; a corpus without a recorded legitimacy basis cannot register; re-registering an id is an error (a revision is a new version decision) |
+| `list_corpora()` / `get_corpus(corpus_id)` | Corpus registry: list / read registered corpora |
+| `set_corpus_choice(brand_id, corpus_id)` / `get_corpus_choice(brand_id)` | Corpus registry: a brand's corpus choice (corpus id + pinned version + resolved profile). `assemble_context` defaults a brand's style profile from its choice when the brief names the brand without an explicit `style_profile_id` — explicit choice always wins |
+| `import_taste_articles(brand_id, file_refs)` | Taste layer: import finished article files as PENDING entries — candidates only, never learned from until the owner marks them |
+| `mark_article_verdict(brand_id, verdict, draft_id? / file_ref?, edited_text?, note?)` | Taste layer: the OWNER's verdict on one article — `approved_unchanged` or `edited` (edited requires the edited text; BOTH versions are kept, the diff is the signal). Only the owner gives verdicts |
+| `build_taste_profile(brand_id)` | Taste layer: with ≥3 verdicted articles, distil them into the brand's taste profile (`<brand-id>-taste-voice`). `store_excerpts=True` is legitimate here and only here — the samples are the owner's own articles |
+| `get_taste_status(brand_id)` | Taste layer: verdict counts + whether a taste profile exists and what it was built from |
+| `export_core_data()` | Backup: snapshot ALL local stores into one timestamped zip under `backups/` with a manifest (per-store counts, per-file sha256); credential-pattern files are excluded and recorded in the manifest |
+| `list_backups()` | Backup: list archives (newest first) with manifest summaries; an unreadable archive is listed as corrupt, never skipped |
 
 ### Article images (hybrid library-first + style lock + vision grades)
 
@@ -754,13 +773,95 @@ plans, checks and packages (`content_core/images.py`, pure):
   result is exactly what its text earns. The LangGraph flow is
   unchanged. Demo: `.venv/bin/python demo_images.py`.
 
+### Research pack — setup with approval (core side)
+
+The setup-phase feature from `specs/research-config-feature.md`,
+built on the core side (the Astryx checklist UI is P3): AI-assisted
+research gathers sources and drafts a brand's configuration, and
+the owner approves **item by item** before anything goes live.
+The only new artefact is the **research pack** — one JSON per brand
+at `data/research_packs/<brand-id>.json` (loaders house pattern:
+validated ids, atomic writes, schema-checked on load; gitignored
+live data):
+
+- `sources[]` — every gathered source with kind (own / competitor /
+  genre / factual), its legitimacy basis and the quality gate's
+  verdict; rejections carry their reason and are mirrored into
+  `quality_rejections[]`.
+- `items[]` — proposed configuration (brand_rule / fact /
+  style_candidate / persona_frame / corpus_choice), each with
+  payload + provenance `{source_url, note}` and status
+  `proposed → approved | edited | rejected → applied`. A fact item
+  without a `source_url` cannot exist (US-1). An edit stores the
+  edited payload and keeps the original for audit.
+- `contradictions[]` — two fact items competing for the same field
+  with different values spawn a contradiction; both items lock
+  (no decide, no apply) until `resolve_contradiction` picks one —
+  the loser is rejected and survives only as pack history (US-2).
+
+`apply_pack` is the only door into live configuration, and it goes
+through the EXISTING save paths (brand draft, facts profile, style
+profile, persona file, corpus choice). Its invariants are pinned
+by tests: only approved/edited items land; the applied-id set
+cross-checks equal to the approved set; re-applying is idempotent;
+reference material is refused (brand drafts fail at the
+`draft_to_brand_yaml` conversion gate, US-3); style items are
+saved with `store_excerpts=False` whatever the payload asked
+(US-4). There is deliberately **no bulk-approve tool** — Smith's
+standing rule is manual per-item approval in admin.
+
+### Corpus registry — genre corpora at system level
+
+Genre corpora are registered **once, at system level**
+(`data/corpus_registry/`), never copied per brand: id, version,
+title, kind, the style profile the corpus feeds, its legitimacy
+basis (registration refuses a corpus without one) and measured
+size. The two trial corpora are the first entries:
+`mien-tay-van-hoa` v1 (press, 39,619 words) and `mien-tay-van-hoc`
+v2 (literature, 95,507 words). Each brand **chooses** a corpus and
+pins its version (a pack `corpus_choice` item, or
+`set_corpus_choice` directly); `assemble_context` then defaults
+the brand's style profile from the choice when a brief names the
+brand without an explicit `style_profile_id`. The pin is the
+control: a shared-corpus update never silently shifts a brand —
+the explicit brief choice always wins over the default.
+
+### Taste layer — the learning loop, core side
+
+The system gets smarter only through the owner's verdicts, never
+silently. Per brand, `data/taste/<brand-id>.json` holds finished
+articles the owner has marked: `approved_unchanged`, or `edited`
+with BOTH versions kept (the owner's edit is the highest-value
+signal there is). Imported-but-unmarked articles sit at `pending`
+and teach nothing. With ≥3 verdicted articles,
+`build_taste_profile` distils them (via `style.build_profile`)
+into `<brand-id>-taste-voice`, attachable through
+`assemble_context` like any style profile. Excerpts are stored
+for taste profiles — legitimately, and only here: the samples are
+the owner's OWN articles, not a third-party corpus (every other
+profile path forces `store_excerpts=False`).
+
+### Local data backup
+
+`export_core_data` (MCP tool, or
+`.venv/bin/python scripts/export_core_data.py`) snapshots ALL
+local stores — personas, brand files/drafts, facts, style/quality
+profiles, image libraries, research packs, corpus registry +
+choices, taste stores, drafts — into ONE timestamped zip under
+`backups/`, with a `manifest.json` inside (per-store counts,
+per-file sha256) so an archive can be verified without trusting
+it. Files matching credential patterns are excluded and recorded
+in the manifest: the stores hold no credentials by design, and a
+planted one is reported, never silently archived. `list_backups`
+reads the manifests back.
+
 ### Start the server / test it
 
 ```bash
 cd ~/workspace/projects/content-core
 .venv/bin/python mcp_server.py                    # stdio (default) — an MCP client launches this
 .venv/bin/python mcp_server.py --transport http   # streamable HTTP on 127.0.0.1:8765 (localhost only)
-.venv/bin/python test_mcp_client.py     # stdio: initialize + tools/list + 22 end-to-end checks
+.venv/bin/python test_mcp_client.py     # stdio: initialize + tools/list + 24 end-to-end checks
 .venv/bin/python test_mcp_http.py       # http smoke test: start server, list tools, call get_quality_profile
 .venv/bin/python run_model_golden.py    # model-written golden set (MCP mode regression)
 .venv/bin/python -m pytest -q           # full test suite (core + MCP + craft + fact/linter + model golden + quality)
@@ -892,6 +993,10 @@ content_core/  state.py loaders.py writer.py linter.py fact_check.py seo.py
                images.py   (article images: plan / SEO metadata checks /
                             library ranking / style lock / vision grades /
                             WP manifest — pure, no generation inside)
+               research.py   (research pack: sources / items / contradiction
+                              detection + resolution / apply invariants)
+               taste.py   (taste layer: owner verdicts / taste profile build)
+               backup.py   (local data backup: store snapshot zip + manifest)
 data/          persona_linh.json brand_mocbrew.yaml facts_lorebook.json
                craft_library.json exemplars.json domain_glossary.json   (Layer 4)
                model_golden.json   (model-written drafts + expected scores, P2a)
@@ -902,6 +1007,11 @@ data/          persona_linh.json brand_mocbrew.yaml facts_lorebook.json
                brand_drafts/   (Brand Builder drafts, gitignored)
                quality_profiles/   (custom Quality Profiles, gitignored)
                image_library/   (per-brand image libraries, gitignored)
+               research_packs/   (research packs, gitignored)
+               corpus_registry/   (system-level genre corpora, tracked)
+               corpus_choices/   (per-brand corpus choices, gitignored)
+               taste/   (per-brand taste stores, gitignored)
+               persona_an.json   (trial persona: An, 25, Châu Đốc)
 tests/         test_linter.py test_fact_check.py test_gates.py test_golden.py
                test_mcp_server.py test_craft.py test_model_golden.py test_style.py
                test_brand_extract.py   (Brand Builder: kit/voice/claims/drafts/compare/MCP)
@@ -911,6 +1021,9 @@ tests/         test_linter.py test_fact_check.py test_gates.py test_golden.py
                test_core_closing.py test_core_completion.py   (core-completion round)
                test_review_fixes.py   (2026-11-22 code-review round)
                test_images.py   (article images: plan/check/library/vision/MCP)
+               test_core_completion2.py   (core-completion round 2: research
+               pack invariants / corpus registry / taste layer / draft
+               admin / backup)
                fixtures/dinhcao/ fixtures/som/   (two fictional coffee sites, HTML)
                fixtures/jsshell/ fixtures/jsshell2/   (JS-shell site fixtures)
 calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibration
@@ -918,7 +1031,7 @@ calibration/   caonguyenmoc-report.md + work/   (the Cao Nguyên Mộc calibrati
                files are fixtures and which are local-only raw evidence)
 evaluation/    round-1..8 reports + SUMMARY.md + probes/   (the 8-round
                evaluation and its regression probes, all with exit codes)
-mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 39 tools) — the host app's model is the writer, tools are the hands + referee
+mcp_server.py        MCP server (stdio + streamable-http, mcp SDK, 60 tools) — the host app's model is the writer, tools are the hands + referee
 test_mcp_client.py   end-to-end MCP client test over stdio (24 checks)
 test_mcp_http.py     MCP HTTP smoke test (server on a test port, tools/list + get_quality_profile)
 fetch_sample.py      CLI helper: URL -> plain text for Style Extraction (server stays offline)
@@ -928,6 +1041,8 @@ demo_mcp_e2e.py      end-to-end demo: Muse-written product draft through all gat
 demo_mcp_e2e_v2.py   same brief rewritten with Layer 4 craft (craft 85 -> 100)
 demo_brand_builder.py   Brand Builder demo on the fixture sites (draft + refusal + compare)
 demo_images.py       article-images demo: library-first fulfilment + style lock + vision grades + WP manifest (isolated temp stores)
+scripts/export_core_data.py   CLI for the local data backup (same code path as the export_core_data tool)
+backups/             timestamped core-data archives from export_core_data (gitignored)
 drafts/              draft state JSON files created by the MCP tools (gitignored)
 run_golden.py  run_model_golden.py  requirements.txt
 ```

@@ -95,6 +95,16 @@ from content_core.images import suggest_filename as _suggest_filename
 from content_core.loaders import add_image_library_entry as _add_library_image_file
 from content_core.loaders import list_image_library as _list_image_library_file
 from content_core.seo import seo_pass as _seo_pass
+from content_core import research as _research
+from content_core import taste as _taste
+from content_core import backup as _backup
+from content_core.loaders import load_corpus_choice as _load_corpus_choice
+from content_core.loaders import load_corpus_entry as _load_corpus_entry
+from content_core.loaders import list_corpus_entries as _list_corpus_entries
+from content_core.loaders import load_research_pack as _load_research_pack
+from content_core.loaders import save_corpus_choice as _save_corpus_choice
+from content_core.loaders import save_corpus_entry as _save_corpus_entry
+from content_core.loaders import save_research_pack as _save_research_pack
 from content_core.style import analyze_samples as _analyze_samples
 from content_core.style import fingerprint as _fingerprint
 from content_core.style import build_profile as _build_profile
@@ -976,6 +986,11 @@ def assemble_context(brief: dict, format: str | None = None,
     qualitative do/don't + never_do. Without it the context is exactly the
     7 parts above. A requested-but-missing profile is reported in
     `style_profile_error` and the context is built without the part.
+    When NO style_profile_id is given but the brief names a brand that
+    has a recorded corpus choice (corpus registry), that choice's style
+    profile is attached as a DEFAULT and the result's
+    `style_profile_source` says "brand_corpus_choice" (an explicit
+    style_profile_id always wins and reports "brief").
 
     Brand/persona/facts resolution (trial bug 1): EVERYTHING is resolved
     from the brief — brief.brand_id selects that brand's rules and its
@@ -1059,6 +1074,7 @@ def assemble_context(brief: dict, format: str | None = None,
     # Style Extraction: optional style_profile part, after craft_cards.
     style_profile = None
     style_error = None
+    style_profile_source = None
     if style_profile_id:
         try:
             style_profile = _resolve_style_profile(style_profile_id)
@@ -1066,6 +1082,27 @@ def assemble_context(brief: dict, format: str | None = None,
             style_error = str(exc)
         if style_profile is None and style_error is None:
             style_error = f"style profile not found: {style_profile_id}"
+        if style_profile is not None:
+            style_profile_source = "brief"
+    elif brief.get("brand_id"):
+        # Brand corpus-choice DEFAULT (corpus registry, Smith's
+        # decision): when the brief names a brand but no explicit
+        # style profile, the brand's chosen system corpus supplies
+        # the default style profile. It is ONLY a default — the
+        # explicit style_profile_id branch above always wins, and a
+        # brand with no recorded choice gets no style part, exactly
+        # as before.
+        try:
+            choice = _load_corpus_choice(brief["brand_id"])
+        except ValueError:  # corrupt choice record: no default
+            choice = None
+        if choice is not None and choice.get("profile_id"):
+            try:
+                style_profile = _resolve_style_profile(choice["profile_id"])
+            except ValueError as exc:  # corrupt stored profile
+                style_error = str(exc)
+            if style_profile is not None:
+                style_profile_source = "brand_corpus_choice"
 
     parts = [("persona", persona_text), ("brand_rules", brand_text),
              ("craft_cards", craft_text)]
@@ -1087,6 +1124,7 @@ def assemble_context(brief: dict, format: str | None = None,
                    "exemplars": len(exemplars)},
         "style_profile": ({"id": style_profile["id"], "name": style_profile.get("name", "")}
                           if style_profile else None),
+        "style_profile_source": style_profile_source,
         "ordered_context": ordered,
         "context_text": "\n\n".join(
             f"[{i + 1}. {name.upper()}]\n{content}"
@@ -1245,6 +1283,56 @@ def get_draft(draft_id: str) -> dict:
     if error:
         return error
     return draft
+
+
+@mcp.tool()
+def list_drafts() -> dict:
+    """List every stored draft: draft_id, brand (the brief's brand_id,
+    or the server default moc-brew), status, and last-updated time.
+    Corrupt files are listed as corrupt, never silently skipped (the
+    house list discipline)."""
+    out = []
+    for path in sorted(drafts_dir().glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("not a JSON object")
+        except (json.JSONDecodeError, OSError, ValueError):
+            out.append({"draft_id": path.stem, "corrupt": True})
+            continue
+        brief = data.get("brief") if isinstance(data.get("brief"), dict) else {}
+        out.append({
+            "draft_id": data.get("draft_id", path.stem),
+            "brand_id": brief.get("brand_id") or "moc-brew",
+            "status": data.get("status", "drafting"),
+            "title": brief.get("title", ""),
+            "updated": datetime.fromtimestamp(
+                path.stat().st_mtime, timezone.utc).isoformat(
+                    timespec="seconds"),
+            "corrupt": False})
+    return {"drafts": out, "count": len(out)}
+
+
+@mcp.tool()
+def delete_draft(draft_id: str, confirm: bool = False) -> dict:
+    """Delete ONE stored draft, under the per-draft lock. Deleting an
+    APPROVED draft requires confirm=True — approval is the owner's
+    sign-off, so removing it must be a deliberate act, never a
+    default. The per-draft lock file itself is left in place (the
+    lock design never unlinks lock files)."""
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            if draft.get("status") == "approved" and not confirm:
+                return {"error": f"draft {draft_id} is approved — pass "
+                                 f"confirm=True to delete an approved draft",
+                        "draft_id": draft_id}
+            _draft_path(draft_id).unlink()
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"deleted": draft_id, "status_was": draft.get("status", "drafting")}
 
 
 # --------------------------------------------------------------------------
@@ -1906,6 +1994,405 @@ def _final_gate_impl(draft_id: str, quality_profile: str = "",
         gate_result["style_match"] = style_report
         gate_result["style_advisory"] = True
     return gate_result
+
+
+# --------------------------------------------------------------------------
+# Tools — research pack (specs/research-config-feature.md)
+#
+# The setup-phase flow: gather sources into a pack, propose items
+# with provenance, the owner decides item by item (manual — there is
+# deliberately NO bulk-approve tool), and apply_pack is the only door
+# into live configuration. All logic lives in content_core/research.py;
+# these tools are the thin MCP surface over it, in the uniform
+# {"error": ...} dialect.
+# --------------------------------------------------------------------------
+
+def _pack_or_error(brand_id: str) -> tuple[dict | None, dict | None]:
+    """(pack, None) or (None, {"error": ...}) for the pack tools."""
+    try:
+        pack = _load_research_pack(brand_id)
+    except ValueError as exc:  # corrupt stored pack / unusable id
+        return None, {"error": str(exc), "brand_id": brand_id}
+    if pack is None:
+        return None, {"error": f"research pack not found: {brand_id} — "
+                               f"create it first (create_research_pack)",
+                      "brand_id": brand_id}
+    return pack, None
+
+
+@mcp.tool()
+def create_research_pack(brand_id: str) -> dict:
+    """Create the research pack for a brand (the pre-approval store
+    for a brand setup: sources, proposed items, contradictions,
+    quality rejections). Re-creating an existing pack starts a NEW
+    VERSION: prior counts are archived into the pack's history and
+    the item lists reset — live configuration is never touched by
+    creating or re-creating a pack."""
+    try:
+        pack = _research.create_pack(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return {"brand_id": pack["brand_id"], "version": pack["version"],
+            "created_at": pack["created_at"],
+            "history": pack.get("history", [])}
+
+
+@mcp.tool()
+def add_pack_source(brand_id: str, url: str, kind: str,
+                    legitimacy_basis: str = "",
+                    quality_verdict: str = "accept",
+                    quality_reason: str = "",
+                    pages: list | None = None) -> dict:
+    """Record one gathered source in the pack. kind: own / competitor
+    / genre / factual. The quality gate's verdict is recorded with
+    its reason; a "reject" verdict ALSO lands in the pack's
+    quality_rejections[] (spec US-6) and the source contributes
+    nothing downstream. `pages` (fetched page dicts from
+    fetch_site.py) ride on an own source so build_pack_proposals can
+    work from them — this server stays offline and never fetches."""
+    pack, error = _pack_or_error(brand_id)
+    if error:
+        return error
+    try:
+        source = _research.add_source(
+            pack, url, kind, legitimacy_basis=legitimacy_basis,
+            quality_verdict=quality_verdict, quality_reason=quality_reason,
+            pages=pages)
+        _save_research_pack(pack)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return {k: v for k, v in source.items() if k != "pages"} | {
+        "page_count": len(source.get("pages") or [])}
+
+
+@mcp.tool()
+def build_pack_proposals(brand_id: str) -> dict:
+    """Build the deterministic proposals from the pack's accepted OWN
+    sources: one brand_rule item (build_brand_draft over the fetched
+    pages) plus one fact item per site claim flagged needs_evidence.
+    Price/weight/origin facts are proposed individually through
+    propose_pack_item — contradiction detection runs on every
+    proposal, whoever made it."""
+    pack, error = _pack_or_error(brand_id)
+    if error:
+        return error
+    try:
+        result = _research.build_proposals(pack)
+        _save_research_pack(pack)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return {"brand_id": brand_id, **result,
+            "counts": _research.pack_counts(pack)}
+
+
+@mcp.tool()
+def propose_pack_item(brand_id: str, kind: str, payload: dict,
+                      provenance: dict, reference: bool = False) -> dict:
+    """Propose ONE configuration item into the pack (status:
+    proposed). kind: brand_rule / fact / style_candidate /
+    persona_frame / corpus_choice. Every item carries provenance
+    {source_url, note}; a FACT item without a source_url is refused
+    (spec US-1). Fact payloads are {field, value} with field one of:
+    price_vnd_per_250g, price_display, pack_weight_g, origin,
+    known_price_vnd, pack_weight_option_g, delivery_days,
+    roast_weekday, entry, claim. A fact whose field+value competes
+    with an existing fact item spawns a contradiction record and
+    locks both items until it is resolved. reference=True marks
+    competitor material: it can be analysed and decided, but apply
+    will refuse it."""
+    pack, error = _pack_or_error(brand_id)
+    if error:
+        return error
+    try:
+        item = _research.propose_item(pack, kind, payload, provenance,
+                                      reference=reference)
+        _save_research_pack(pack)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return item
+
+
+@mcp.tool()
+def get_pack(brand_id: str) -> dict:
+    """Return the full research pack for a brand: sources, items,
+    contradictions, quality rejections, plus `counts` (items by
+    status/kind) and `open_contradictions` — everything the review
+    checklist needs in one call (spec 3.5)."""
+    pack, error = _pack_or_error(brand_id)
+    if error:
+        return error
+    return {**pack, "counts": _research.pack_counts(pack),
+            "open_contradictions": _research.pack_counts(pack)[
+                "open_contradictions"]}
+
+
+@mcp.tool()
+def decide_pack_item(brand_id: str, item_id: str, decision: str,
+                     edited_payload: dict | None = None,
+                     note: str = "") -> dict:
+    """Record the owner's manual decision on ONE pack item:
+    decision = approve / edit / reject. An edit REQUIRES
+    edited_payload; the original payload is kept on the item for
+    audit. Decisions are per item by design (Smith's standing rule:
+    no bulk approval). An item locked by an open contradiction
+    cannot be decided — resolve the contradiction first. An applied
+    item is final."""
+    pack, error = _pack_or_error(brand_id)
+    if error:
+        return error
+    try:
+        item = _research.decide_item(pack, item_id, decision,
+                                     edited_payload=edited_payload,
+                                     note=note)
+        _save_research_pack(pack)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return item
+
+
+@mcp.tool()
+def resolve_contradiction(brand_id: str, contradiction_id: str,
+                          chosen_item_id: str, note: str = "") -> dict:
+    """Resolve an open contradiction by choosing ONE of its items:
+    the chosen item becomes approved, every other linked item is
+    rejected (it survives only as pack history — the unchosen value
+    never reaches live config, spec US-2), and the record closes
+    with the resolution for audit."""
+    pack, error = _pack_or_error(brand_id)
+    if error:
+        return error
+    try:
+        con = _research.resolve_contradiction(
+            pack, contradiction_id, chosen_item_id, note=note)
+        _save_research_pack(pack)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return con
+
+
+@mcp.tool()
+def apply_pack(brand_id: str) -> dict:
+    """Apply the pack's approved/edited items into live configuration
+    through the existing save paths (brand draft, facts profile,
+    style profile, persona file, corpus choice). HARD INVARIANTS:
+    proposed/rejected items never apply; an item linked to an open
+    contradiction is blocked; reference material is refused; style
+    items are saved with store_excerpts=False whatever the payload
+    asked for. Idempotent: already-applied items are skipped and
+    reported separately. Returns {applied, already_applied, blocked,
+    failed} — `applied` is exactly the set of ids that landed in
+    this call, for cross-checking against the approved set."""
+    pack, error = _pack_or_error(brand_id)
+    if error:
+        return error
+    report = _research.apply_pack(pack)
+    _save_research_pack(pack)
+    return report
+
+
+# --------------------------------------------------------------------------
+# Tools — corpus registry (system-level) + brand corpus choices
+# --------------------------------------------------------------------------
+
+@mcp.tool()
+def register_corpus(corpus_id: str, version: int, title: str, kind: str,
+                    profile_id: str, legitimacy_basis: str,
+                    word_count: int, sample_count: int = 0) -> dict:
+    """Register a genre corpus ONCE at system level (Smith's
+    decision): id, version, title, kind (press / literature / genre /
+    other), the style profile it feeds, the legitimacy basis for
+    using it (a corpus without a recorded basis cannot register),
+    and its measured size. Registering an id that already exists is
+    an error — a corpus revision is a new version, decided
+    deliberately, never a silent overwrite."""
+    if _load_corpus_entry(corpus_id) is not None:
+        return {"error": f"corpus already registered: {corpus_id} — "
+                         f"a revision is a new corpus id or an explicit "
+                         f"re-registration decision, not an overwrite"}
+    entry = {"id": corpus_id, "version": version, "title": title,
+             "kind": kind, "profile_id": profile_id,
+             "legitimacy_basis": legitimacy_basis,
+             "word_count": word_count, "sample_count": sample_count,
+             "status": "active",
+             "registered_at": datetime.now(timezone.utc).isoformat(
+                 timespec="seconds")}
+    try:
+        return _save_corpus_entry(entry)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def list_corpora() -> dict:
+    """List every registered system corpus (full registry records:
+    id, version, kind, profile_id, legitimacy basis, word count)."""
+    return {"corpora": _list_corpus_entries(),
+            "count": len(_list_corpus_entries())}
+
+
+@mcp.tool()
+def get_corpus(corpus_id: str) -> dict:
+    """Return one registered corpus entry by id."""
+    try:
+        entry = _load_corpus_entry(corpus_id)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if entry is None:
+        return {"error": f"corpus not registered: {corpus_id}",
+                "available": [c["id"] for c in _list_corpus_entries()
+                              if not c.get("corrupt")]}
+    return entry
+
+
+@mcp.tool()
+def set_corpus_choice(brand_id: str, corpus_id: str) -> dict:
+    """Record a brand's corpus choice directly (the same choice a
+    research pack's corpus_choice item makes at apply): the brand
+    attaches the registered corpus at its CURRENT version, and
+    assemble_context will default the brand's style profile from it
+    when a brief names the brand without an explicit style profile."""
+    entry = _load_corpus_entry(corpus_id)
+    if entry is None:
+        return {"error": f"corpus not registered: {corpus_id}",
+                "brand_id": brand_id}
+    try:
+        return _save_corpus_choice(brand_id, {
+            "corpus_id": entry["id"], "version": entry["version"],
+            "profile_id": entry["profile_id"], "source": "direct"})
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+
+
+@mcp.tool()
+def get_corpus_choice(brand_id: str) -> dict:
+    """Return a brand's recorded corpus choice (corpus_id, version,
+    resolved profile_id, source), or an error when the brand has not
+    chosen a corpus."""
+    try:
+        choice = _load_corpus_choice(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    if choice is None:
+        return {"error": f"brand {brand_id} has no corpus choice",
+                "brand_id": brand_id}
+    return choice
+
+
+# --------------------------------------------------------------------------
+# Tools — taste layer (learning loop, core side)
+# --------------------------------------------------------------------------
+
+@mcp.tool()
+def import_taste_articles(brand_id: str, file_refs: list[str]) -> dict:
+    """Import finished article FILES into a brand's taste store as
+    PENDING (unmarked) entries. Pending is a candidate state, not an
+    approval: imported articles never feed a taste profile until the
+    owner marks them with mark_article_verdict. Re-importing the
+    same file is a no-op."""
+    articles = []
+    for ref in file_refs:
+        path = Path(ref)
+        if not path.exists():
+            return {"error": f"article file not found: {ref}",
+                    "brand_id": brand_id}
+        articles.append({"ref": ref, "source": "file",
+                         "text": path.read_text(encoding="utf-8")})
+    try:
+        return _taste.import_articles(brand_id, articles)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+
+
+@mcp.tool()
+def mark_article_verdict(brand_id: str, verdict: str, draft_id: str = "",
+                         file_ref: str = "", text: str = "",
+                         edited_text: str = "", note: str = "") -> dict:
+    """Record the OWNER's verdict on one finished article:
+    verdict = approved_unchanged / edited. The article is identified
+    by draft_id (its stored sections are snapshotted) or file_ref
+    (the file's content is snapshotted) or raw `text`. An "edited"
+    verdict REQUIRES edited_text: both versions are kept — the
+    owner's edited version is what the taste profile learns from,
+    the original stays as the other half of the diff. Only the owner
+    gives verdicts; nothing is ever marked on the owner's behalf."""
+    ref = draft_id or file_ref
+    source = "draft" if draft_id else "file"
+    if draft_id:
+        draft, error = _load_draft_or_error(draft_id)
+        if error:
+            return error
+        text = "\n\n".join(
+            (f"## {s.get('heading', '')}\n\n{s.get('text', '')}"
+             if s.get("heading") else s.get("text", ""))
+            for s in _sections_of(draft))
+    elif file_ref:
+        path = Path(file_ref)
+        if not path.exists():
+            return {"error": f"article file not found: {file_ref}",
+                    "brand_id": brand_id}
+        text = path.read_text(encoding="utf-8")
+    if not ref:
+        return {"error": "identify the article with draft_id or file_ref",
+                "brand_id": brand_id}
+    try:
+        entry = _taste.mark_verdict(
+            brand_id, verdict, ref=ref, text=text,
+            edited_text=edited_text or None, source=source, note=note)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return {"brand_id": brand_id, "entry_id": entry["id"], "ref": ref,
+            "verdict": entry["verdict"], "marked_at": entry["marked_at"]}
+
+
+@mcp.tool()
+def build_taste_profile(brand_id: str) -> dict:
+    """Distil a brand's verdicted articles into its taste style
+    profile (`<brand-id>-taste-voice`), attachable via
+    assemble_context like any style profile. Needs at least 3
+    approved/edited articles; pending ones never count.
+    store_excerpts=True is legitimate HERE and only here: the
+    samples are the owner's own finished articles, not a third-party
+    corpus (research-pack style items still force False)."""
+    try:
+        return _taste.build_taste_profile(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+
+
+@mcp.tool()
+def get_taste_status(brand_id: str) -> dict:
+    """A brand's taste-layer status: verdict counts (pending /
+    approved_unchanged / edited) and whether a taste profile exists
+    and how many articles it was built from."""
+    try:
+        return _taste.taste_status(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+
+
+# --------------------------------------------------------------------------
+# Tools — local data backup
+# --------------------------------------------------------------------------
+
+@mcp.tool()
+def export_core_data() -> dict:
+    """Snapshot ALL local stores (personas, brand files/drafts, facts,
+    style/quality profiles, image libraries, research packs, corpus
+    registry + choices, taste stores, drafts) into ONE timestamped
+    zip in the backups dir, with a manifest (per-store counts,
+    per-file sha256). Files matching credential patterns are EXCLUDED
+    and recorded in the manifest — the stores hold no credentials by
+    design, and this keeps it that way even if one is planted."""
+    return _backup.export_core_data()
+
+
+@mcp.tool()
+def list_backups() -> dict:
+    """List the backup archives (newest first) with each archive's
+    manifest summary: created_at, total files/bytes. An archive whose
+    manifest cannot be read is listed as corrupt, never skipped."""
+    backups = _backup.list_backups()
+    return {"backups": backups, "count": len(backups)}
 
 
 @mcp.tool()

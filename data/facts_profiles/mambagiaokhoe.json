@@ -1,0 +1,57 @@
+{
+  "facts": {
+    "price_display": "100.000đ",
+    "pack_weight_g": 500,
+    "pack_weights_g": [
+      500
+    ],
+    "origins": [
+      "Châu Đốc An Giang"
+    ],
+    "known_prices_vnd": [
+      90000,
+      110000,
+      120000
+    ]
+  },
+  "entries": [
+    {
+      "id": "mam-ca-loc",
+      "keys": [
+        "mắm cá lóc",
+        "cá lóc"
+      ],
+      "content": "Mắm cá lóc Bà Giáo Khỏe (Châu Đốc, An Giang): trang sản phẩm ghi hủ 500g loại trung giá 100.000đ; bảng giá trên cùng trang ghi 90.000đ/hủ 500g — hai con số trên trang của shop chưa thống nhất. Các dạng khác theo bảng giá: cá lóc xay 100.000đ/hủ 500g, mắm cá lóc khúc 110.000đ/hủ 500g, mắm cá lóc filet 120.000đ/hủ 500g."
+    },
+    {
+      "id": "cach-lam",
+      "keys": [
+        "làm mắm",
+        "ủ",
+        "truyền thống"
+      ],
+      "content": "Cách làm theo trang sản phẩm của shop: ướp theo phương pháp truyền thống, không dùng hóa chất và phẩm màu. Trang không công bố thời gian ủ hay tỉ lệ nguyên liệu."
+    },
+    {
+      "id": "cach-an",
+      "keys": [
+        "ăn sống",
+        "mắm chưng",
+        "lẩu mắm",
+        "bún mắm"
+      ],
+      "content": "Cách ăn theo trang sản phẩm của shop: ăn sống (xé miếng cá, trộn nước cốt chanh, tỏi, ớt, thêm chút đường), mắm chưng thịt, mắm chưng trứng vịt, mắm chiên, bún mắm."
+    },
+    {
+      "id": "thuong-hieu",
+      "keys": [
+        "bà giáo khỏe",
+        "châu đốc"
+      ],
+      "content": "Bà Giáo Khỏe là thương hiệu mắm lâu đời ở Châu Đốc (An Giang), làm mắm trải qua mấy đời theo trang giới thiệu của shop. Shop gọi Châu Đốc là thủ phủ của mắm."
+    }
+  ],
+  "note": "Per-brand fact base built ONLY from the brand's own site mambagiaokhoe.com, fetched 22 Nov 2026: product page /mam-ba-giao-khoe/mam-ca-loc.html (listing price + price table) and /gioi-thieu.html (brand story). The site contradicts itself on the 500g jar: 100.000đ at the product listing vs 90.000đ in its own price table — the listing price is primary, the table price is recorded as known, same discipline as the Cao Nguyen Moc profile. No delivery_days (zone-based fees published but not a single range) and no process durations (never published), so those checks skip.",
+  "simulated": false,
+  "brand_id": "mambagiaokhoe"
+}

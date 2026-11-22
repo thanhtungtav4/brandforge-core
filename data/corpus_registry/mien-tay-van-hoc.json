@@ -1,0 +1,11 @@
+{
+  "id": "mien-tay-van-hoc",
+  "version": 2,
+  "title": "Văn học miền Tây (Nguyễn Ngọc Tư, Sơn Nam, Đoàn Giỏi, Vương Hồng Sển, Hồ Biểu Chánh...)",
+  "kind": "literature",
+  "profile_id": "mien-tay-van-hoc-voice",
+  "legitimacy_basis": "EPUB do chủ sở hữu cung cấp (Nguyễn Ngọc Tư, Sơn Nam, Đoàn Giỏi, Vương Hồng Sển) + Hồ Biểu Chánh (mất 1958 — public domain, qua hobieuchanh.com) + truyện trên kênh/báo chính thống (Tuổi Trẻ, Nhân Dân, Báo Cần Thơ). Chỉ thống kê + đặc điểm; không lưu đoạn trích (store_excerpts=False).",
+  "word_count": 95507,
+  "sample_count": 31,
+  "status": "active"
+}

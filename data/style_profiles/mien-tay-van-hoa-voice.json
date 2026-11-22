@@ -1,0 +1,351 @@
+{
+  "id": "mien-tay-van-hoa-voice",
+  "name": "Miền Tây văn hóa — giọng kể sông nước",
+  "brand_id": "mambagiaokhoe",
+  "algorithm_version": 2,
+  "created_from": {
+    "sample_count": 32,
+    "total_words": 39619
+  },
+  "fingerprint": {
+    "word_count": 39619,
+    "sentence_count": 1443,
+    "sentence_len": {
+      "median": 25.0,
+      "mean": 27.48,
+      "stdev": 14.03
+    },
+    "short_sentence_share": 0.03,
+    "long_sentence_share": 0.69,
+    "paragraph_len_median": 63.0,
+    "question_rate": 0.49,
+    "exclamation_rate": 0.14,
+    "first_person_rate": 0.32,
+    "reader_rate": 0.08,
+    "number_density": 0.85,
+    "transition_freq": [
+      {
+        "term": "nhưng",
+        "count": 75
+      },
+      {
+        "term": "đặc biệt",
+        "count": 34
+      },
+      {
+        "term": "nhất là",
+        "count": 24
+      },
+      {
+        "term": "tuy nhiên",
+        "count": 10
+      },
+      {
+        "term": "đầu tiên",
+        "count": 10
+      },
+      {
+        "term": "sau đó",
+        "count": 9
+      },
+      {
+        "term": "vì vậy",
+        "count": 4
+      },
+      {
+        "term": "cuối cùng",
+        "count": 4
+      },
+      {
+        "term": "ví dụ",
+        "count": 2
+      }
+    ],
+    "type_token_ratio": 0.67,
+    "top_words": [
+      {
+        "word": "nước",
+        "count": 444
+      },
+      {
+        "word": "cá",
+        "count": 351
+      },
+      {
+        "word": "đồng",
+        "count": 308
+      },
+      {
+        "word": "mùa",
+        "count": 230
+      },
+      {
+        "word": "sông",
+        "count": 222
+      },
+      {
+        "word": "nổi",
+        "count": 215
+      },
+      {
+        "word": "du",
+        "count": 206
+      },
+      {
+        "word": "dân",
+        "count": 200
+      },
+      {
+        "word": "năm",
+        "count": 184
+      },
+      {
+        "word": "chợ",
+        "count": 181
+      },
+      {
+        "word": "hoa",
+        "count": 166
+      },
+      {
+        "word": "sản",
+        "count": 166
+      },
+      {
+        "word": "thành",
+        "count": 162
+      },
+      {
+        "word": "lịch",
+        "count": 153
+      },
+      {
+        "word": "miền",
+        "count": 146
+      }
+    ]
+  },
+  "consistency_warnings": [],
+  "consistency_detail": {
+    "divergence_cv": {
+      "sentence_median": 0.19,
+      "sentence_stdev": 0.28,
+      "first_person_rate": 1.26
+    },
+    "per_sample": [
+      {
+        "sentence_median": 24.5,
+        "sentence_stdev": 13.9,
+        "first_person_rate": 0.79
+      },
+      {
+        "sentence_median": 26.5,
+        "sentence_stdev": 12.15,
+        "first_person_rate": 0.2
+      },
+      {
+        "sentence_median": 18.5,
+        "sentence_stdev": 12.44,
+        "first_person_rate": 0.09
+      },
+      {
+        "sentence_median": 29.0,
+        "sentence_stdev": 12.01,
+        "first_person_rate": 0.18
+      },
+      {
+        "sentence_median": 24.5,
+        "sentence_stdev": 11.12,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 25.0,
+        "sentence_stdev": 11.7,
+        "first_person_rate": 0.86
+      },
+      {
+        "sentence_median": 28.5,
+        "sentence_stdev": 15.95,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 28.0,
+        "sentence_stdev": 14.24,
+        "first_person_rate": 0.16
+      },
+      {
+        "sentence_median": 15.0,
+        "sentence_stdev": 7.44,
+        "first_person_rate": 1.85
+      },
+      {
+        "sentence_median": 34.0,
+        "sentence_stdev": 10.92,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 34.5,
+        "sentence_stdev": 16.15,
+        "first_person_rate": 0.45
+      },
+      {
+        "sentence_median": 24.0,
+        "sentence_stdev": 10.28,
+        "first_person_rate": 0.97
+      },
+      {
+        "sentence_median": 31.0,
+        "sentence_stdev": 12.16,
+        "first_person_rate": 0.37
+      },
+      {
+        "sentence_median": 20.0,
+        "sentence_stdev": 9.34,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 26.0,
+        "sentence_stdev": 12.26,
+        "first_person_rate": 0.07
+      },
+      {
+        "sentence_median": 31.0,
+        "sentence_stdev": 10.42,
+        "first_person_rate": 0.25
+      },
+      {
+        "sentence_median": 18.0,
+        "sentence_stdev": 8.68,
+        "first_person_rate": 0.26
+      },
+      {
+        "sentence_median": 23.5,
+        "sentence_stdev": 13.31,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 30.5,
+        "sentence_stdev": 20.49,
+        "first_person_rate": 0.48
+      },
+      {
+        "sentence_median": 30.0,
+        "sentence_stdev": 11.24,
+        "first_person_rate": 0.09
+      },
+      {
+        "sentence_median": 33.0,
+        "sentence_stdev": 9.4,
+        "first_person_rate": 0.12
+      },
+      {
+        "sentence_median": 36.0,
+        "sentence_stdev": 14.12,
+        "first_person_rate": 0.09
+      },
+      {
+        "sentence_median": 31.0,
+        "sentence_stdev": 9.61,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 28.0,
+        "sentence_stdev": 18.07,
+        "first_person_rate": 0.28
+      },
+      {
+        "sentence_median": 27.0,
+        "sentence_stdev": 13.74,
+        "first_person_rate": 0.0
+      },
+      {
+        "sentence_median": 26.0,
+        "sentence_stdev": 8.07,
+        "first_person_rate": 0.32
+      },
+      {
+        "sentence_median": 23.0,
+        "sentence_stdev": 12.67,
+        "first_person_rate": 0.11
+      },
+      {
+        "sentence_median": 26.0,
+        "sentence_stdev": 10.4,
+        "first_person_rate": 0.16
+      },
+      {
+        "sentence_median": 36.0,
+        "sentence_stdev": 25.29,
+        "first_person_rate": 0.32
+      },
+      {
+        "sentence_median": 29.0,
+        "sentence_stdev": 14.66,
+        "first_person_rate": 0.4
+      },
+      {
+        "sentence_median": 33.0,
+        "sentence_stdev": 16.14,
+        "first_person_rate": 0.33
+      },
+      {
+        "sentence_median": 24.0,
+        "sentence_stdev": 11.41,
+        "first_person_rate": 0.26
+      }
+    ]
+  },
+  "qualitative": {
+    "tone_traits": [
+      {
+        "trait": "Người kể chuyện quan sát, am hiểu xứ sở",
+        "do": "Kể bằng giọng điềm đạm, để cảnh, người và việc tự nói lên chất miền Tây; chất địa phương nằm ở vốn từ sông nước và chi tiết đời sống",
+        "dont": "Không biến bài viết thành màn trình diễn phương ngữ; không xưng hô mua bán thân mật trong phần kể"
+      },
+      {
+        "trait": "Cảm xúc nén trong chi tiết cụ thể",
+        "do": "Dồn cảm xúc vào chi tiết đo được: giờ chợ họp, tên cá, tên rau đồng, cách làm, con số cụ thể; chỉ ở câu kết mới nâng lên thành ký ức, hồn quê",
+        "dont": "Không rải tính từ cảm xúc và lời quảng bá dày đặc ngay từ đầu bài"
+      },
+      {
+        "trait": "Trân trọng người lao động địa phương",
+        "do": "Gọi người dân là 'bà con', 'người dân'; khi trích lời thì ghi tên, tuổi, quê quán và chuẩn hóa chính tả, chỉ giữ từ vựng mộc mạc",
+        "dont": "Không bịa lời thoại phiên âm phương ngữ cho người dân; không dùng người dân làm đạo cụ tạo 'chất quê'"
+      },
+      {
+        "trait": "Nhịp văn dài, chảy như con nước",
+        "do": "Câu trung vị khoảng 25 từ, nhiều câu dài 30-45 từ nối bằng dấu phẩy và 'và'; thỉnh thoảng chen một câu ngắn để đổi nhịp; đoạn văn khoảng 60-90 từ",
+        "dont": "Không cắt câu vụn kiểu quảng cáo; không dùng dấu chấm than (corpus: 0,14/100 câu)"
+      }
+    ],
+    "opening_patterns": [
+      "Mở bằng một câu khẳng định đặt cảnh theo mùa và nơi chốn: 'Mỗi độ nước lũ về, đồng bằng sông Cửu Long lại…', 'Tháng 11, miền Tây bước vào mùa…'",
+      "Mở bằng câu nói dân gian hoặc ca dao của xứ đó (để trong ngoặc kép) rồi mới vào chuyện: 'Tháng 7 nước nhảy khỏi bờ'",
+      "Mở bằng nhận định bản sắc của địa danh hoặc sản vật: 'Không phải ngẫu nhiên Cần Thơ được mệnh danh là Tây Đô…'",
+      "Số ít bài mở bằng hành trình ngôi thứ nhất của người viết ('lần này tôi…') — chỉ dùng khi là ký sự trải nghiệm thật"
+    ],
+    "closing_patterns": [
+      "Kết bằng một câu văn dài nâng chi tiết vừa kể lên thành biểu tượng ký ức, hồn quê, sự tiếp nối văn hóa",
+      "Kết bằng lời mời nhẹ hoặc một câu hò, ca dao của vùng (không kêu gọi mua hàng)",
+      "Thông tin mua bán, giá cả để ở section riêng trước phần kết, không để ở câu cuối"
+    ],
+    "signature_devices": [
+      "Từ vựng sông nước đặc thù thay cho phương ngữ phát âm: ghe, xuồng, dớn, lờ, chài, thương hồ, cây bẹo, miệt vườn, mùa nước nổi, cá linh, bông điên điển, bông súng, kèo nèo (mật độ corpus ~33/1.000 từ)",
+      "Trích ca dao, câu hò, câu nói dân gian của xứ trong ngoặc kép làm neo văn hóa",
+      "Liệt kê cụ thể theo mùa: tên cá, tên rau đồng, tên món ăn đi thành cụm 3-5 hạng mục",
+      "Cấu trúc song hành thiên nhiên - con người: một câu về con nước/mùa vụ, một câu về cách bà con mưu sinh theo con nước đó",
+      "Con số cụ thể làm neo tin cậy: giờ họp chợ, số ghe, trọng lượng, giá cả, khoảng cách",
+      "Cảm quan đo bằng chi tiết (mùi, tiếng, màu của con nước, của món ăn) ở mật độ vừa (~17/1.000 từ), không chồng tính từ"
+    ],
+    "stance": "Người kể chuyện đứng ngoài nhưng đứng về phía xứ sở: am hiểu, trân trọng, không thương mại hóa lộ liễu. Giọng chuẩn mực báo chí Việt Nam; chất miền Tây nằm ở vốn từ sông nước, chi tiết đời sống và ca dao của vùng, không nằm ở cách phát âm. Khi có persona người bán (như An), 'em' chỉ là khung xưng hô điểm xuyết ở đầu và cuối các section, phần kể vẫn theo nhịp quan sát này.",
+    "never_do": [
+      "Không rải từ phương ngữ phát âm (hổng, nghen, hén, chớ, thiệt tình, dữ lắm, hết sảy, gởi) trong lời kể — corpus 32 bài, 39.619 từ: 0 lần xuất hiện",
+      "Không mở bài bằng câu hỏi tu từ hoặc lời chào khách hàng",
+      "Không dùng dấu chấm than để tạo nhiệt huyết bán hàng",
+      "Không viết lời thoại phương ngữ dày đặc cho người dân địa phương",
+      "Không để câu kết bài là lời kêu gọi mua hàng trực diện"
+    ]
+  },
+  "exemplars": [],
+  "excerpts_note": "excerpts not stored — fingerprint + distilled traits only (default; use store_excerpts=True only for your own/licensed samples)"
+}

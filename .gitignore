@@ -7,6 +7,10 @@ data/brand_drafts/
 *.env
 data/quality_profiles/
 data/image_library/
+data/research_packs/
+data/taste/
+data/corpus_choices/
+backups/
 # Raw calibration evidence scraped from the live site (review M16):
 # kept as LOCAL working-tree evidence only — never tracked, never
 # pushed. The curated calibration artefacts (pages_setB.json,
