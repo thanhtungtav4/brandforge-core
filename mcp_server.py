@@ -86,6 +86,7 @@ from content_core.loaders import save_brand_draft as _save_brand_draft_file
 from content_core.images import best_library_match as _best_library_match
 from content_core.images import build_manifest as _build_image_manifest
 from content_core.images import check_images as _check_images
+from content_core.images import normalise_ref as _normalise_ref
 from content_core.images import plan_images as _plan_images
 from content_core.images import suggest_alt as _suggest_alt
 from content_core.images import suggest_filename as _suggest_filename
@@ -1444,13 +1445,21 @@ def fulfil_images_from_library(draft_id: str) -> dict:
             images = state["images"]
             used = {e.get("from_library") for e in images.values()
                     if isinstance(e, dict) and e.get("from_library")}
+            # Used REFS too (review round 2 M1): the same photo can
+            # sit in the library as two entries (same ref, different
+            # descriptions) — entry-id dedupe alone would let it fill
+            # two slots; the ref is the uniqueness unit.
+            used_refs = {_normalise_ref(e.get("ref") or "")
+                         for e in images.values() if isinstance(e, dict)
+                         and str(e.get("ref") or "").strip()}
             fulfilled, needs_generation = [], []
             for item in state["plan"]:
                 existing = images.get(item["id"])
                 if isinstance(existing, dict) \
                         and str(existing.get("ref") or "").strip():
                     continue
-                match = _best_library_match(item, brief, entries, used)
+                match = _best_library_match(item, brief, entries, used,
+                                            used_refs)
                 if match is None:
                     needs_generation.append({
                         "image_id": item["id"], "prompt": item["prompt"],
@@ -1458,6 +1467,7 @@ def fulfil_images_from_library(draft_id: str) -> dict:
                     continue
                 entry, score = match
                 used.add(entry["id"])
+                used_refs.add(_normalise_ref(entry.get("ref") or ""))
                 images[item["id"]] = {
                     "source": entry.get("source", "client"),
                     "ref": entry.get("ref", ""),

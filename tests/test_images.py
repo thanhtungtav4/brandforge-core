@@ -602,6 +602,200 @@ def test_vision_grade_zero_blocks_manifest_ready():
     assert srv.get_image_manifest(draft_id)["ready"] is True
 
 
+# -- review round 2 fixes (M1-M4) ---------------------------------------------
+
+def test_check_duplicate_ref_between_content_slots():
+    # M1: the uniqueness unit is the REF — two in-content slots filled
+    # with the same photo is a hard issue even though neither is the
+    # featured image (the old checker only had featured-vs-content).
+    plan = _plan()
+    images = _good_images(plan)
+    images["img-s2"]["ref"] = images["img-s1"]["ref"]
+    issues, _ = img.check_images(plan, images, BRIEF, _moc_brand(),
+                                 complete=True)
+    assert any(i["image_id"] == "img-s2" and i["type"] == "duplicate_ref"
+               for i in issues)
+
+
+def test_check_duplicate_ref_normalises_local_paths():
+    # M1: "./ai/x.webp" and "ai/x.webp" are the same file — the ref
+    # comparison is normalised, not raw-string.
+    plan = _plan()
+    images = _good_images(plan)
+    images["img-s2"]["ref"] = "./" + images["img-s1"]["ref"]
+    issues, _ = img.check_images(plan, images, BRIEF, _moc_brand(),
+                                 complete=True)
+    assert any(i["image_id"] == "img-s2" and i["type"] == "duplicate_ref"
+               for i in issues)
+
+
+def test_fulfil_never_uses_same_ref_for_two_slots():
+    # M1, the review's end-to-end repro: the same photo added to the
+    # library twice under different descriptions is two ENTRIES, but
+    # its ref may still fill only ONE slot.
+    srv.add_library_image(
+        "moc-brew", "photos/shared.jpg",
+        "Gói cà phê văn phòng Mộc Brew trên bàn gỗ", [])
+    srv.add_library_image(
+        "moc-brew", "photos/shared.jpg",
+        "Vườn cà phê Arabica ở Cầu Đất vào buổi sáng",
+        ["arabica", "cầu đất", "vườn cà phê"], source="ai")
+    draft_id = _draft_with_sections()
+    srv.plan_images(draft_id)
+    out = srv.fulfil_images_from_library(draft_id)
+    refs = [f["ref"] for f in out["fulfilled"]]
+    assert len(refs) == len(set(refs))  # no ref fulfils two slots
+    assert refs.count("photos/shared.jpg") == 1
+    gen = {g["image_id"] for g in out["needs_generation"]}
+    # img-s1's only fitting entry is the second shared.jpg record —
+    # its ref is already used by the featured slot, so it must wait
+    # for generation instead of duplicating the photo.
+    assert "img-s1" in gen
+    chk = srv.image_check(draft_id, complete=True)
+    assert not [i for i in chk["issues"] if i["type"] == "duplicate_ref"]
+
+
+def test_duplicate_ref_via_set_image_blocks_manifest():
+    # M1 via plain set_image (no library involved).
+    draft_id = _draft_with_sections()
+    plan = srv.plan_images(draft_id)["plan"]
+    srv.set_image(draft_id, "img-featured", "client", "photos/goi.jpg",
+                  alt="Gói cà phê Mộc Brew 250g đặt cạnh phin trên bàn gỗ",
+                  caption="c", description="d")
+    srv.set_image(draft_id, "img-s1", "ai", "photos/shared.jpg",
+                  alt="Vườn cà phê Arabica ở Cầu Đất vào buổi sáng sớm",
+                  description="Vườn Arabica", prompt_used=plan[1]["prompt"])
+    srv.set_image(draft_id, "img-s2", "client", "photos/shared.jpg",
+                  alt="Pha cà phê bằng phin ngay tại bàn làm việc",
+                  description="Phin trên bàn")
+    chk = srv.image_check(draft_id, complete=True)
+    assert any(i["image_id"] == "img-s2" and i["type"] == "duplicate_ref"
+               for i in chk["issues"])
+    assert srv.get_image_manifest(draft_id)["ready"] is False
+
+
+def test_no_visual_brand_ai_without_prompt_not_style_locked():
+    # M2: a brand with NO visual section has no style block, so there
+    # is no style lock to break — an AI image without prompt_used must
+    # NOT raise the hard style_not_locked issue (module contract).
+    bare = {"brand": {"id": "bare", "name": "Bare"}}
+    plan = img.plan_images(SECTIONS, BRIEF, bare)
+    images = _good_images(plan)
+    images["img-s1"]["prompt_used"] = ""
+    issues, _ = img.check_images(plan, images, BRIEF, bare, complete=True)
+    assert not [i for i in issues if i["type"] == "style_not_locked"]
+
+
+def test_style_block_string_palette_not_garbled():
+    # M3: the report's repro — palette written as a plain string (the
+    # natural way in YAML) must render as items, never per-character.
+    block = img.style_block({"medium": "photo",
+                             "palette": "warm earth tones",
+                             "avoid": "neon, clutter"})
+    assert "warm earth tones" in block
+    assert "w, a, r, m" not in block
+    assert "neon" in block and "clutter" in block
+
+
+def test_validate_visual_normalises_and_rejects():
+    # M3: load-time validation/normalisation of the visual section.
+    from content_core import loaders
+    out = loaders.validate_visual({"palette": "brown, cream",
+                                   "avoid": "neon"})
+    assert out["palette"] == ["brown", "cream"]  # comma-separated string
+    assert out["avoid"] == ["neon"]
+    out = loaders.validate_visual({"palette": "warm earth tones"})
+    assert out["palette"] == ["warm earth tones"]  # no comma -> one item
+    out = loaders.validate_visual({"palette": ["#fff", "black"]})
+    assert out["palette"] == ["#fff", "black"]  # proper list untouched
+    with pytest.raises(ValueError, match="palette"):
+        loaders.validate_visual({"palette": 42})
+    with pytest.raises(ValueError, match="palette"):
+        loaders.validate_visual({"palette": ["ok", 7]})
+    with pytest.raises(ValueError, match="medium"):
+        loaders.validate_visual({"medium": ["photo"]})
+    with pytest.raises(ValueError, match="visual"):
+        loaders.validate_visual("not-a-dict")
+
+
+def test_load_brand_normalises_string_palette(tmp_path):
+    # M3 at the YAML load boundary.
+    from content_core import loaders
+    path = tmp_path / "brand.yaml"
+    path.write_text(
+        'brand:\n  id: yaml-brand\n  name: YAML Brand\n'
+        'visual:\n  medium: photo\n  palette: "warm earth tones"\n',
+        encoding="utf-8")
+    brand = loaders.load_brand(path)
+    assert brand["visual"]["palette"] == ["warm earth tones"]
+    assert "warm earth tones" in img.style_block(brand["visual"])
+
+
+def test_brand_draft_visual_normalised_at_save_and_load():
+    # M3 at the brand-draft persistence boundary.
+    from content_core import loaders
+    loaders.save_brand_draft(
+        {"brand": {"id": "vbrand", "name": "V"},
+         "visual": {"palette": "nâu, kem", "avoid": ["neon"]}})
+    loaded = loaders.load_brand_draft("vbrand")
+    assert loaded["visual"]["palette"] == ["nâu", "kem"]
+    with pytest.raises(ValueError, match="palette"):
+        loaders.save_brand_draft(
+            {"brand": {"id": "vbad"}, "visual": {"palette": 7}})
+
+
+@pytest.mark.parametrize("bad_grades", [
+    {"content_grade": 3, "style_grade": 2},
+    {"content_grade": 2, "style_grade": -1},
+    {"content_grade": 5, "style_grade": 5},
+    {"content_grade": True, "style_grade": True},
+    {"content_grade": "2", "style_grade": 2},
+])
+def test_check_vision_grade_invalid_stored(bad_grades):
+    # M4: the checker re-validates STORED vision grades — a record
+    # whose grades are not strict ints in 0..2 (hand-edited / legacy
+    # draft JSON) is invalid: a hard issue in complete mode, and it
+    # never counts as checked in either mode.
+    plan = _plan()
+    images = _good_images(plan)
+    images["img-s1"]["vision_check"] = {
+        **bad_grades, "notes": "", "checked_at": "2026-11-22T00:00:00+00:00"}
+    issues, flagged = img.check_images(plan, images, BRIEF, _moc_brand(),
+                                       complete=True)
+    assert any(i["image_id"] == "img-s1"
+               and i["type"] == "vision_grade_invalid" for i in issues)
+    assert not [f for f in flagged if f["image_id"] == "img-s1"
+                and f["type"] in ("vision_reservations", "vision_unchecked")]
+    issues2, flagged2 = img.check_images(plan, images, BRIEF, _moc_brand())
+    assert not [i for i in issues2 if i["image_id"] == "img-s1"]
+    assert not [f for f in flagged2 if f["image_id"] == "img-s1"]
+
+
+def test_manifest_blocked_by_tampered_vision_grade():
+    # M4 end to end: a grade of 3 planted in the stored draft JSON
+    # (bypassing record_vision_check's write-side validation) must
+    # block manifest readiness.
+    draft_id = _draft_with_sections()
+    plan = srv.plan_images(draft_id)["plan"]
+    srv.set_image(draft_id, "img-featured", "client", "photos/goi.jpg",
+                  alt="Gói cà phê Mộc Brew 250g đặt cạnh phin trên bàn gỗ",
+                  caption="c", description="d")
+    srv.set_image(draft_id, "img-s1", "ai", "ai/vuon.webp",
+                  alt="Vườn cà phê Arabica ở Cầu Đất vào buổi sáng sớm",
+                  description="Vườn Arabica", prompt_used=plan[1]["prompt"])
+    srv.set_image(draft_id, "img-s2", "client", "photos/pha.jpg",
+                  alt="Pha cà phê bằng phin ngay tại bàn làm việc",
+                  description="Phin trên bàn")
+    srv.record_vision_check(draft_id, "img-s1", 2, 2)
+    assert srv.get_image_manifest(draft_id)["ready"] is True
+    draft = srv.get_draft(draft_id)
+    draft["images"]["images"]["img-s1"]["vision_check"]["content_grade"] = 3
+    srv._store_draft(draft)
+    man = srv.get_image_manifest(draft_id)
+    assert man["ready"] is False
+    assert any(i["type"] == "vision_grade_invalid" for i in man["issues"])
+
+
 # -- advisory boundary ---------------------------------------------------------------
 
 def test_images_do_not_change_final_gate(tmp_path, monkeypatch):

@@ -162,7 +162,70 @@ def load_persona(path: Path | None = None) -> dict:
 
 
 def load_brand(path: Path | None = None) -> dict:
-    return yaml.safe_load((path or DATA_DIR / "brand_mocbrew.yaml").read_text(encoding="utf-8"))
+    brand = yaml.safe_load(
+        (path or DATA_DIR / "brand_mocbrew.yaml").read_text(encoding="utf-8"))
+    if isinstance(brand, dict) and brand.get("visual") is not None:
+        brand["visual"] = validate_visual(brand["visual"])
+    return brand
+
+
+# --- Brand visual section (article-images style lock) ---
+# The optional `visual` section of a brand ({style_summary, palette[],
+# medium, mood, composition, avoid[]}) is rendered by
+# content_core.images.style_block into the style block appended to
+# every generation prompt. It is validated + normalised HERE, at the
+# load/save boundaries, like every other stored shape (review round 2
+# M3: nothing validated it, so a palette written as a plain YAML
+# string — the natural way to write one — was character-joined by the
+# renderer, "warm" -> "w, a, r, m", and every check derived the
+# expected block from the same garbled rendering, so the corruption
+# was invisible).
+
+_VISUAL_LIST_FIELDS = ("palette", "avoid")
+_VISUAL_SCALAR_FIELDS = ("medium", "mood", "composition", "style_summary")
+
+
+def validate_visual(visual: dict) -> dict:
+    """Validate + normalise a brand `visual` section; returns a
+    normalised COPY (unknown extra keys are preserved untouched).
+
+    List fields (`palette`, `avoid`) accept a list of strings OR one
+    plain string: a string is split on commas into items, because
+    that is how a human writes it in YAML — "brown, cream" means two
+    palette entries, "warm earth tones" (no comma) means one. Scalar
+    fields (`medium`, `mood`, `composition`, `style_summary`) must
+    be strings. Anything else — a non-object section, a numeric or
+    mapping list field, a non-string list item, a non-string scalar —
+    raises ValueError NAMING the field, so a malformed brand fails
+    loudly at load instead of garbling prompts downstream."""
+    if not isinstance(visual, dict):
+        raise ValueError(
+            f"brand visual section must be an object, "
+            f"got {type(visual).__name__}")
+    out = dict(visual)
+    for field in _VISUAL_LIST_FIELDS:
+        value = visual.get(field)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            items = [part.strip() for part in value.split(",")]
+            out[field] = [part for part in items if part]
+        elif isinstance(value, list):
+            if not all(isinstance(item, str) for item in value):
+                raise ValueError(
+                    f"brand visual {field} must be a list of strings")
+            out[field] = [item.strip() for item in value if item.strip()]
+        else:
+            raise ValueError(
+                f"brand visual {field} must be a list of strings or a "
+                f"comma-separated string, got {type(value).__name__}")
+    for field in _VISUAL_SCALAR_FIELDS:
+        value = visual.get(field)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(
+                f"brand visual {field} must be a string, "
+                f"got {type(value).__name__}")
+    return out
 
 
 # --- Facts profiles (per-brand fact bases) ---
@@ -466,6 +529,11 @@ def validate_brand_draft(draft: dict) -> dict:
     if brand.get("source_type") == "competitor":
         for entry in draft.get("examples", []):
             entry["reference_only"] = True
+    if draft.get("visual") is not None:
+        # Normalised at the persistence boundary like the rest of the
+        # draft (review round 2 M3): a string palette is stored as the
+        # list it means, a malformed one never reaches disk.
+        draft["visual"] = validate_visual(draft["visual"])
     return draft
 
 
@@ -490,6 +558,10 @@ def load_brand_draft(draft_id: str) -> dict | None:
     if not isinstance(data.get("brand"), dict):
         raise ValueError(
             f"corrupt brand draft file {path.name}: 'brand' must be an object")
+    if data.get("visual") is not None:
+        # Legacy / hand-edited files get the same normalisation the
+        # save boundary applies (review round 2 M3).
+        data["visual"] = validate_visual(data["visual"])
     return data
 
 

@@ -46,7 +46,7 @@ import os
 import re
 
 from .linter import normalize_for_match
-from .loaders import slugify
+from .loaders import slugify, validate_visual
 
 # --- design constants -------------------------------------------------------
 # One featured image per article + at most 5 in-content images: beyond
@@ -93,18 +93,25 @@ def visual_of(brand: dict | None) -> dict:
     """The brand's optional `visual` section, {} when absent. The
     loader tolerates a missing section (older brands, builder drafts
     without one) — no style block, no style lock, everything else
-    works."""
+    works. A present section is run through loaders.validate_visual,
+    so in-memory brand dicts get the same normalisation the load/save
+    boundaries apply (review round 2 M3)."""
     if not isinstance(brand, dict):
         return {}
     visual = brand.get("visual")
-    return visual if isinstance(visual, dict) else {}
+    return validate_visual(visual) if isinstance(visual, dict) else {}
 
 
 def style_block(visual: dict | None) -> str:
     """Render a brand `visual` dict as THE style block appended to
     every generation prompt. Deterministic field order; absent fields
-    are skipped. '' when the brand carries no usable visual section."""
-    visual = visual or {}
+    are skipped. '' when the brand carries no usable visual section.
+    The input is normalised via loaders.validate_visual first, so a
+    list field written as a plain string renders as items — never as
+    a per-character join (review round 2 M3)."""
+    if not visual:
+        return ""
+    visual = validate_visual(visual)
     parts: list[str] = []
     if visual.get("medium"):
         parts.append(f"medium: {visual['medium']}")
@@ -235,6 +242,19 @@ def _cap_alt(text: str) -> str:
 
 # --- library ranking -------------------------------------------------------------
 
+def normalise_ref(ref: str) -> str:
+    """The canonical form of an image ref for uniqueness comparisons
+    (review round 2 M1: within a draft, the REF — not the library
+    entry id — is the uniqueness unit). Surrounding whitespace is
+    stripped; local paths go through os.path.normpath, so
+    "./photos/a.jpg", "photos//a.jpg" and "photos/a.jpg" are the same
+    ref. URLs are compared verbatim after stripping."""
+    text = str(ref or "").strip()
+    if not text or text.startswith(("http://", "https://")):
+        return text
+    return os.path.normpath(text)
+
+
 def _token_set(text: str) -> set[str]:
     return {t for t in normalize_for_match(text).split()
             if len(t) > 1 and t not in _RANK_STOPWORDS}
@@ -267,15 +287,23 @@ def library_score(entry: dict, query_tokens: set[str]) -> tuple[float, int]:
 
 
 def best_library_match(item: dict, brief: dict, entries: list[dict],
-                       used_ids: set[str]) -> tuple[dict, float] | None:
+                       used_ids: set[str],
+                       used_refs: set[str] | None = None) -> tuple[dict, float] | None:
     """The best unused library entry for a slot, or None when nothing
     clears LIBRARY_MATCH_THRESHOLD. Deterministic order: higher
     score, more hits, CLIENT entries before AI ones (real photos are
-    the point of the library), then entry id."""
+    the point of the library), then entry id. An entry is unused only
+    when BOTH its id and its normalised ref are unused: the same
+    photo stored twice under different descriptions is two entries
+    but one ref, and one ref never fills two slots (review round 2
+    M1)."""
     query = slot_query_tokens(item, brief)
     ranked = []
     for entry in entries:
         if entry.get("id") in used_ids:
+            continue
+        if used_refs is not None \
+                and normalise_ref(entry.get("ref") or "") in used_refs:
             continue
         score, hits = library_score(entry, query)
         if hits >= 1 and score >= LIBRARY_MATCH_THRESHOLD:
@@ -290,6 +318,15 @@ def best_library_match(item: dict, brief: dict, entries: list[dict],
 
 
 # --- checking ---------------------------------------------------------------------
+
+def _grade_ok(grade: object) -> bool:
+    """A stored vision grade is valid only as a strict int in 0..2 —
+    bool is an int subclass and must not sneak through as grade 1
+    (review round 2 M4; mirrors record_vision_check's write-side
+    validation)."""
+    return isinstance(grade, int) and not isinstance(grade, bool) \
+        and 0 <= grade <= 2
+
 
 def _is_local_file(ref: str) -> bool:
     return bool(ref) and not ref.startswith(("http://", "https://")) \
@@ -311,10 +348,14 @@ def check_images(plan: list[dict], images: dict, brief: dict,
     (diacritics-insensitive), stuffed_alt (the brief keyword repeated,
     or an alt made of nothing but the keyword), bad_filename,
     featured_filename_missing_keyword, featured_reused (the featured
-    ref used again in-content), too_many_images (fulfilments outside
+    ref used again in-content), duplicate_ref (the same normalised
+    ref fulfilling 2+ slots — the featured-reuse pair is reported as
+    featured_reused only), too_many_images (fulfilments outside
     the plan), alt_too_long (>200), style_not_locked /
     style_block_mismatch (AI style lock), vision_content_mismatch /
-    vision_style_mismatch (a recorded grade of 0).
+    vision_style_mismatch (a recorded grade of 0),
+    vision_grade_invalid (complete; a stored vision_check whose
+    grades are not strict ints in 0..2).
     Flagged: alt_long (125-200), missing_caption (featured only),
     missing_description, file_over_budget / file_format (local files
     only), vision_unchecked (complete), vision_reservations (grade 1).
@@ -353,8 +394,10 @@ def check_images(plan: list[dict], images: dict, brief: dict,
         entry = fulfilled.get(item["id"])
         if item["role"] == "featured" and entry:
             featured_ref = entry.get("ref")
+    featured_nref = normalise_ref(featured_ref) if featured_ref else ""
 
     seen_alts: dict[str, str] = {}
+    seen_refs: dict[str, str] = {}
     ai_blocks: dict[str, str] = {}
     ordered_ids = [p["id"] for p in plan if p["id"] in fulfilled] + \
         sorted(set(fulfilled) - set(plan_by_id))
@@ -363,6 +406,27 @@ def check_images(plan: list[dict], images: dict, brief: dict,
         item = plan_by_id.get(iid)
         ref = str(entry.get("ref") or "")
         alt = str(entry.get("alt") or "").strip()
+        nref = normalise_ref(ref)
+
+        # --- duplicate ref: one photo must not fill two slots. The
+        #     uniqueness unit is the normalised REF, whatever entry
+        #     id or source delivered it (review round 2 M1). The
+        #     featured-vs-content pair is diagnosed once, as
+        #     featured_reused below, not twice. ---
+        first_with_ref = seen_refs.get(nref)
+        if first_with_ref is None:
+            if nref:
+                seen_refs[nref] = iid
+        else:
+            first_item = plan_by_id.get(first_with_ref)
+            pair_is_featured_reuse = (
+                first_item is not None
+                and first_item["role"] == "featured"
+                and item is not None and item["role"] != "featured")
+            if not pair_is_featured_reuse:
+                _issue(iid, "duplicate_ref",
+                       f"same image ref as {first_with_ref} — one "
+                       f"photo must not fill two slots in one article")
 
         # --- alt text ---
         if not alt:
@@ -402,7 +466,7 @@ def check_images(plan: list[dict], images: dict, brief: dict,
 
         # --- featured reuse ---
         if item is not None and item["role"] != "featured" \
-                and featured_ref and ref == featured_ref:
+                and featured_nref and nref == featured_nref:
             _issue(iid, "featured_reused",
                    "the featured image is reused as an in-content image")
 
@@ -414,9 +478,13 @@ def check_images(plan: list[dict], images: dict, brief: dict,
             if block:
                 ai_blocks[iid] = normalize_for_match(block)
             if not prompt_used.strip():
-                _issue(iid, "style_not_locked",
-                       "AI image has no recorded prompt_used — the style "
-                       "lock cannot be verified")
+                if brand_block:
+                    _issue(iid, "style_not_locked",
+                           "AI image has no recorded prompt_used — the "
+                           "style lock cannot be verified")
+                # No brand style block -> no style lock (the module
+                # contract): with nothing to lock to, a missing
+                # prompt_used breaks nothing (review round 2 M2).
             elif brand_block and normalize_for_match(block) \
                     != normalize_for_match(brand_block):
                 _issue(iid, "style_not_locked",
@@ -424,16 +492,28 @@ def check_images(plan: list[dict], images: dict, brief: dict,
                        "current visual style block")
 
         # --- vision check (judged layer; every fulfilled image,
-        #     library and client photos included) ---
+        #     library and client photos included). Stored grades are
+        #     RE-VALIDATED here, not trusted: record_vision_check
+        #     validates at write time, but a hand-edited or legacy
+        #     draft can carry anything (review round 2 M4). ---
         vc = entry.get("vision_check")
         grades_ok = isinstance(vc, dict) \
-            and isinstance(vc.get("content_grade"), int) \
-            and isinstance(vc.get("style_grade"), int)
-        if not grades_ok:
+            and _grade_ok(vc.get("content_grade")) \
+            and _grade_ok(vc.get("style_grade"))
+        if vc is None:
             if complete:
                 _flag(iid, "vision_unchecked",
                       "no vision_check recorded — the writer has not "
                       "graded this image yet")
+        elif not grades_ok:
+            # A record exists but its grades are not strict ints in
+            # 0..2 — it never counts as checked in either mode; in
+            # complete mode it is a hard issue, so it blocks manifest
+            # readiness until the grades are re-recorded.
+            if complete:
+                _issue(iid, "vision_grade_invalid",
+                       "stored vision_check grades are not ints in "
+                       "0..2 — re-record them with record_vision_check")
         else:
             notes = str(vc.get("notes") or "")
             if vc["content_grade"] == 0:
