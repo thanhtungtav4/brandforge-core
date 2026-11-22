@@ -477,3 +477,35 @@ def test_export_text_only_draft_without_image_plan(
     assert "error" not in out, out
     assert out["media_uploaded"] == 0
     assert mock_wp.posts_payloads()[0]["status"] == "draft"
+
+
+# ---------------------------------------------------------------------------
+# Browser User-Agent: Cloudflare bans the bare urllib signature
+# ---------------------------------------------------------------------------
+
+def test_every_request_carries_the_browser_user_agent(
+        _isolated_stores, mock_wp):
+    """Regression (2026-11-22): the first live export to
+    kho.nttung.dev failed with HTTP 403 — Cloudflare Error 1010
+    "browser_signature_banned" — because urllib identifies itself
+    as "Python-urllib/x.y". The SAME credentials via curl worked,
+    so auth was never the problem. Every request the exporter
+    sends (media upload, media metadata update, post create) must
+    carry the module's browser User-Agent instead."""
+    tmp_path = _isolated_stores
+    draft_id, _ = _draft_with_images(tmp_path)
+    srv.set_wordpress_target(BRAND, mock_wp.base_url, USERNAME)
+    _write_secrets(tmp_path)
+
+    out = srv.export_draft_to_wordpress(BRAND, draft_id)
+    assert "error" not in out, out
+    # The export really exercised all three request kinds:
+    assert mock_wp.media_uploads(), "no media upload happened"
+    assert mock_wp.media_updates(), "no media update happened"
+    assert mock_wp.posts_payloads(), "no post create happened"
+    for r in mock_wp.requests:
+        headers = {k.lower(): v for k, v in r["headers"].items()}
+        ua = headers.get("user-agent", "")
+        assert "Mozilla/5.0" in ua and "Chrome/" in ua, r
+        assert "urllib" not in ua
+        assert ua == wp.USER_AGENT, r

@@ -26,7 +26,13 @@ echoes the Authorization header in an error body cannot leak it
 through our messages.
 
 The HTTP layer is stdlib urllib (the core stays dependency-light,
-like fetch_sample.py). Requests time out at 30s.
+like fetch_sample.py). Requests time out at 30s. Every request
+carries a mainstream browser User-Agent (`USER_AGENT`): urllib's
+own "Python-urllib/x.y" signature is banned outright by some
+Cloudflare configurations (Error 1010 "browser_signature_banned",
+HTTP 403 — the first live export to kho.nttung.dev failed exactly
+this way on 2026-11-22 while the same credentials via curl
+succeeded).
 """
 from __future__ import annotations
 
@@ -43,6 +49,13 @@ from pathlib import Path
 from . import loaders
 
 _TIMEOUT_S = 30
+
+# Sent on EVERY request (see the module docstring): a current
+# mainstream Chrome on Windows string. Named + module-level so the
+# tests can pin that what arrives at the server is exactly this.
+USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/138.0.0.0 Safari/537.36")
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +161,8 @@ def _request(target: dict, app_password: str, method: str, route: str,
     secrets = (app_password, auth, _auth_token(target["username"],
                                                app_password))
     headers = {"Authorization": auth,
-               "Accept": "application/json"}
+               "Accept": "application/json",
+               "User-Agent": USER_AGENT}
     data = raw_body
     if json_body is not None:
         data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
