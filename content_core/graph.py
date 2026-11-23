@@ -12,7 +12,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from .fact_check import check_draft, find_refused_claims
-from .gates import MAX_REWRITES, content_sha, evaluate_gate
+from .gates import MAX_REWRITES, content_sha, evaluate_gate, stamp_gate_entry
 from .linter import lint_draft
 from .loaders import (DEFAULT_STYLE_PROFILE_ID, load_brand, load_facts,
                       load_persona, load_style_profile)
@@ -191,7 +191,9 @@ class Core:
                                  for s in state.get("sections", []))
             entry["style_score"] = style_match(joined, style_profile)["score"]
             entry["style_profile_id"] = style_profile["id"]
-        history.append(entry)
+        # ran_at: when this run happened (shared stamp, gates.py —
+        # MCP final_gate stamps identically).
+        history.append(stamp_gate_entry(entry))
         failing_ids = verdict["failing_sections"]
         if verdict["passed"]:
             return {"status": "approved", "failing_sections": [], "gate_history": history}

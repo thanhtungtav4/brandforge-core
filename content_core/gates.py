@@ -39,6 +39,7 @@ import json
 from .craft import CRAFT_BLOCKING_FORMATS, CRAFT_PASS_SCORE, craft_check_sections
 from .fact_check import check_draft
 from .linter import lint_draft, word_count
+from .loaders import _utc_now
 from .loaders import brand_check_context as _brand_check_context
 from .quality import evaluate_quality
 
@@ -49,7 +50,24 @@ BRAND_PASS_SCORE = 85
 MAX_REWRITES = 2
 
 __all__ = ["BRAND_PASS_SCORE", "MAX_REWRITES", "CRAFT_PASS_SCORE",
-           "CRAFT_BLOCKING_FORMATS", "evaluate_gate", "content_sha"]
+           "CRAFT_BLOCKING_FORMATS", "evaluate_gate", "content_sha",
+           "stamp_gate_entry"]
+
+
+def stamp_gate_entry(entry: dict) -> dict:
+    """Record WHEN a gate run happened on its gate_history entry.
+
+    Both gate paths build their entry dict locally (the field sets are
+    aligned by hand — see the N2 note in graph.py), so the timestamp
+    itself is stamped HERE, in the one shared place, in the codebase's
+    standard format (loaders._utc_now: UTC ISO-8601, seconds). Only NEW
+    entries are stamped: entries recorded before this field existed
+    stay without `ran_at` — no backfill, no invented times — and
+    consumers (the app's quality-over-time chart) treat a missing
+    `ran_at` as "sequence order only". Mutates and returns `entry`.
+    """
+    entry["ran_at"] = _utc_now()
+    return entry
 
 
 def content_sha(sections: list[dict], title: str = "") -> str:

@@ -202,6 +202,39 @@ def test_draft_lifecycle_and_final_gate_passes():
     assert gate["gate_history"][-1]["craft_score"] == gate["craft"]["score"]
 
 
+def test_final_gate_history_entry_is_timestamped():
+    # ran_at: every NEW gate_history entry records when the gate ran
+    # (UTC ISO-8601, the codebase's _utc_now format) — the app's
+    # quality-over-time chart plots against it.
+    from datetime import datetime, timezone
+
+    draft_id = _clean_draft()
+    before = datetime.now(timezone.utc)
+    gate = srv.final_gate(draft_id)
+    after = datetime.now(timezone.utc)
+    ran_at = datetime.fromisoformat(gate["gate_history"][-1]["ran_at"])
+    assert ran_at.tzinfo is not None
+    assert before.replace(microsecond=0) <= ran_at <= after
+
+
+def test_final_gate_leaves_legacy_history_entries_untouched():
+    # Entries recorded before ran_at existed keep NO timestamp — the
+    # stamp lands only on the new entry; no backfill, no invented times.
+    draft_id = _clean_draft()
+    draft = srv.get_draft(draft_id)
+    legacy = {"pass": 1, "brand_score": 100.0, "brand_violations": 0,
+              "fact_issues": 0, "passed": True, "craft_score": 85,
+              "craft_blocking": True, "craft_advisory": False,
+              "content_sha": "legacy"}
+    draft["gate_history"] = [legacy]
+    srv._store_draft(draft)
+    gate = srv.final_gate(draft_id)
+    assert gate["gate_history"][0] == legacy
+    assert "ran_at" not in gate["gate_history"][0]
+    assert gate["gate_history"][-1]["pass"] == 2
+    assert "ran_at" in gate["gate_history"][-1]
+
+
 def test_check_draft_all_matches_individual_tools():
     # Perf P3(ii): the combined check must report EXACTLY what the
     # individual tools report for the same draft (it only saves the

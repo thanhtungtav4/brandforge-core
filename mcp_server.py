@@ -60,6 +60,7 @@ from content_core.fact_check import find_refused_claims
 from content_core.gates import BRAND_PASS_SCORE, CRAFT_PASS_SCORE, MAX_REWRITES
 from content_core.gates import content_sha as _content_sha
 from content_core.gates import evaluate_gate as _evaluate_gate
+from content_core.gates import stamp_gate_entry as _stamp_gate_entry
 # NOTE: content_core.graph (and its langgraph chain, ~1 s of import) is
 # deliberately NOT imported at module level — see _core_class (perf P8).
 from content_core.linter import lint_draft as _lint_draft
@@ -2946,7 +2947,9 @@ def _final_gate_impl(draft_id: str, quality_profile: str = "",
                             "weighted_total": quality["weighted_total"],
                             "quality_pass": quality["quality_pass"],
                             "floors_failed": quality["floors_failed"]}
-    history.append(entry)
+    # ran_at: when this run happened (shared stamp, gates.py — the
+    # graph path stamps identically). Legacy entries stay unstamped.
+    history.append(_stamp_gate_entry(entry))
     # Bounded (review L6): a long-lived draft's gate_history used to
     # grow without limit and bloat every get_draft response.
     draft["gate_history"] = history[-_GATE_HISTORY_CAP:]

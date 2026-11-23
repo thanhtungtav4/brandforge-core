@@ -51,11 +51,13 @@ def test_research_only_retrieves_triggered_facts():
 # The MCP entry shape with no style profile and no quality layer active:
 # exactly the keys final_gate writes in that case. content_sha joined
 # in fix round F1 (the exporter's pass-currency fingerprint, recorded
-# by BOTH gate paths).
+# by BOTH gate paths). ran_at joined later (the run timestamp the app
+# plots quality history against; stamped by BOTH paths via the shared
+# gates.stamp_gate_entry helper).
 _MCP_PLAIN_ENTRY_KEYS = {"pass", "brand_score", "brand_violations",
                          "fact_issues", "passed", "craft_score",
                          "craft_blocking", "craft_advisory",
-                         "content_sha"}
+                         "content_sha", "ran_at"}
 
 
 def test_graph_gate_history_matches_mcp_entry_shape():
@@ -67,6 +69,20 @@ def test_graph_gate_history_matches_mcp_entry_shape():
     assert entry["craft_blocking"] is True
     assert entry["craft_advisory"] is False
     assert entry["craft_score"] >= 70
+
+
+def test_graph_gate_history_entry_is_timestamped():
+    # ran_at: UTC ISO-8601, parseable, and the moment the gate ran —
+    # the app's quality-over-time chart needs a real time axis.
+    from datetime import datetime, timezone
+
+    before = datetime.now(timezone.utc)
+    state = run_flow(GOOD_BRIEF, outline_approved=True)
+    after = datetime.now(timezone.utc)
+    entry = state["gate_history"][0]
+    ran_at = datetime.fromisoformat(entry["ran_at"])
+    assert ran_at.tzinfo is not None
+    assert before.replace(microsecond=0) <= ran_at <= after
 
 
 def test_graph_gate_history_records_style_when_brief_names_profile():
