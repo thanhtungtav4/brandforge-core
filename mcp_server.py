@@ -2513,6 +2513,43 @@ def apply_pack(brand_id: str) -> dict:
 # --------------------------------------------------------------------------
 
 @mcp.tool()
+def create_corpus_profile(name: str, samples: list[str]) -> dict:
+    """Build + persist a Style Profile for a NEW corpus from pasted
+    sample texts — the extraction half of corpus registration (the
+    admin's "create corpus" flow, app gap #8).
+
+    COPYRIGHT RULE (hard): a corpus profile holds statistics +
+    distilled traits ONLY, so excerpts are NEVER stored on this path
+    — store_excerpts is forced False server-side and is not a
+    parameter a caller can flip. (The taste layer is the only
+    store_excerpts=True path in the system, for the owner's own
+    articles.)
+
+    Requires at least 3 DISTINCT non-empty samples: duplicates
+    collapse to one sample of evidence (analyze_samples' rule), so
+    pasting the same text three times is refused, not triple-counted.
+    Returns {profile_id, profile, word_count, sample_count} — the
+    counts are MEASURED from the samples, ready to hand to
+    register_corpus verbatim."""
+    usable = [s for s in samples if s and s.strip()]
+    analysis = _analyze_samples(usable)
+    if analysis["sample_count"] < 3:
+        return {"error": f"a corpus profile needs at least 3 distinct "
+                         f"non-empty samples, got "
+                         f"{analysis['sample_count']} — samples that "
+                         f"repeat each other count once"}
+    try:
+        profile = _build_profile(name, usable, qualitative=None,
+                                 store_excerpts=False, brand_id="")
+        saved = _save_style_profile_file(profile)
+    except ValueError as exc:  # e.g. an unusable profile name
+        return {"error": str(exc)}
+    return {"profile_id": saved["id"], "profile": saved,
+            "word_count": analysis["fingerprint"]["word_count"],
+            "sample_count": analysis["sample_count"]}
+
+
+@mcp.tool()
 def register_corpus(corpus_id: str, version: int, title: str, kind: str,
                     profile_id: str, legitimacy_basis: str,
                     word_count: int, sample_count: int = 0) -> dict:

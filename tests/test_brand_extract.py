@@ -233,9 +233,11 @@ def test_mcp_tool_list_now_29():
     # L5 closure added clear_corpus_choice, the quality-uplift
     # round added score_section_variants + sync_wordpress_edits,
     # the AI-tagging round added tag_library_image, and the
-    # setup-assist round added prepare_brand_setup + get_brand_setup.)
+    # setup-assist round added prepare_brand_setup + get_brand_setup,
+    # and the corpus-creation round (app gap #8) added
+    # create_corpus_profile.)
     assert EXPECTED_NEW_TOOLS <= set(srv.TOOL_NAMES)
-    assert len(srv.TOOL_NAMES) == 70
+    assert len(srv.TOOL_NAMES) == 71
     for name in EXPECTED_NEW_TOOLS:
         assert callable(getattr(srv, name)), name
 
