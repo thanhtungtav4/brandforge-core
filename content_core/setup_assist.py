@@ -278,7 +278,7 @@ def extract_facts_draft(pages: list[dict], brand_id: str) -> dict:
     if clean_pairs:
         table = ", ".join(
             f"{loaders.format_vnd(clean_pairs[w])} cho gói "
-            f"{w if w < 1000 else '1kg'}{'g' if w < 1000 else ''}"
+            f"{w if w < 1000 else w / 1000:g}{'g' if w < 1000 else 'kg'}"
             for w in sorted(clean_pairs))
         entries.append({"id": "price",
                         "keys": ["giá", "bao nhiêu"],

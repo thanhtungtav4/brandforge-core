@@ -244,6 +244,76 @@ def test_ws1_depth_context_field_on_quality_results(stores):
 
 
 # ---------------------------------------------------------------------------
+# N3 (review round 3) — _depth_excerpts prefix citation must stop at a
+# path boundary: a source at https://x/blog must not claim a citation
+# of https://x/blogger (same string prefix, different URL).
+# ---------------------------------------------------------------------------
+
+def _pack_citing(source_url, cited_url, page_url=None):
+    """One accepted source + one applied fact citing `cited_url`."""
+    return {
+        "brand_id": "brand-n3",
+        "sources": [{
+            "url": source_url,
+            "quality": {"verdict": "accept"},
+            "pages": [{"url": page_url or source_url, "title": "Blog",
+                       "text": "Nội dung trích từ nguồn blog để lấy "
+                               "màu sắc địa phương cho bài viết."}],
+        }],
+        "items": [{
+            "id": "i1", "kind": "fact", "status": "applied",
+            "payload": {"field": "claim",
+                        "value": "một khẳng định đã duyệt"},
+            "provenance": {"source_url": cited_url},
+        }],
+    }
+
+
+def test_n3_sibling_prefix_url_is_not_a_citation():
+    # The review's repro: source https://x/blog, cited
+    # https://x/blogger — pre-fix the source wrongly contributes
+    # its excerpt; post-fix it contributes nothing.
+    pack = _pack_citing("https://x.example/blog",
+                        "https://x.example/blogger")
+    out = research.depth_material(pack)
+    assert out is not None
+    assert out["source_excerpts"] == 0, out
+    assert "Nội dung trích từ nguồn blog" not in out["text"]
+
+
+@pytest.mark.parametrize("cited_url", [
+    "https://x.example/blog",            # the source's own URL
+    "https://x.example/blog/bai-viet",   # a page beneath the source
+    "https://x.example/blog/",           # trailing slash on the cited URL
+])
+def test_n3_own_and_subpath_urls_are_citations(cited_url):
+    pack = _pack_citing("https://x.example/blog", cited_url)
+    out = research.depth_material(pack)
+    assert out is not None
+    assert out["source_excerpts"] == 1, out
+    assert "Nội dung trích từ nguồn blog" in out["text"]
+
+
+def test_n3_trailing_slash_source_still_matches_subpath():
+    pack = _pack_citing("https://x.example/blog/",
+                        "https://x.example/blog/bai-viet")
+    out = research.depth_material(pack)
+    assert out is not None
+    assert out["source_excerpts"] == 1, out
+
+
+def test_n3_query_string_after_prefix_is_not_a_citation():
+    # The boundary rule is "/" or end-of-string; "?" is neither, so
+    # a tracked link to the source's own path does not count as a
+    # citation of the source either — the safe direction.
+    pack = _pack_citing("https://x.example/blog",
+                        "https://x.example/blog?ref=nha")
+    out = research.depth_material(pack)
+    assert out is not None
+    assert out["source_excerpts"] == 0, out
+
+
+# ---------------------------------------------------------------------------
 # WS2 — best-of-N section variants
 # ---------------------------------------------------------------------------
 
@@ -357,6 +427,129 @@ def test_ws2_input_validation(stores):
     empty = srv.score_section_variants(
         "opening", [GOOD_OPENING, "  "], draft_id=draft_id)
     assert "error" in empty
+
+
+def test_ws2_stale_brief_style_profile_is_an_error(stores):
+    """Round-3 S3: a draft whose brief names a style profile that no
+    longer resolves must NOT score variants as if no profile were
+    intended — the stale id is an error, mirroring assemble_context's
+    style_profile_error. (Fail-first: before the fix the call returns
+    a ranking with style_profile_id None.)"""
+    brief = {"format": "blog", "topic": "cà phê văn phòng",
+             "keyword": "cà phê", "title": "Cà phê Mộc Brew",
+             "style_profile_id": "sp-doesnotexist"}
+    draft_id = srv.start_draft(brief)["draft_id"]
+    out = srv.score_section_variants(
+        "opening", [GOOD_OPENING, WEAK_OPENING], draft_id=draft_id)
+    assert "error" in out, out
+    assert "sp-doesnotexist" in out["error"]
+    assert "ranked" not in out
+
+
+def test_ws2_stale_explicit_style_profile_is_an_error(stores):
+    """Same stale-id rule for the explicit argument — already an error
+    before this round; pinned so the fix cannot regress it."""
+    draft_id = _mocbrew_draft(stores)
+    out = srv.score_section_variants(
+        "opening", [GOOD_OPENING, WEAK_OPENING], draft_id=draft_id,
+        style_profile_id="sp-doesnotexist")
+    assert "error" in out, out
+    assert "sp-doesnotexist" in out["error"]
+
+
+def test_ws2_stale_corpus_choice_default_stays_silent(stores):
+    """A stale corpus-choice DEFAULT is not an error: like
+    assemble_context, only a profile the brief (or the caller)
+    explicitly named is reported — a default that fails to resolve
+    just means no style part."""
+    loaders.save_corpus_choice("moc-brew", {
+        "corpus_id": "c-doesnotexist", "version": 1,
+        "profile_id": "sp-doesnotexist", "source": "direct"})
+    out = srv.score_section_variants(
+        "opening", [GOOD_OPENING, WEAK_OPENING], brand_id="moc-brew")
+    assert "error" not in out, out
+    assert out["style_profile_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Approved item A (Smith 22/11/2026): the S3 stale-profile rule applied
+# to quality_score and check_draft_all
+# ---------------------------------------------------------------------------
+
+def _stale_profile_draft_id():
+    """A draft whose brief names a style profile that no longer
+    resolves — the same stale-id shape as the S3 test above."""
+    brief = {"format": "blog", "topic": "cà phê văn phòng",
+             "keyword": "cà phê", "title": "Cà phê Mộc Brew",
+             "style_profile_id": "sp-doesnotexist"}
+    draft_id = srv.start_draft(brief)["draft_id"]
+    srv.save_section(draft_id, "s1", "Mở đầu", GOOD_OPENING,
+                     intent="intro", target_words=120)
+    return draft_id
+
+
+def test_qs_stale_brief_style_profile_is_an_error(stores):
+    """Approved item A: quality_score must NOT score a draft whose
+    brief names a style profile that no longer resolves as if no
+    profile were intended — the stale id is a structured error,
+    mirroring score_section_variants after S3. (Fail-first: before
+    the fix the call returns a full quality report with the voice
+    axis scored without any style profile.)"""
+    draft_id = _stale_profile_draft_id()
+    out = srv.quality_score(draft_id)
+    assert "error" in out, out
+    assert "sp-doesnotexist" in out["error"]
+    assert "weighted_total" not in out
+
+
+def test_check_all_stale_brief_style_profile_is_an_error(stores):
+    """Approved item A, same rule for check_draft_all: a stale brief
+    style profile is an error naming the id — no combined report
+    with style None and a style-less quality section. (Fail-first:
+    before the fix the call returns the full combined report.)"""
+    draft_id = _stale_profile_draft_id()
+    out = srv.check_draft_all(draft_id)
+    assert "error" in out, out
+    assert "sp-doesnotexist" in out["error"]
+    assert "brand" not in out and "quality" not in out
+
+
+def test_qs_corrupt_stored_style_profile_is_a_structured_error(stores):
+    """Pin (approved item A, corrupt-profile clause): a stored profile
+    file that fails to load is a structured error, not a crash —
+    already the behaviour via the ValueError guard around the
+    resolve; pinned so the stale-id change cannot regress it."""
+    (Path(stores) / "style_profiles").mkdir(parents=True, exist_ok=True)
+    (Path(stores) / "style_profiles" / "sp-broken.json").write_text(
+        "{not json", encoding="utf-8")
+    brief = {"format": "blog", "topic": "cà phê văn phòng",
+             "keyword": "cà phê", "title": "Cà phê Mộc Brew",
+             "style_profile_id": "sp-broken"}
+    draft_id = srv.start_draft(brief)["draft_id"]
+    srv.save_section(draft_id, "s1", "Mở đầu", GOOD_OPENING,
+                     intent="intro", target_words=120)
+    out = srv.quality_score(draft_id)
+    assert "error" in out, out
+    assert "sp-broken" in out["error"]
+    assert "weighted_total" not in out
+
+
+def test_qs_and_check_all_valid_brief_style_profile_still_scores(stores):
+    """Pin: a brief naming a profile that DOES resolve still scores
+    with it — quality_score's voice axis carries the profile id and
+    check_draft_all returns a style report for it. The fix must not
+    turn every profiled draft into an error."""
+    draft_id = _mocbrew_draft(stores, style=True)
+    qs = srv.quality_score(draft_id)
+    assert "error" not in qs, qs
+    voice = next(a for a in qs["axes"] if a["axis"] == "voice")
+    assert voice["detail"].get("style_profile_id")
+    combined = srv.check_draft_all(draft_id)
+    assert "error" not in combined, combined
+    assert combined["style"] is not None
+    assert combined["style"]["profile_id"] == \
+        voice["detail"]["style_profile_id"]
+    assert combined["quality"]["weighted_total"] == qs["weighted_total"]
 
 
 # ---------------------------------------------------------------------------

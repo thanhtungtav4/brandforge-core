@@ -587,6 +587,20 @@ def _depth_fact_text(item: dict) -> str:
     return line
 
 
+def _cites_source(cited_url: str, source_url: str) -> bool:
+    """Whether a cited URL belongs to a source: the source's own URL
+    or a page beneath it. A shared string prefix is NOT enough —
+    https://x/blog must not claim a citation of https://x/blogger
+    (review round 3, N3): the character after the source URL must
+    be a path boundary (``/``) or end-of-string. A trailing slash
+    on the stored source URL is normalised away first, so a source
+    stored as https://x/blog/ still matches its subpages."""
+    src = source_url.rstrip("/")
+    if not src:
+        return False
+    return cited_url == src or cited_url.startswith(src + "/")
+
+
 def _depth_excerpts(pack: dict, items: list[dict]) -> list[str]:
     """Bounded excerpts from the pack's ACCEPTED sources that applied
     items cite — the local-colour half of the depth material. A
@@ -608,7 +622,7 @@ def _depth_excerpts(pack: dict, items: list[dict]) -> list[str]:
         page_urls = {str(p.get("url") or "") for p in pages}
         cited_here = (source.get("url") in cited
                       or bool(page_urls & cited)
-                      or any(u.startswith(str(source.get("url") or ""))
+                      or any(_cites_source(u, str(source.get("url") or ""))
                              for u in cited if source.get("url")))
         if not cited_here:
             continue

@@ -180,8 +180,9 @@ the app was modified by this review.
 
 ## Closure addendum — M1 + S1 + S2 fix round (2026-11-22, Smith-approved)
 
-Scope was exactly M1, S1, S2. S3 and N1–N4 were out of scope and
-are untouched. Each fix landed as its own commit, fail-first, with
+Scope was exactly M1, S1, S2. S3 and N1–N4 were out of scope of
+that round; S3 is fixed in the follow-up below, N1–N4 remain
+untouched. Each fix landed as its own commit, fail-first, with
 the full verification run fresh at the end (see below).
 
 - **M1 — FIXED, commit `4fa6555`.** `_BlockExtractor` is now a
@@ -236,3 +237,173 @@ against the real site returned `changed: false` for all four
 exported posts (777, 778, 779, 780), no errors — M1's new
 extractor produces zero phantom diffs on the exporter-shaped
 posts, and the taste store gained no entries.
+
+## Closure addendum — S3 fix (2026-11-22, 2h review run)
+
+S3 was out of scope of the M1+S1+S2 round and is fixed here, in the
+2-hourly review run's backlog slot. N1–N4 remain untouched.
+
+- **S3 — FIXED.** `score_section_variants` now tracks where the
+  wanted style profile came from: an explicit argument or a
+  brief-named id that fails to resolve is an error (`style profile
+  not found: <id>`, no ranking returned), so variants are never
+  silently scored without the intended profile; a stale
+  corpus-choice default still means no style part, exactly as
+  `assemble_context` treats it. A corrupt stored profile
+  (ValueError from the resolver, review M6) is likewise a
+  structured error instead of an uncaught crash. Evidence:
+  fail-first test `test_ws2_stale_brief_style_profile_is_an_error`
+  reproduced the silent drop pre-fix (ranking with
+  `style_profile_id: None`); 3 new tests in
+  `tests/test_quality_uplift.py` (brief-stale, explicit-stale pin,
+  corpus-choice-default silent pin). Differential over the real
+  stores: 122 stored drafts + brand calls for mambagiaokhoe and
+  moc-brew — before/after byte-identical.
+
+**Verification (fresh output, this fix):** pytest **580 passed**
+(577 + 3 new) · run_golden **7/7** · run_model_golden **6/6** ·
+test_mcp_client **24/24** · test_mcp_http **PASS** (70 tools) ·
+demos **4/4 exit 0**.
+
+## Closure addendum — approved item A (2026-11-23, 2h review run)
+
+Smith approved this on 22/11/2026 (23:54) as the follow-up to S3, done
+here as the run's single item. N2 remains untouched — it is the next
+approved item, for a later run.
+
+- **A — FIXED.** The S3 stale-profile rule now also covers
+  `quality_score` and `check_draft_all`: a draft whose brief names a
+  `style_profile_id` that no longer resolves returns a structured
+  error naming the id (`style profile not found: <id>`) instead of
+  silently scoring with `style_profile=None`. The corpus-choice
+  clause does not apply here — neither function consults the corpus
+  choice (unlike `score_section_variants`' brand path and
+  `assemble_context`), so there is no default to silently ignore. A
+  corrupt stored profile was already a structured error in both
+  functions (the resolve sits inside the existing ValueError guard)
+  and is now pinned by a test. Evidence: fail-first tests
+  `test_qs_stale_brief_style_profile_is_an_error` and
+  `test_check_all_stale_brief_style_profile_is_an_error` reproduced
+  the silent scoring pre-fix (full report, `style: None`); 4 new
+  tests in `tests/test_quality_uplift.py` (2 stale-id, 1 corrupt
+  pin, 1 valid-profile pin). Differential over the real stores:
+  `quality_score` + `check_draft_all` over all 126 stored drafts —
+  before/after byte-identical (all 7 briefs carrying a profile name
+  ids that still resolve).
+
+**Verification (fresh output, this fix):** pytest **584 passed**
+(580 + 4 new) · run_golden **7/7** · run_model_golden **6/6** ·
+test_mcp_client **24/24** · test_mcp_http **PASS** (70 tools) ·
+demos **4/4 exit 0**.
+
+## Closure addendum — approved item B / N2 (2026-11-23, 2h review run)
+
+Smith approved this on 22/11/2026 (23:54) as the follow-up to S3, done
+here as the run's single item. Both approved items A and B are now
+closed; N1, N3, N4 remain untouched.
+
+- **B / N2 — FIXED.** The LangGraph graph path's `gate_history` entries
+  now record the FULL field set MCP `final_gate` records
+  (`content_core/graph.py`, `Core.final_gate`): `craft_advisory` on
+  every entry, plus `style_score` / `style_profile_id` when the brief
+  names a style profile that resolves (same `style_match` computation
+  over the joined draft text as `final_gate`). The quality layer is
+  never active on the graph path and MCP omits `"quality"` exactly
+  then, so nothing is recorded for it on either path — already
+  consistent, no change. Only the record shape changed: no gate
+  verdict, threshold, or checker call was touched. A stale brief
+  profile id, or a corrupt stored profile file (the loader raises
+  `ValueError`), resolves to None in the graph path, so the entry
+  simply omits the style fields and the draft's verdict stands — the
+  graph never had style handling, so a bad profile must not newly
+  fail a draft that previously passed. (Whether `final_gate` itself
+  should error on a stale profile is the pending S3 follow-up
+  proposal from the 01:38 run, still Smith's call.) Old stored
+  entries stay as-is (append-only): the 3 bare graph-path entries
+  found in the store (drafts `d-60691d9d22`, `d-701a5040d9`,
+  `d-dab89d314d` — no craft fields at all, predating even the
+  `craft_score`/`craft_blocking` the graph already wrote) are
+  historical records, not rewritten. Evidence: fail-first test
+  `test_graph_gate_history_matches_mcp_entry_shape` reproduced the
+  gap pre-fix (entry missing `craft_advisory`); 4 new tests in
+  `tests/test_gates.py` (MCP-shape parity, style recorded, stale-id
+  pin, corrupt-file pin). Differential over the real stores: the
+  graph `final_gate` node over all 128 stored drafts — verdict
+  (`status` / `failing_sections` / `passed`) identical before/after
+  on **128/128**. Spot check on a real styled draft
+  (`d-2a0202e3c7`, brief names `mien-tay-van-hoc-voice`): graph
+  entry now carries exactly the MCP field set, `style_score` 92.0,
+  `craft_advisory` False, `passed` True.
+
+**Verification (fresh output, this fix):** pytest **588 passed**
+(584 + 4 new) · run_golden **7/7** · run_model_golden **6/6** ·
+test_mcp_client **24/24** · test_mcp_http **PASS** (70 tools) ·
+demos **4/4 exit 0**.
+
+## Closure addendum — N3 (2026-11-23, 2h review run)
+
+N3 was the next untouched round-3 item after A and B closed; N1 and
+N4 remain untouched.
+
+- **N3 — FIXED.** `research._depth_excerpts` no longer treats a
+  shared string prefix as a citation: the prefix clause now goes
+  through `_cites_source`, which requires the cited URL to equal the
+  source URL or sit on a path beneath it (the character after the
+  source URL must be ``/`` or end-of-string, per the review's rule;
+  a trailing slash on the stored source URL is normalised away
+  first). A source at `https://x/blog` can no longer claim an
+  excerpt for a citation of `https://x/blogger` — or of a tracked
+  link `https://x/blog?ref=…`, which the rule likewise excludes
+  (the safe direction: a missed excerpt loses local colour, never
+  facts). Only the citation-matching clause changed: no gate,
+  threshold, checker, or pack invariant was touched. Evidence:
+  fail-first tests — the sibling-prefix and query-string cases
+  failed pre-fix (excerpt wrongly contributed, 1 instead of 0)
+  while the exact-URL, subpath, and trailing-slash controls passed
+  throughout; 6 new tests in `tests/test_quality_uplift.py`
+  (sibling-prefix, 3 own/subpath controls, trailing-slash source,
+  query-string). Differential over the real stores:
+  `depth_material` over the only real pack
+  (`data/research_packs/mambagiaokhoe.json`, 9 proposed / 0
+  applied items) is byte-identical before/after; a synthetic
+  differential on the pack's real URL tree shows exactly the two
+  over-cite cases changing — citing
+  `https://mambagiaokhoe.com.vn` or `https://mambagiaokhoe.com2/x`
+  against source `https://mambagiaokhoe.com` contributed an
+  excerpt before (1) and contributes none after (0), while the
+  subpage, exact-source, and unrelated-URL cases are unchanged.
+
+**Verification (fresh output, this fix):** pytest **594 passed**
+(588 + 6 new) · run_golden **7/7** · run_model_golden **6/6** ·
+test_mcp_client **24/24** · test_mcp_http **PASS** (70 tools) ·
+demos **4/4 exit 0**.
+
+## Closure addendum — N1 (2026-11-23, 2h review run)
+
+N1 was the next untouched round-3 item after A, B and N3 closed;
+N4 remains untouched.
+
+- **N1 — FIXED.** `setup_assist.extract_facts_draft` no longer
+  writes the literal string `1kg` for every pack >= 1000 g in the
+  facts-draft price line: the label is now
+  `{w if w < 1000 else w / 1000:g}{'g' if w < 1000 else 'kg'}`,
+  so a 2000 g pack reads "2kg", 1500 g reads "1.5kg", and 1000 g
+  still reads "1kg" (1250 g → "1.25kg"). Only the human-facing
+  lorebook text changed — the numeric facts fields
+  (`pack_weights_g`, `price_vnd_per_250g`, `price_display`,
+  `known_prices_vnd`) were always correct and are untouched, as
+  are all gate/threshold/checker paths. Evidence: fail-first test
+  `test_prepare_big_pack_weights_labelled_in_kg` reproduced the
+  mislabel pre-fix (price line read "650.000đ cho gói 1kg,
+  880.000đ cho gói 1kg"); 1 new test in
+  `tests/test_setup_assist.py`. Differential over the prepare
+  path: the clean fixture site (250g/500g/1kg) is byte-identical
+  before/after, and the big-packs fixture changes exactly in the
+  two kg labels ("1kg, 1kg" → "1.5kg, 2kg"); no stored real draft
+  carried the mislabel (the only live "cho gói 1kg" entry,
+  cao-nguyen-moc, is a genuine 1000 g pack).
+
+**Verification (fresh output, this fix):** pytest **595 passed**
+(594 + 1 new) · run_golden **7/7** · run_model_golden **6/6** ·
+test_mcp_client **24/24** · test_mcp_http **PASS** (70 tools) ·
+demos **4/4 exit 0**.

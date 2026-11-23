@@ -396,7 +396,12 @@ def test_load_facts_unknown_brand_raises_never_falls_back():
 def test_shipped_cnm_facts_profile_resolves():
     facts = load_facts("cao-nguyen-moc")
     assert facts["facts"]["price_vnd_per_250g"] == 89000
-    assert 359000 in facts["facts"]["known_prices_vnd"]
+    # Updated 23 Nov 2026 (Smith-approved daily-digest item 1): the live
+    # shop dropped the 500g/1kg coffee packs, cashew is only the 500g
+    # 169.000đ bag now, and drip-bag coffee 119.000đ is new.
+    assert set(facts["facts"]["known_prices_vnd"]) == {169000, 119000}
+    assert 359000 not in facts["facts"]["known_prices_vnd"]
+    assert 179000 not in facts["facts"]["known_prices_vnd"]
     # The calibration never verified delivery or roast day for CNM:
     # absent, so those checks skip rather than borrow Mộc Brew's.
     assert "delivery_days" not in facts["facts"]

@@ -2,7 +2,7 @@
   "id": "cao-nguyen-moc-blog-voice-dd5678",
   "name": "Cao Nguyên Mộc — blog voice",
   "brand_id": "cao-nguyen-moc",
-  "algorithm_version": 2,
+  "algorithm_version": 3,
   "created_from": {
     "sample_count": 5,
     "total_words": 4081

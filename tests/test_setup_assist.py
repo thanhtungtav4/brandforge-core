@@ -384,3 +384,26 @@ def test_prepare_unfetchable_site_errors(stores, tmp_path):
     assert "error" in out
     assert loaders.load_brand_setup("ghost-brand") is None
     assert loaders.load_brand_draft("ghost-brand") is None
+
+
+def test_prepare_big_pack_weights_labelled_in_kg(stores, tmp_path):
+    """Round 3 N1: the facts-draft price line must label a 2000g
+    pack "2kg" and a 1500g pack "1.5kg" — the old line wrote the
+    literal "1kg" for EVERY pack >= 1000g, so a human reviewing the
+    draft read the 2kg pack as a 1kg pack. The numeric facts fields
+    were always right (pack_weights_g [250, 1500, 2000]); only the
+    human-facing lorebook text mislabelled the pack."""
+    site = _write_site(
+        tmp_path / "site-big-packs",
+        "<p>Gói 250g giá 120.000đ.</p>"
+        "<p>Gói 1.5kg giá 650.000đ.</p>"
+        "<p>Gói 2kg giá 880.000đ.</p>")
+    dossier = srv.prepare_brand_setup(
+        (site / "index.html").as_uri(), "test-roasters-big")
+    assert "error" not in dossier, dossier
+    doc = dossier["facts_draft"]["doc"]
+    assert doc["facts"]["pack_weights_g"] == [250, 1500, 2000]
+    price = next(e for e in doc["entries"] if e["id"] == "price")
+    assert price["content"] == (
+        "Giá: 120.000đ cho gói 250g, 650.000đ cho gói 1.5kg, "
+        "880.000đ cho gói 2kg.")

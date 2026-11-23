@@ -107,6 +107,35 @@ def test_fingerprint_first_person_ignores_nguoi_ta():
     assert fingerprint(CONV1)["first_person_rate"] > 0
 
 
+AN_VOICE = (
+    "Em gởi anh chị hủ mắm cá lóc của tiệm em. "
+    "Em làm mắm theo cách má em dạy từ hồi em còn nhỏ. "
+    "Anh chị ăn thử rồi cho em hay, em gói thêm cho anh chị."
+)
+
+
+def test_fingerprint_first_person_counts_em_self_reference():
+    # Persona An xưng "em": self-reference must count (daily-digest
+    # item 2, 23 Nov 2026 — A3 scored style 69 against the taste
+    # profile because "em" read as zero first person).
+    assert fingerprint(AN_VOICE)["first_person_rate"] > 0
+
+
+def test_fingerprint_first_person_ignores_word_internal_em():
+    # "em" inside other tokens (đem, xem, kèm, nêm) is not a pronoun:
+    # matching is token-level, never substring.
+    text = "Đem mắm ra xem, kèm theo đĩa rau, nêm lại cho vừa miệng."
+    assert fingerprint(text)["first_person_rate"] == 0.0
+
+
+def test_fingerprint_first_person_ignores_kinship_compounds():
+    # "anh em" / "chị em" are collective kinship nouns ("the lads" /
+    # "the womenfolk"), not the speaker referring to herself.
+    text = ("Anh em trong xóm phụ nhau tát đìa. "
+            "Chị em ở chợ bán cá từ sớm.")
+    assert fingerprint(text)["first_person_rate"] == 0.0
+
+
 # -- analyze_samples -------------------------------------------------------------
 
 def test_analyze_samples_single_sample_warnings():

@@ -39,3 +39,72 @@ def test_research_only_retrieves_triggered_facts():
     ids = {s["id"] for s in state["sources"]}
     assert "office-brewing" in ids          # brief mentions văn phòng
     assert "price" not in ids               # brief never mentions giá -> not retrieved
+
+
+# --- N2 (review round 3): graph gate_history records the full MCP fields --------
+# The LangGraph graph path's gate_history entries used to carry only the
+# hard + craft-score fields (no craft_advisory, no style fields) while
+# MCP final_gate entries carry the full set — a consumer-confusion risk,
+# not a verdict risk. The graph node now records the same fields
+# final_gate does; only the record shape changes, never a verdict.
+
+# The MCP entry shape with no style profile and no quality layer active:
+# exactly the keys final_gate writes in that case.
+_MCP_PLAIN_ENTRY_KEYS = {"pass", "brand_score", "brand_violations",
+                         "fact_issues", "passed", "craft_score",
+                         "craft_blocking", "craft_advisory"}
+
+
+def test_graph_gate_history_matches_mcp_entry_shape():
+    state = run_flow(GOOD_BRIEF, outline_approved=True)
+    assert state["status"] == "approved"
+    entry = state["gate_history"][0]
+    assert set(entry) == _MCP_PLAIN_ENTRY_KEYS
+    # blog is a craft-blocking format: advisory is False, not absent.
+    assert entry["craft_blocking"] is True
+    assert entry["craft_advisory"] is False
+    assert entry["craft_score"] >= 70
+
+
+def test_graph_gate_history_records_style_when_brief_names_profile():
+    brief = {**GOOD_BRIEF, "id": "t-styled",
+             "style_profile_id": "mocbrew-blog-voice"}
+    state = run_flow(brief, outline_approved=True)
+    assert state["status"] == "approved"  # style is advisory: cannot block
+    entry = state["gate_history"][0]
+    assert entry["style_profile_id"] == "mocbrew-blog-voice"
+    joined = "\n\n".join(s.get("text", "") for s in state["sections"])
+    assert entry["style_score"] == _expected_style_score(joined)
+
+
+def _expected_style_score(joined: str) -> float:
+    from content_core.loaders import load_style_profile
+    from content_core.style import style_match
+
+    return style_match(joined, load_style_profile("mocbrew-blog-voice"))["score"]
+
+
+def test_graph_gate_history_omits_style_for_stale_profile():
+    # A brief naming a profile that no longer resolves must NOT newly
+    # fail the draft (the graph path never had style handling): the
+    # entry simply omits the style fields and the verdict is unchanged.
+    brief = {**GOOD_BRIEF, "id": "t-stale",
+             "style_profile_id": "khong-ton-tai"}
+    state = run_flow(brief, outline_approved=True)
+    assert state["status"] == "approved"
+    entry = state["gate_history"][0]
+    assert "style_score" not in entry
+    assert "style_profile_id" not in entry
+
+
+def test_graph_gate_history_omits_style_for_corrupt_profile(tmp_path, monkeypatch):
+    # Same rule for a corrupt stored profile (the loader raises
+    # ValueError): omit the style fields, keep the verdict.
+    monkeypatch.setenv("CONTENT_CORE_STYLE_PROFILES_DIR", str(tmp_path))
+    (tmp_path / "broken.json").write_text("{not json", encoding="utf-8")
+    brief = {**GOOD_BRIEF, "id": "t-corrupt", "style_profile_id": "broken"}
+    state = run_flow(brief, outline_approved=True)
+    assert state["status"] == "approved"
+    entry = state["gate_history"][0]
+    assert "style_score" not in entry
+    assert "style_profile_id" not in entry

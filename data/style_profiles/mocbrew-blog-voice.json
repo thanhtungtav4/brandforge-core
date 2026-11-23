@@ -2,7 +2,7 @@
   "id": "mocbrew-blog-voice",
   "name": "Mộc Brew Blog Voice",
   "brand_id": "moc-brew",
-  "algorithm_version": 2,
+  "algorithm_version": 3,
   "created_from": {
     "sample_count": 3,
     "total_words": 829

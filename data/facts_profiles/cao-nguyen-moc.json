@@ -1,1 +1,65 @@
-{"brand_id":"cao-nguyen-moc","entries":[{"constant":false,"content":"Giá cà phê: 89.000đ cho gói 250g, 179.000đ cho gói 500g, 359.000đ cho gói 1kg.","id":"price","keys":["giá","bao nhiêu","250g","500g","1kg","gói"]},{"constant":false,"content":"Nguồn gốc hạt: Robusta Đức Cơ (Gia Lai).","id":"origins","keys":["hạt","robusta","nguồn gốc","đức cơ"]},{"constant":false,"content":"Hạt điều: 99.000đ (hộp nhỏ), 199.000đ, 379.000đ theo quy cách trên trang shop. Lưu ý: blog cũ ghi 94.000đ/169.000đ/339.000đ — mâu thuẫn với shop, chưa được xác minh lại.","id":"cashew","keys":["hạt điều","điều","giá điều"]}],"facts":{"known_prices_vnd":[179000,359000,99000,199000,379000],"origins":["Robusta Đức Cơ"],"pack_weight_g":250,"pack_weights_g":[250,500,1000],"price_display":"89.000đ","price_vnd_per_250g":89000},"note":"Per-brand fact base built ONLY from facts verified in calibration/caonguyenmoc-report.md (shop prices read live 21 Nov 2026). No delivery_days and no roast_weekday: the calibration never verified a delivery range or a roast weekday for this brand, so those checks are skipped for it rather than judged against another brand's facts. The blog's own cashew prices (94/169/339k) contradict the shop's (99/199/379k) in the report, so the shop prices are the known ones and the blog numbers still flag — legitimately.","simulated":false}
+{
+  "brand_id": "cao-nguyen-moc",
+  "entries": [
+    {
+      "constant": false,
+      "content": "Giá cà phê: 89.000đ cho gói 250g.",
+      "id": "price",
+      "keys": [
+        "giá",
+        "bao nhiêu",
+        "250g",
+        "gói"
+      ]
+    },
+    {
+      "constant": false,
+      "content": "Nguồn gốc hạt: Robusta Đức Cơ (Gia Lai).",
+      "id": "origins",
+      "keys": [
+        "hạt",
+        "robusta",
+        "nguồn gốc",
+        "đức cơ"
+      ]
+    },
+    {
+      "constant": false,
+      "content": "Hạt điều rang muối: 169.000đ cho túi 500g.",
+      "id": "cashew",
+      "keys": [
+        "hạt điều",
+        "điều",
+        "giá điều"
+      ]
+    },
+    {
+      "constant": false,
+      "content": "Cà phê túi lọc: 119.000đ cho hộp 10 túi × 15g.",
+      "id": "drip_bag",
+      "keys": [
+        "túi lọc",
+        "cà phê túi lọc",
+        "drip"
+      ]
+    }
+  ],
+  "facts": {
+    "known_prices_vnd": [
+      169000,
+      119000
+    ],
+    "origins": [
+      "Robusta Đức Cơ"
+    ],
+    "pack_weight_g": 250,
+    "pack_weights_g": [
+      250,
+      500
+    ],
+    "price_display": "89.000đ",
+    "price_vnd_per_250g": 89000
+  },
+  "note": "Per-brand fact base built from facts verified live on caonguyenmoc.vn. Updated 23 Nov 2026 from a live shop read that morning: coffee is now sold ONLY as the 250g bag at 89.000đ (the 500g 179.000đ and 1kg 359.000đ packs are no longer listed, so they were removed until the shop sells them again); cashew is now sold ONLY as the 500g bag at 169.000đ — the old blog number — so the blog-vs-shop contradiction recorded at calibration (shop 99/199/379k vs blog 94/169/339k) has resolved in favour of the blog and the old shop prices were removed; cà phê túi lọc (drip bag, box of 10 × 15g) at 119.000đ is new. No delivery_days and no roast_weekday: never verified for this brand, so those checks are skipped rather than judged against another brand's facts.",
+  "simulated": false
+}

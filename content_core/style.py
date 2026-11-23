@@ -49,7 +49,10 @@ from .loaders import slugify as _loaders_slugify
 #: Version of the fingerprint/consistency algorithm that built (or
 #: last refreshed) a profile. Bump when fingerprint or warning
 #: semantics change; refresh_profile migrates older profiles on load.
-ALGORITHM_VERSION = 2
+#: v3 (23 Nov 2026): the first-person counter also counts "em" as
+#: self-reference (persona An's xưng "em" read as zero before, which
+#: cost A3 its style score); "anh em" / "chị em" compounds excluded.
+ALGORITHM_VERSION = 3
 
 #: Type-token ratio is computed on at most this many leading tokens:
 #: raw TTR falls mechanically as a text grows, so an uncapped TTR
@@ -88,9 +91,11 @@ TRANSITIONS = ["tuy nhiên", "nhưng", "vì vậy", "thực ra", "hóa ra",
                "đầu tiên", "sau đó", "cuối cùng", "ví dụ", "nói cách khác",
                "tóm lại", "đặc biệt", "nhất là"]
 
-#: First-person markers (counted on tokens, bigrams first).
+#: First-person markers (counted on tokens, bigrams first). "em" is
+#: the Southern self-reference (persona An xưng "em"); token-level
+#: matching means word-internal "em" (đem, xem, kèm) never counts.
 _FIRST_PERSON_BIGRAMS = {("chúng", "mình"), ("chúng", "tôi")}
-_FIRST_PERSON_SINGLES = {"mình", "tôi", "ta"}
+_FIRST_PERSON_SINGLES = {"mình", "tôi", "ta", "em"}
 
 #: Small built-in VN stopword list for top_words (function words carry no
 #: voice signal; content words do).
@@ -169,7 +174,8 @@ def fingerprint(text: str) -> dict:
 
     # First person: scan tokens, bigrams ("chúng mình") before singles.
     # "người ta" is generic third person, NOT first person — its "ta" is
-    # never counted.
+    # never counted. "anh em" / "chị em" are collective kinship nouns,
+    # NOT self-reference — their "em" is never counted either.
     fp = 0
     i = 0
     while i < len(tokens):
@@ -178,7 +184,11 @@ def fingerprint(text: str) -> dict:
             i += 2
             continue
         if tokens[i] in _FIRST_PERSON_SINGLES:
-            if not (tokens[i] == "ta" and i > 0 and tokens[i - 1] == "người"):
+            if tokens[i] == "ta" and i > 0 and tokens[i - 1] == "người":
+                pass
+            elif tokens[i] == "em" and i > 0 and tokens[i - 1] in ("anh", "chị"):
+                pass
+            else:
                 fp += 1
         i += 1
 

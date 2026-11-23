@@ -14,9 +14,11 @@ from langgraph.graph import END, START, StateGraph
 from .fact_check import check_draft, find_refused_claims
 from .gates import MAX_REWRITES, evaluate_gate
 from .linter import lint_draft
-from .loaders import load_brand, load_facts, load_persona
+from .loaders import (DEFAULT_STYLE_PROFILE_ID, load_brand, load_facts,
+                      load_persona, load_style_profile)
 from .seo import seo_pass as run_seo
 from .state import ContentState
+from .style import style_match
 from .writer import Writer, get_writer
 
 OUTLINE_TEMPLATES: dict[str, list[tuple[str, str, int]]] = {
@@ -45,6 +47,28 @@ OUTLINE_TEMPLATES: dict[str, list[tuple[str, str, int]]] = {
     ],
 }
 DEFAULT_OUTLINE = OUTLINE_TEMPLATES["blog"]
+
+
+def _resolve_style_profile(profile_id: str | None) -> dict | None:
+    """Resolve a brief's style_profile_id to the stored profile, or None.
+
+    Mirror of mcp_server._resolve_style_profile (same 'default' mapping,
+    same loader) — the graph's gate_history entry records the same style
+    fields MCP final_gate records. A stale id, or a corrupt stored file
+    (the loader raises ValueError), resolves to None HERE: the graph
+    path never had style handling, so a bad profile must not newly fail
+    a draft that previously passed — the entry simply omits the style
+    fields and the verdict is untouched. Whether final_gate itself
+    should error on a stale profile is the pending S3 follow-up
+    proposal, Smith's call — not this change.
+    """
+    if not profile_id:
+        return None
+    pid = DEFAULT_STYLE_PROFILE_ID if profile_id == "default" else profile_id
+    try:
+        return load_style_profile(pid)
+    except ValueError:
+        return None
 
 
 class Core:
@@ -135,12 +159,33 @@ class Core:
                                 craft_mode="blocking")
         hard = verdict["hard"]
         history = list(state.get("gate_history", []))
-        history.append({"pass": len(history) + 1, "brand_score": hard["brand_score"],
-                        "brand_violations": len(hard["brand_violations"]),
-                        "fact_issues": len(hard["fact_issues"]),
-                        "passed": verdict["passed"],
-                        "craft_score": verdict["craft"]["score"],
-                        "craft_blocking": verdict["craft"]["blocking"]})
+        # N2 (review round 3): the entry records the SAME fields MCP
+        # final_gate records — craft_advisory always, style_score /
+        # style_profile_id when the brief names a profile that resolves.
+        # The quality layer is never active on the graph path (no profile
+        # / judged scores are supplied), and MCP omits "quality" exactly
+        # then, so nothing is recorded for it here either. Shape only:
+        # the verdict above is computed identically either way.
+        entry: dict[str, Any] = {
+            "pass": len(history) + 1, "brand_score": hard["brand_score"],
+            "brand_violations": len(hard["brand_violations"]),
+            "fact_issues": len(hard["fact_issues"]),
+            "passed": verdict["passed"],
+            "craft_score": verdict["craft"]["score"],
+            "craft_blocking": verdict["craft"]["blocking"],
+            "craft_advisory": verdict["craft"]["advisory"]}
+        # Style (advisory, v1) — same computation as MCP final_gate:
+        # score the joined draft text against the brief's profile.
+        # It NEVER changes `passed`; a stale/corrupt profile resolves
+        # to None above, so the fields are simply omitted.
+        style_profile = _resolve_style_profile(
+            state.get("brief", {}).get("style_profile_id"))
+        if style_profile is not None:
+            joined = "\n\n".join(s.get("text", "")
+                                 for s in state.get("sections", []))
+            entry["style_score"] = style_match(joined, style_profile)["score"]
+            entry["style_profile_id"] = style_profile["id"]
+        history.append(entry)
         failing_ids = verdict["failing_sections"]
         if verdict["passed"]:
             return {"status": "approved", "failing_sections": [], "gate_history": history}

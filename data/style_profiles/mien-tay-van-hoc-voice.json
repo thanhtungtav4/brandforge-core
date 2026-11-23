@@ -2,7 +2,7 @@
   "id": "mien-tay-van-hoc-voice",
   "name": "Văn học miền Tây — giọng kể của người trong cuộc",
   "brand_id": "mambagiaokhoe",
-  "algorithm_version": 2,
+  "algorithm_version": 3,
   "created_from": {
     "sample_count": 31,
     "total_words": 95507
@@ -20,7 +20,7 @@
     "paragraph_len_median": 25.0,
     "question_rate": 8.93,
     "exclamation_rate": 6.43,
-    "first_person_rate": 2.05,
+    "first_person_rate": 2.32,
     "reader_rate": 0.07,
     "number_density": 0.1,
     "transition_freq": [
@@ -132,13 +132,13 @@
   "consistency_warnings": [
     "samples diverge on sentence_median (CV 0.4 > 0.35) — possibly mixed authors",
     "samples diverge on sentence_stdev (CV 0.46 > 0.35) — possibly mixed authors",
-    "samples diverge on first_person_rate (CV 0.63 > 0.35) — possibly mixed authors"
+    "samples diverge on first_person_rate (CV 0.59 > 0.35) — possibly mixed authors"
   ],
   "consistency_detail": {
     "divergence_cv": {
       "sentence_median": 0.4,
       "sentence_stdev": 0.46,
-      "first_person_rate": 0.63
+      "first_person_rate": 0.59
     },
     "per_sample": [
       {
@@ -149,7 +149,7 @@
       {
         "sentence_median": 15.0,
         "sentence_stdev": 9.65,
-        "first_person_rate": 2.63
+        "first_person_rate": 2.72
       },
       {
         "sentence_median": 16.0,
@@ -159,7 +159,7 @@
       {
         "sentence_median": 15.0,
         "sentence_stdev": 11.29,
-        "first_person_rate": 3.96
+        "first_person_rate": 4.09
       },
       {
         "sentence_median": 16.0,
@@ -169,12 +169,12 @@
       {
         "sentence_median": 12.0,
         "sentence_stdev": 9.19,
-        "first_person_rate": 0.77
+        "first_person_rate": 0.86
       },
       {
         "sentence_median": 11.0,
         "sentence_stdev": 7.39,
-        "first_person_rate": 1.84
+        "first_person_rate": 1.95
       },
       {
         "sentence_median": 11.0,
@@ -184,12 +184,12 @@
       {
         "sentence_median": 9.0,
         "sentence_stdev": 7.02,
-        "first_person_rate": 1.96
+        "first_person_rate": 2.73
       },
       {
         "sentence_median": 13.0,
         "sentence_stdev": 12.97,
-        "first_person_rate": 2.65
+        "first_person_rate": 3.26
       },
       {
         "sentence_median": 11.0,
@@ -204,7 +204,7 @@
       {
         "sentence_median": 15.0,
         "sentence_stdev": 13.77,
-        "first_person_rate": 3.73
+        "first_person_rate": 3.75
       },
       {
         "sentence_median": 12.0,
@@ -214,12 +214,12 @@
       {
         "sentence_median": 9.0,
         "sentence_stdev": 9.28,
-        "first_person_rate": 2.94
+        "first_person_rate": 3.09
       },
       {
         "sentence_median": 19.0,
         "sentence_stdev": 15.42,
-        "first_person_rate": 0.3
+        "first_person_rate": 0.32
       },
       {
         "sentence_median": 29.0,
@@ -229,22 +229,22 @@
       {
         "sentence_median": 42.0,
         "sentence_stdev": 33.46,
-        "first_person_rate": 0.79
+        "first_person_rate": 0.82
       },
       {
         "sentence_median": 27.5,
         "sentence_stdev": 31.07,
-        "first_person_rate": 1.74
+        "first_person_rate": 1.79
       },
       {
         "sentence_median": 22.0,
         "sentence_stdev": 15.82,
-        "first_person_rate": 1.99
+        "first_person_rate": 2.08
       },
       {
         "sentence_median": 13.0,
         "sentence_stdev": 13.55,
-        "first_person_rate": 0.97
+        "first_person_rate": 3.54
       },
       {
         "sentence_median": 17.0,
@@ -259,7 +259,7 @@
       {
         "sentence_median": 13.0,
         "sentence_stdev": 9.74,
-        "first_person_rate": 0.54
+        "first_person_rate": 2.49
       },
       {
         "sentence_median": 23.0,
@@ -269,12 +269,12 @@
       {
         "sentence_median": 10.0,
         "sentence_stdev": 11.81,
-        "first_person_rate": 1.23
+        "first_person_rate": 1.37
       },
       {
         "sentence_median": 16.0,
         "sentence_stdev": 9.12,
-        "first_person_rate": 5.4
+        "first_person_rate": 6.11
       },
       {
         "sentence_median": 13.0,
@@ -294,7 +294,7 @@
       {
         "sentence_median": 19.0,
         "sentence_stdev": 10.63,
-        "first_person_rate": 4.25
+        "first_person_rate": 4.43
       }
     ]
   },

@@ -2,7 +2,7 @@
   "id": "mambagiaokhoe-taste-voice",
   "name": "mambagiaokhoe — taste voice (owner-approved articles)",
   "brand_id": "mambagiaokhoe",
-  "algorithm_version": 2,
+  "algorithm_version": 3,
   "created_from": {
     "sample_count": 3,
     "total_words": 3020
@@ -20,7 +20,7 @@
     "paragraph_len_median": 64.5,
     "question_rate": 0.62,
     "exclamation_rate": 0.0,
-    "first_person_rate": 0.33,
+    "first_person_rate": 1.16,
     "reader_rate": 0.0,
     "number_density": 0.56,
     "transition_freq": [
@@ -106,23 +106,23 @@
     "divergence_cv": {
       "sentence_median": 0.02,
       "sentence_stdev": 0.03,
-      "first_person_rate": 0.62
+      "first_person_rate": 0.15
     },
     "per_sample": [
       {
         "sentence_median": 19.0,
         "sentence_stdev": 7.68,
-        "first_person_rate": 0.29
+        "first_person_rate": 1.05
       },
       {
         "sentence_median": 20.0,
         "sentence_stdev": 7.57,
-        "first_person_rate": 0.1
+        "first_person_rate": 1.02
       },
       {
         "sentence_median": 19.0,
         "sentence_stdev": 8.16,
-        "first_person_rate": 0.6
+        "first_person_rate": 1.4
       }
     ]
   },

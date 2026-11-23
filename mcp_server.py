@@ -1932,7 +1932,12 @@ def quality_score(draft_id: str, judged_scores: dict | None = None,
     below its floor). It also carries `depth_context` — what material
     the depth axis was graded against: "research_pack" (the brand's
     research pack has applied items), "brand_facts_only", or "none".
-    Metadata only: it never changes a score."""
+    Metadata only: it never changes a score.
+
+    A brief that names a style_profile_id which no longer resolves is
+    a structured error naming the id — the draft is never silently
+    scored without the intended profile (round-3 S3 rule, approved
+    item A)."""
     draft, error = _load_draft_or_error(draft_id)
     if error:
         return error
@@ -1940,8 +1945,11 @@ def quality_score(draft_id: str, judged_scores: dict | None = None,
     try:
         profile = (_quality_get_profile(quality_profile) if quality_profile
                    else _quality_preset(fmt))
-        style_profile = _resolve_style_profile(
-            draft.get("brief", {}).get("style_profile_id"))
+        wanted_style = draft.get("brief", {}).get("style_profile_id")
+        style_profile = _resolve_style_profile(wanted_style)
+        if wanted_style and style_profile is None:
+            return {"error": f"style profile not found: {wanted_style}",
+                    "draft_id": draft_id}
         # The fact base (and brand rules) belong to the draft's brand:
         # brief.brand_id when the brief names one, else the server brand.
         gate_brand, gate_facts = _resolve_brand_facts(
@@ -1984,7 +1992,10 @@ def check_draft_all(draft_id: str, judged_scores: dict | None = None,
     as final_gate wires it), style = style_match's report (+profile_id)
     or None when the brief carries no style_profile_id, quality =
     quality_score's report. `judged_scores` / `quality_profile` behave
-    exactly as in quality_score."""
+    exactly as in quality_score. A brief that names a
+    style_profile_id which no longer resolves is a structured error
+    naming the id (round-3 S3 rule, approved item A) — never a
+    combined report with style None and a style-less quality."""
     draft, error = _load_draft_or_error(draft_id)
     if error:
         return error
@@ -1992,8 +2003,11 @@ def check_draft_all(draft_id: str, judged_scores: dict | None = None,
     try:
         profile = (_quality_get_profile(quality_profile) if quality_profile
                    else _quality_preset(fmt))
-        style_profile = _resolve_style_profile(
-            draft.get("brief", {}).get("style_profile_id"))
+        wanted_style = draft.get("brief", {}).get("style_profile_id")
+        style_profile = _resolve_style_profile(wanted_style)
+        if wanted_style and style_profile is None:
+            return {"error": f"style profile not found: {wanted_style}",
+                    "draft_id": draft_id}
         brand, facts = _resolve_brand_facts(
             draft.get("brief", {}).get("brand_id", ""))
     except ValueError as exc:
@@ -2050,6 +2064,10 @@ def score_section_variants(section_role: str, variants: list[str],
     or `brand_id` (+ optional `format`, default blog; the style
     profile then defaults from the brand's corpus choice, as in
     assemble_context). An explicit `style_profile_id` always wins.
+    A profile the brief or the caller names that no longer resolves
+    is an error — variants are never silently scored without the
+    intended profile; a stale corpus-choice default just means no
+    style part.
 
     Each variant is scored IN ISOLATION as a one-section draft:
     brand (linter), fact (fact_check), craft and style_match where a
@@ -2062,6 +2080,12 @@ def score_section_variants(section_role: str, variants: list[str],
     that need the full draft (seo, coherence) are listed in
     `not_scored` with reasons — never faked. Changes NO state."""
     style_profile = None
+    # Where the wanted profile came from: "explicit" (the caller's
+    # argument) and "brief" (the draft's brief) name a profile the
+    # writer INTENDED, so a stale id is an error (round-3 S3);
+    # "corpus_choice" is only a default, so a stale default silently
+    # means no style part — exactly as assemble_context treats it.
+    wanted_from = None
     if draft_id:
         draft, error = _load_draft_or_error(draft_id)
         if error:
@@ -2073,6 +2097,8 @@ def score_section_variants(section_role: str, variants: list[str],
         except ValueError as exc:
             return {"error": str(exc), "draft_id": draft_id}
         wanted_style = style_profile_id or brief.get("style_profile_id")
+        if wanted_style:
+            wanted_from = "explicit" if style_profile_id else "brief"
     elif brand_id:
         fmt = format or "blog"
         try:
@@ -2080,6 +2106,8 @@ def score_section_variants(section_role: str, variants: list[str],
         except ValueError as exc:
             return {"error": str(exc), "brand_id": brand_id}
         wanted_style = style_profile_id
+        if wanted_style:
+            wanted_from = "explicit"
         if not wanted_style:
             try:
                 choice = _load_corpus_choice(brand_id)
@@ -2087,14 +2115,18 @@ def score_section_variants(section_role: str, variants: list[str],
                 choice = None
             if choice is not None:
                 wanted_style = choice.get("profile_id")
+                if wanted_style:
+                    wanted_from = "corpus_choice"
     else:
         return {"error": "pass draft_id or brand_id so the variants "
                          "are judged in a brand's context"}
     if wanted_style:
-        style_profile = _resolve_style_profile(wanted_style)
-        if style_profile is None and style_profile_id:
-            return {"error": f"style profile not found: "
-                             f"{style_profile_id}"}
+        try:
+            style_profile = _resolve_style_profile(wanted_style)
+        except ValueError as exc:  # corrupt stored profile (review M6)
+            return {"error": str(exc)}
+        if style_profile is None and wanted_from in ("explicit", "brief"):
+            return {"error": f"style profile not found: {wanted_style}"}
     try:
         result = _variants.score_variants(
             variants, section_role, fmt, brand, facts,
