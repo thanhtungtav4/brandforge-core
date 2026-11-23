@@ -55,7 +55,8 @@ from .linter import WORD_RE as _WORD_RE
 from .linter import normalize_for_match
 from .linter import split_sentences
 from .linter import word_tokens as _tokens
-from .loaders import load_brand, prohibited_claims, validate_visual
+from .loaders import (load_brand, prohibited_claims, validate_image_sources,
+                      validate_visual)
 from .loaders import slugify as _slugify
 from .style import STOPWORDS, fingerprint
 
@@ -946,6 +947,12 @@ def draft_to_brand_yaml(draft: dict) -> str:
     }
     if draft.get("visual") is not None:
         clean["visual"] = validate_visual(draft["visual"])
+    if draft.get("image_sources") is not None:
+        # The searched-image allowlist rides along with visual (same
+        # silent-drop hazard as trial bug 3): an approved brand must
+        # not lose the allowlist its draft carried.
+        clean["image_sources"] = validate_image_sources(
+            draft["image_sources"])
     return yaml.safe_dump(clean, allow_unicode=True, sort_keys=False,
                           default_flow_style=False)
 

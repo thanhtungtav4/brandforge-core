@@ -403,6 +403,98 @@ def test_style_block_mismatch_between_ai_images():
     assert any(i["type"] == "style_block_mismatch" for i in issues)
 
 
+def _ai_image(ref, filename, alt, prompt):
+    return {"source": "ai", "ref": ref, "filename": filename, "alt": alt,
+            "caption": "", "description": "Mô tả ảnh",
+            "prompt_used": prompt, "from_library": None,
+            "alt_suggested": False, "vision_check": dict(_VC)}
+
+
+def test_style_block_mismatch_blames_the_odd_one_out_not_the_majority():
+    # L2 (review round 2): the mismatch reference used to be whichever
+    # AI image came first in plan order, so one off-brand featured
+    # image got the two correct in-content images flagged instead of
+    # itself. With a brand block, the reference is the brand's block:
+    # only the off-brand image is flagged.
+    plan = _plan()
+    other = img.plan_images(SECTIONS, BRIEF, OTHER_BRAND)
+    images = {
+        "img-featured": _ai_image(
+            "ai/bia-khac.webp", "ca-phe-bia.webp",
+            "Ảnh bìa phong cách khác cho bài cà phê văn phòng",
+            other[0]["prompt"]),
+        "img-s1": _ai_image(
+            "ai/vuon-arabica.webp",
+            "ca-phe-nguon-goc-hat-arabica-cau-dat.webp",
+            "Vườn cà phê Arabica ở Cầu Đất vào buổi sáng sớm",
+            plan[1]["prompt"]),
+        "img-s2": _ai_image(
+            "ai/pha-phin.webp", "ca-phe-pha-tai-van-phong.webp",
+            "Pha cà phê bằng phin ngay tại bàn làm việc",
+            plan[2]["prompt"]),
+    }
+    images["img-featured"]["caption"] = "Ảnh bìa"
+    issues, _ = img.check_images(plan, images, BRIEF, _moc_brand(),
+                                 complete=True)
+    mismatch = {i["image_id"] for i in issues
+                if i["type"] == "style_block_mismatch"}
+    assert mismatch == {"img-featured"}
+
+
+def test_style_block_mismatch_without_brand_block_uses_majority():
+    # L2, no-brand case: with no brand block there is nothing to lock
+    # to, so the reference is the majority block among the AI images
+    # — the lone odd image is flagged, not the two that agree.
+    bare = {"brand": {"id": "bare", "name": "Bare"}}
+    plan = img.plan_images(SECTIONS, BRIEF, bare)
+    moc = img.plan_images(SECTIONS, BRIEF, _moc_brand())
+    other = img.plan_images(SECTIONS, BRIEF, OTHER_BRAND)
+    images = {
+        "img-featured": _ai_image(
+            "ai/bia-khac.webp", "ca-phe-bia.webp",
+            "Ảnh bìa phong cách khác cho bài cà phê văn phòng",
+            moc[0]["prompt"]),
+        "img-s1": _ai_image(
+            "ai/vuon-arabica.webp",
+            "ca-phe-nguon-goc-hat-arabica-cau-dat.webp",
+            "Vườn cà phê Arabica ở Cầu Đất vào buổi sáng sớm",
+            other[1]["prompt"]),
+        "img-s2": _ai_image(
+            "ai/pha-phin.webp", "ca-phe-pha-tai-van-phong.webp",
+            "Pha cà phê bằng phin ngay tại bàn làm việc",
+            other[2]["prompt"]),
+    }
+    images["img-featured"]["caption"] = "Ảnh bìa"
+    issues, _ = img.check_images(plan, images, BRIEF, bare, complete=True)
+    mismatch = {i["image_id"] for i in issues
+                if i["type"] == "style_block_mismatch"}
+    assert mismatch == {"img-featured"}
+
+
+def test_style_block_mismatch_tie_keeps_first_in_plan_order():
+    # Tie-break pin: two AI images, different blocks, no brand block
+    # and no majority — the first in plan order stays the reference,
+    # the old behaviour, so the outcome is deterministic.
+    bare = {"brand": {"id": "bare", "name": "Bare"}}
+    plan = img.plan_images(SECTIONS, BRIEF, bare)
+    moc = img.plan_images(SECTIONS, BRIEF, _moc_brand())
+    other = img.plan_images(SECTIONS, BRIEF, OTHER_BRAND)
+    images = _good_images(plan)
+    images["img-s1"] = _ai_image(
+        "ai/vuon-arabica.webp",
+        "ca-phe-nguon-goc-hat-arabica-cau-dat.webp",
+        "Vườn cà phê Arabica ở Cầu Đất vào buổi sáng sớm",
+        moc[1]["prompt"])
+    images["img-s2"] = _ai_image(
+        "ai/pha-phin.webp", "ca-phe-pha-tai-van-phong.webp",
+        "Pha cà phê bằng phin ngay tại bàn làm việc",
+        other[2]["prompt"])
+    issues, _ = img.check_images(plan, images, BRIEF, bare, complete=True)
+    mismatch = {i["image_id"] for i in issues
+                if i["type"] == "style_block_mismatch"}
+    assert mismatch == {"img-s2"}
+
+
 def test_library_and_client_images_need_no_prompt():
     plan = _plan()
     images = _good_images(plan)

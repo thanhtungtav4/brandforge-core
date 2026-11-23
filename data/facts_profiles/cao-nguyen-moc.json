@@ -42,12 +42,22 @@
         "cà phê túi lọc",
         "drip"
       ]
+    },
+    {
+      "constant": false,
+      "content": "Hạt mix: 219.000đ cho túi 500g.",
+      "id": "hat_mix",
+      "keys": [
+        "hạt mix",
+        "mix"
+      ]
     }
   ],
   "facts": {
     "known_prices_vnd": [
       169000,
-      119000
+      119000,
+      219000
     ],
     "origins": [
       "Robusta Đức Cơ"
@@ -60,6 +70,6 @@
     "price_display": "89.000đ",
     "price_vnd_per_250g": 89000
   },
-  "note": "Per-brand fact base built from facts verified live on caonguyenmoc.vn. Updated 23 Nov 2026 from a live shop read that morning: coffee is now sold ONLY as the 250g bag at 89.000đ (the 500g 179.000đ and 1kg 359.000đ packs are no longer listed, so they were removed until the shop sells them again); cashew is now sold ONLY as the 500g bag at 169.000đ — the old blog number — so the blog-vs-shop contradiction recorded at calibration (shop 99/199/379k vs blog 94/169/339k) has resolved in favour of the blog and the old shop prices were removed; cà phê túi lọc (drip bag, box of 10 × 15g) at 119.000đ is new. No delivery_days and no roast_weekday: never verified for this brand, so those checks are skipped rather than judged against another brand's facts.",
+  "note": "Per-brand fact base built from facts verified live on caonguyenmoc.vn. Updated 23 Nov 2026 from a live shop read that morning: coffee is now sold ONLY as the 250g bag at 89.000đ (the 500g 179.000đ and 1kg 359.000đ packs are no longer listed, so they were removed until the shop sells them again); cashew is now sold ONLY as the 500g bag at 169.000đ — the old blog number — so the blog-vs-shop contradiction recorded at calibration (shop 99/199/379k vs blog 94/169/339k) has resolved in favour of the blog and the old shop prices were removed; cà phê túi lọc (drip bag, box of 10 × 15g) at 119.000đ is new. Hạt mix (almond, macadamia and cashew blend) at 219.000đ for the 500g bag was added later the same day from the same live listing, under Smith's delegation of Brandforge decisions to Ember. No delivery_days and no roast_weekday: never verified for this brand, so those checks are skipped rather than judged against another brand's facts.",
   "simulated": false
 }

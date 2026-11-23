@@ -240,7 +240,7 @@ def test_mcp_tool_list_now_29():
     # round 1 added the 7 profile/source/analysis tools, and the
     # SEO five-source round 2 added the 5 direction/outline tools.)
     assert EXPECTED_NEW_TOOLS <= set(srv.TOOL_NAMES)
-    assert len(srv.TOOL_NAMES) == 86
+    assert len(srv.TOOL_NAMES) == 96
     for name in EXPECTED_NEW_TOOLS:
         assert callable(getattr(srv, name)), name
 

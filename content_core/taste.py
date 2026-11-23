@@ -193,6 +193,46 @@ def build_taste_profile(brand_id: str) -> dict:
             "built_from": len(verdicted), "profile": profile}
 
 
+def list_entries(brand_id: str) -> dict:
+    """One summary row per taste entry: id, ref, source, verdict,
+    imported/marked stamps and the article's word count — the
+    listing counterpart to taste_status's counts (the admin needs
+    the pending rows themselves back after a page reload, not just
+    how many there are). The article TEXT is not returned — this
+    is a listing, not a read.
+
+    An entry too broken to summarise (not an object, an unknown
+    verdict, no text snapshot — a hand-edited store) is LISTED as
+    corrupt with its index, per the house list discipline: never
+    silently skipped, never a crash. A corrupt document FILE is
+    the loader's ValueError, like every taste read."""
+    loaders.stored_file_stem(brand_id)
+    doc = loaders.load_taste_doc(brand_id)
+    entries: list[dict] = []
+    if doc is not None:
+        raw = doc.get("entries", [])
+        if not isinstance(raw, list):
+            raise ValueError(
+                f"corrupt taste document for brand {brand_id!r}: "
+                f"'entries' must be a list")
+        for i, entry in enumerate(raw):
+            if not isinstance(entry, dict) \
+                    or entry.get("verdict") not in loaders.TASTE_VERDICTS \
+                    or not str(entry.get("text") or "").strip():
+                entries.append({"index": i, "corrupt": True})
+                continue
+            entries.append({
+                "id": entry.get("id", ""), "ref": entry.get("ref", ""),
+                "source": entry.get("source", ""),
+                "verdict": entry["verdict"],
+                "imported_at": entry.get("imported_at"),
+                "marked_at": entry.get("marked_at"),
+                "word_count": len(str(entry["text"]).split()),
+                "corrupt": False})
+    return {"brand_id": brand_id, "entries": entries,
+            "count": len(entries)}
+
+
 def taste_status(brand_id: str) -> dict:
     """Counts by verdict + whether a taste profile exists and what
     it was built from. A brand with no taste store reports zeros —

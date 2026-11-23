@@ -221,6 +221,9 @@ def load_brand(path: Path | None = None) -> dict:
         (path or DATA_DIR / "brand_mocbrew.yaml").read_text(encoding="utf-8"))
     if isinstance(brand, dict) and brand.get("visual") is not None:
         brand["visual"] = validate_visual(brand["visual"])
+    if isinstance(brand, dict) and brand.get("image_sources") is not None:
+        brand["image_sources"] = validate_image_sources(
+            brand["image_sources"])
     return brand
 
 
@@ -280,6 +283,82 @@ def validate_visual(visual: dict) -> dict:
             raise ValueError(
                 f"brand visual {field} must be a string, "
                 f"got {type(value).__name__}")
+    return out
+
+
+# --- Brand image sources (searched-image allowlist) ---
+# The optional `image_sources` section of a brand is the allowlist
+# for the searched-image step of the image chain (spec:
+# specs/image-search-edit-feature.md §3.3): the host model may only
+# register photo candidates from sources on this list, each with a
+# license_type from the FIXED set below. A brand without the field
+# (or with an empty list) has the search step OFF and keeps the
+# library-then-generation chain exactly. §12's defaults (Pexels /
+# Pixabay / Unsplash for new brands) are configuration content, not
+# code: nothing is allowlisted by default in the core.
+
+IMAGE_LICENSE_TYPES = (
+    "stock_commercial",   # the stock site's license allows commercial use
+    "stock_paid",         # Smith bought the license himself and supplied the file
+    "brand_owned",        # the brand owns the photo or holds usage rights
+    "user_supplied",      # a file the user supplied with rights confirmed
+    "public_domain",      # public domain
+    "cc_attribution",     # usable with attribution (manifest must carry it)
+)
+
+
+def validate_image_sources(sources) -> list:
+    """Validate + normalise a brand `image_sources` allowlist;
+    returns a normalised COPY (unknown extra keys preserved, like
+    validate_visual). Each entry is an object with a non-empty
+    `name`; `domains` (optional) is a list of host names, stored
+    lowercased and stripped; `license_types` (optional) restricts
+    which of IMAGE_LICENSE_TYPES a candidate from this source may
+    carry — a value outside the fixed set raises, because an
+    unclassifiable license must never reach a client site. Anything
+    malformed raises ValueError NAMING the entry/field, so a bad
+    brand fails loudly at the load/save boundary instead of silently
+    disabling or widening the search step."""
+    if not isinstance(sources, list):
+        raise ValueError(
+            f"brand image_sources must be a list of source objects, "
+            f"got {type(sources).__name__}")
+    out = []
+    for i, entry in enumerate(sources):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"brand image_sources entry {i} must be an object, "
+                f"got {type(entry).__name__}")
+        name = entry.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(
+                f"brand image_sources entry {i} needs a non-empty 'name'")
+        clean = dict(entry)
+        clean["name"] = name.strip()
+        domains = entry.get("domains")
+        if domains is not None:
+            if not isinstance(domains, list) \
+                    or not all(isinstance(d, str) for d in domains):
+                raise ValueError(
+                    f"brand image_sources entry {name.strip()!r}: "
+                    f"'domains' must be a list of strings")
+            clean["domains"] = [d.strip().lower()
+                                for d in domains if d.strip()]
+        licenses = entry.get("license_types")
+        if licenses is not None:
+            if not isinstance(licenses, list) \
+                    or not all(isinstance(x, str) for x in licenses):
+                raise ValueError(
+                    f"brand image_sources entry {name.strip()!r}: "
+                    f"'license_types' must be a list of strings")
+            bad = [x for x in licenses if x not in IMAGE_LICENSE_TYPES]
+            if bad:
+                raise ValueError(
+                    f"brand image_sources entry {name.strip()!r}: "
+                    f"license_types {bad} are outside the fixed set "
+                    f"{list(IMAGE_LICENSE_TYPES)}")
+            clean["license_types"] = list(licenses)
+        out.append(clean)
     return out
 
 
@@ -583,6 +662,12 @@ def validate_brand_draft(draft: dict) -> dict:
         # draft (review round 2 M3): a string palette is stored as the
         # list it means, a malformed one never reaches disk.
         draft["visual"] = validate_visual(draft["visual"])
+    if draft.get("image_sources") is not None:
+        # Same boundary rule as visual: the searched-image allowlist
+        # is validated before it can be persisted, so a malformed
+        # allowlist never reaches the image chain.
+        draft["image_sources"] = validate_image_sources(
+            draft["image_sources"])
     return draft
 
 
@@ -611,6 +696,9 @@ def load_brand_draft(draft_id: str) -> dict | None:
         # Legacy / hand-edited files get the same normalisation the
         # save boundary applies (review round 2 M3).
         data["visual"] = validate_visual(data["visual"])
+    if data.get("image_sources") is not None:
+        data["image_sources"] = validate_image_sources(
+            data["image_sources"])
     return data
 
 

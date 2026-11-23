@@ -640,7 +640,7 @@ any host app's model can be the writer; the core stays the referee.
 
 | Tool | What it does |
 |---|---|
-| `get_persona` | Linh, Character Card V2 |
+| `get_persona(brand_id?)` | The author Persona, Character Card V2. No brand_id → the server default (Linh), unchanged. With a brand_id → the persona that brand's drafts resolve (the brief persona_id the writer/gate path uses), marked `persona_source: "brand"`; a brand naming none gets the default marked `"server_default"` — the fallback is explicit, never silent |
 | `get_brand` | Mộc Brew voice rules (parsed YAML): banned terms, sentence rules, examples |
 | `research_facts(query)` | Keyword-triggered lorebook retrieval (reuses the graph's research node) + canonical facts |
 | `get_craft_cards(format, intent?, query?)` | Layer 4: triggered technique cards (lorebook-style, ≤3, ≤1 core) |
@@ -665,6 +665,7 @@ any host app's model can be the writer; the core stays the referee.
 | `final_gate(draft_id, quality_profile?, judged_scores?)` | THE shared gate (`gates.evaluate_gate`, same as the graph): PASS only if brand ≥85 AND 0 banned AND 0 unflagged fact issues AND no empty sections AND (blog/product only) craft ≥70 AND, when activated, the Quality Profile passes; returns the Layer 4 `craft` report and records `craft_score`/`craft_blocking` in `gate_history` — craft **blocks** for blog/product, advisory for social/email/comparison; when the brief carries `style_profile_id`, also returns an advisory `style_match` report (recorded as `style_score`, never blocking); returns exactly which sections to rewrite |
 | `get_quality_profile(format_or_id)` | Quality Profile: a format name → the shipped preset; a saved custom id → that profile ({weights sum 100, floors, pass_total}) |
 | `save_quality_profile(format, weights, floors?, pass_total?)` | Quality Profile: validate (7 axes, each weight in [2, 45], sum exactly 100) + persist a custom profile to `data/quality_profiles/` |
+| `list_quality_profiles()` | Quality Profile: the saved CUSTOM profiles (id, format, pass_total + weights summary); corrupt files listed as corrupt. Presets are not stored profiles — read them via `get_quality_profile(<format>)` |
 | `quality_score(draft_id, judged_scores?, quality_profile?)` | Quality Profile: score a draft on the 7 axes WITHOUT running the gate — dumbbell-ready per-axis score vs floor, weighted total, quality_pass; judged axes (coherence/persuasion/depth) are the writer's 0/1/2 grades, missing ones are excluded, never invented |
 | `check_draft_all(draft_id, judged_scores?, quality_profile?)` | Combined check (perf P3): brand + fact + craft + style + quality for a stored draft in ONE call, each checker run once, the lint/fact results fed into the quality layer via the gate's own `_precomputed` reuse — every sub-report mirrors the individual tool's shape and numbers; changes no state, `final_gate` remains the only verdict |
 | `score_section_variants(section_role, variants, draft_id? / brand_id?)` | Best-of-N (quality uplift): rank 2–5 candidate texts for a headline / opening / cta / closing with the gate's own checkers, scored in isolation. A variant with a banned term or an unflagged fact issue is **ineligible** and ranks last however fluent (hard criteria stay outside the weighting); seo/coherence are reported `not_scored` — they need the full draft and are never faked |
@@ -672,11 +673,12 @@ any host app's model can be the writer; the core stays the referee.
 | `analyze_site_brand(pages)` | Brand Builder: deterministic analysis of a fetched site (pages from `fetch_site.py`) — corpus stats, style fingerprint, visual brand kit with source_url evidence, voice-rule suggestions, vocabulary candidates, site claims flagged needs_evidence |
 | `save_brand_draft(pages, qualitative?, source_type?, brand_name?)` | Brand Builder: build + persist a DRAFT Brand Voice profile in the brand YAML structure. `qualitative` is the model-filled schema (tone traits, audience, positioning, differentiators). Drafts carry review_status="draft" + review_notes; competitor drafts mark every example reference_only |
 | `get_brand_draft(draft_id?)` | Brand Builder: one stored brand draft by id, or the list of drafts |
+| `update_brand_draft(brand_id, patch)` | Brand Builder: edit the EXISTING stored draft in place — shallow-merge per top-level section (object sections merge one level deep; lists/scalars replaced only when present in the patch); everything unpatched is preserved exactly (inferred_fields stamps, review_status — both change only when patched explicitly); a patch naming a different brand.id is refused; the merged draft passes the same validation as `save_brand_draft` before anything is written |
 | `compare_brand_voice(pages_a, pages_b)` | Brand Builder compare mode: two sites' fingerprints side by side, vocabulary difference, claim counts, both kits, and `gaps` — positioning observations computed from the measured deltas |
 | `prepare_brand_setup(site_url, brand_id, display_name?)` | Setup Assist: prepare a NEW brand's whole setup in one call → the SETUP DOSSIER. Fetches the site, saves the brand DRAFT via the Brand Builder (visual palette inferred from the site kit, stamped `setup_assist`), extracts a FACTS DRAFT into the setup record (never the live profile), creates the research pack if absent + builds its proposals, PROPOSES a corpus + persona candidates. Nothing goes live; site self-contradictions block the facts draft with the contested values withheld |
 | `get_brand_setup(brand_id)` | Setup Assist: the setup checklist — per-step status (done / proposed / blocked / needs_human) DERIVED from the live stores, so steps completed through the existing tools flip automatically; plus facts-draft summary, pack counts, corpus proposal, contradictions and the exact `needs_human` list |
-| `plan_images(draft_id)` | Images: plan a draft's image slots — 1 featured + 1 per section (max 5 in-content), each with a deterministic generation prompt = scene + the brand's visual style block. Explicit, never auto-planned; stored in the draft under the per-draft lock |
-| `set_image(draft_id, image_id, source, ref, …)` | Images: fulfil one slot with an image the writer generated (`source="ai"`, pass `prompt_used`) or a client photo (`source="client"`). Filename/alt default to the SEO suggestions (alt marked `alt_suggested`); the core stores refs + metadata only, never image bytes |
+| `plan_images(draft_id, product_specific?)` | Images: plan a draft's image slots — 1 featured + 1 per section (max 5 in-content), each with a deterministic generation prompt = scene + the brand's visual style block. Explicit, never auto-planned; stored in the draft under the per-draft lock. `product_specific` marks slots (section id / slot id / "featured") that must show the brand's OWN product — fenced off from searched stock at every step |
+| `set_image(draft_id, image_id, source, ref, …)` | Images: fulfil one slot with an image the writer generated (`source="ai"`, pass `prompt_used`), a client photo (`source="client"`) or a searched photo (`source="searched"`, pass `candidate_id` + `edit_ops` from the fixed vocabulary — any other op is refused). Filename/alt default to the SEO suggestions (alt marked `alt_suggested`); the core stores refs + metadata only, never image bytes. A searched/generated fulfilment records an `origin` provenance block; `mark_generated=True` marks the generation last resort |
 | `image_check(draft_id, complete?)` | Images: deterministic checker — alt presence/duplication/stuffing/length, filename slug rules, featured keyword + no featured reuse, AI style lock, vision grades. `complete=True` also counts unfulfilled slots as issues. Advisory only: never part of `final_gate` |
 | `record_vision_check(draft_id, image_id, content_grade, style_grade, notes?)` | Images: record the WRITER's vision grades (0/1/2 per axis, strict int validation) for a fulfilled image — the judged layer for images, mirroring the Quality Profile's judged axes. A grade of 0 fails that slot until the image is replaced |
 | `get_image_manifest(draft_id)` | Images: the WordPress-export-ready media manifest (fulfilled images, plan order, WP field names) + `ready` (all slots fulfilled AND no hard issues; unchecked images appear under `warnings` without blocking) |
@@ -684,6 +686,9 @@ any host app's model can be the writer; the core stays the referee.
 | `tag_library_image(brand_id, ref, ai_tags, dimensions?)` | Images: record the HOST MODEL's AI tags for one library image — the fixed shape {subjects (≤8 short phrases), scene (≤12 words), objects (≤10), colours (≤6), text_in_image}; an empty tag set is refused. The core validates + stamps (tagged_by="host_model", tag_count) and the tag tokens join the ranking token set, so a thinly described photo becomes findable. Re-tagging replaces the record; the ref must match exactly one entry of that brand |
 | `list_library_images(brand_id)` | Images: list a brand's library entries (including `ai_tags` + `dimensions` when recorded) |
 | `fulfil_images_from_library(draft_id)` | Images: library-first fulfilment — rank the draft brand's library per slot by token overlap (entry tags + description + AI tags), fulfil above the match threshold (one entry never serves two slots), report the rest as `needs_generation` with style-locked prompts |
+| `add_image_candidate(draft_id, image_id, source_url, license_type, source_name?, license_note?, attribution_text?)` | Images (searched chain): register one searched-photo candidate into a slot's pool (max 5). The brand must carry an `image_sources` allowlist and the source must match it by name or host; `license_type` must be in the fixed set (stock_commercial / stock_paid / brand_owned / user_supplied / public_domain / cc_attribution) and allowed for that source — anything else is refused and the pool does not change. product_specific slots refuse candidates |
+| `record_candidate_vetting(draft_id, image_id, candidate_id, content_grade, issues?, notes?)` | Images (searched chain): record the HOST MODEL's vetting judgement for a candidate — grade 0/1/2 + issues from the fixed vocabulary (watermark, embedded_text, low_resolution, wrong_subject, off_brand_scene). Grade 0 / watermark / wrong_subject REJECTS the candidate (reason kept in the pool); a rejected candidate can never fulfil. Watermarked images are rejected, never cleaned — watermark removal is not an edit op |
+| `fulfil_images_v2(draft_id, allow_generation?)` | Images: the full six-step chain — library first (origin-stamped), then the searched-candidate step with per-slot statuses (awaiting_candidates / awaiting_vetting / candidates_ready / reopened with the grade-0 fallback: unedited original → next candidate → generation), generation LAST and only with `allow_generation=True`. Brands without an allowlist skip the search step; product_specific slots skip it always |
 | `list_drafts()` | Draft admin: every stored draft (draft_id, brand, status, updated); corrupt files listed as corrupt, never skipped |
 | `delete_draft(draft_id, confirm?)` | Draft admin: delete one draft under the per-draft lock; an APPROVED draft requires `confirm=True` |
 | `create_research_pack(brand_id)` | Research pack: create (or version-bump) a brand's pre-approval setup store — sources, proposed items, contradictions, quality rejections. Never touches live config |
@@ -702,6 +707,7 @@ any host app's model can be the writer; the core stays the referee.
 | `mark_article_verdict(brand_id, verdict, draft_id? / file_ref?, edited_text?, note?)` | Taste layer: the OWNER's verdict on one article — `approved_unchanged` or `edited` (edited requires the edited text; BOTH versions are kept, the diff is the signal). Only the owner gives verdicts |
 | `build_taste_profile(brand_id)` | Taste layer: with ≥3 verdicted articles, distil them into the brand's taste profile (`<brand-id>-taste-voice`). `store_excerpts=True` is legitimate here and only here — the samples are the owner's own articles |
 | `get_taste_status(brand_id)` | Taste layer: verdict counts + whether a taste profile exists and what it was built from |
+| `list_taste_entries(brand_id)` | Taste layer: one summary row per entry (id, ref, verdict, imported/marked stamps, word count — not the text), so pending articles can be found again for marking. A broken entry is listed as corrupt with its index, never skipped |
 | `create_seo_profile(draft_id, keyword, search_context, brand_id?)` | SEO five-source (Round 1): create ONE research profile per draft. Brand is pinned from the draft's own brief (a brandless brief is refused; a mismatching `brand_id` is a structured error). `search_context` = {market, language, location, device, searched_at} — all five required, no defaults invented. Starts in state `collecting`; nothing here writes to facts / brand / corpus / taste stores |
 | `get_seo_profile(draft_id)` | SEO five-source: the full profile (keyword, context, state, sources with read states + read_events, analysis claims with provenance flags, shortfall exception) plus the `sufficiency` report: read_count (read + partial) / full_read_count vs the required 5, shortfall standing, exception recorded, proceed authorised |
 | `add_seo_source(draft_id, url, observed_rank, title?, observed_at?)` | SEO five-source: record one ORIGINAL observed result. Ranks 1–5 unique among originals, never overwritten; entry is always `manual`; the source starts `pending` — a URL alone never counts as read |
@@ -723,6 +729,10 @@ any host app's model can be the writer; the core stays the referee.
 | `get_wordpress_target(brand_id)` | WordPress exporter: the stored target + `credentials_configured` (boolean only; the password is never returned) |
 | `export_draft_to_wordpress(brand_id, draft_id, force=false)` | WordPress exporter: upload the draft's images per its media manifest (featured → `featured_media`, alt/caption/description set), create the post with status **"draft" — always; there is no publish path**, record the export on the draft (post id + edit link). A second export is refused unless `force=True` |
 | `sync_wordpress_edits(brand_id? / draft_id?)` | Edit-feedback loop (quality uplift): READ-ONLY (GET only) — fetch each exported post's current content, diff it against the exported draft, and record a changed pair in the taste layer as an "edited" verdict (both versions kept; provenance = WP post id + site). Idempotent per post + content hash; a further edit supersedes the entry |
+| `list_wordpress_posts(brand_id, status?, per_page?)` | WP rewrite path: list a brand's WP posts (id, title, status, dates, link). READ-ONLY. Without credentials only published posts are visible, reported via `credentials_configured` |
+| `import_wordpress_post(brand_id, wp_post_id, force=false)` | WP rewrite path: import ONE post into a draft — `original` snapshot byte-verbatim (only this tool ever writes it), fixed-table HTML→section conversion with a coverage ratio (below 0.97 flagged, suggested verdict audit_only), the post's images pre-fulfilled as `existing_wp` by media id, and a default audit into `original_audit`. Re-import is refused (the live draft names itself); `force` snapshots fresh and supersedes the old draft, which is locked out of export |
+| `audit_imported_post(draft_id)` | WP rewrite path: re-run the original-post audit (fact issues, prohibited claims, brand/craft scores) over the converted original text, overwriting `original_audit` only — gate_history is never touched |
+| `set_rewrite_verdict(draft_id, verdict, reason?)` | WP rewrite path: the owner's per-post verdict — `rewrite` / `audit_only` / `drop` (drop records the verdict only; removing the post is the owner's hand). Export of an imported draft is refused unless the standing verdict is `rewrite` |
 
 ### Setup Assist — AI-assisted new-brand setup
 
@@ -805,6 +815,27 @@ plans, checks and packages (`content_core/images.py`, pure):
   from the entry description and marked `alt_suggested`. Slots with
   no fit come back as `needs_generation` with their generation
   prompt.
+- **Searched real photos (spec `specs/image-search-edit-feature.md`,
+  §12 resolved 2026-11-23).** A brand may carry an `image_sources`
+  allowlist (validated in loaders like `visual`); without one the
+  search step is OFF and the chain above is unchanged byte-for-byte.
+  With one, `fulfil_images_v2` runs the six-step chain: library →
+  candidate pool (the host model searches; the core only registers,
+  max 5 per slot, license_type from the fixed set, source matched
+  against the allowlist) → vetting (grade 0, watermark or
+  wrong_subject rejects; watermark removal exists nowhere as an op)
+  → AI edit from the fixed op vocabulary (crop, resize, color_grade,
+  exposure, white_balance, sharpen, background_cleanup — an edit
+  must never change the product) → vision check with the grade-0
+  fallback (unedited original, then next candidate) → generation
+  LAST, only on the explicit `allow_generation` flag. Fulfilments
+  carry an `origin` block; the manifest derives `origin`,
+  `source_url`, `license_type`, `attribution_text`, `edit_ops` and
+  `generated` from it, folds a cc_attribution attribution into the
+  WordPress caption, and `image_check` blocks readiness on
+  `image_license_missing` / `edit_op_not_allowed` /
+  `attribution_missing`. Slots planned with `product_specific` never
+  touch stock: library, then generation.
 - **Brand visual style.** An optional `visual` section in the brand
   YAML / brand draft — `{style_summary, palette[], medium
   (photo|illustration|mixed), mood, composition, avoid[]}` — renders

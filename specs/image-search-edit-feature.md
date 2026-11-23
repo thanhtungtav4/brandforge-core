@@ -1,6 +1,6 @@
 # Spec: Tìm ảnh thật, nhận diện và tinh chỉnh bằng AI cho bài viết
 
-Ngày: 2026-11-22. Trạng thái: đã ghi quyết định trong `pmdecisions.md` (mục "Article images: search real photos, vet, then AI-edit"), xây dựng để sau. Tài liệu này là đầu vào cho vòng build của lớp ảnh, chưa phải cam kết xây ngay.
+Ngày: 2026-11-22. Trạng thái: đã ghi quyết định trong `pmdecisions.md` (mục "Article images: search real photos, vet, then AI-edit"); mục 12 đã chốt ngày 2026-11-23 (Ember quyết theo ủy quyền Brandforge của Smith) và vòng build bước một đã triển khai cùng ngày.
 
 ## 1. Vấn đề
 
@@ -155,7 +155,7 @@ Phương án bị loại thứ nhất là giữ nguyên sinh ảnh sau thư vi�
 
 | Phụ thuộc | Chủ sở hữu | Trạng thái |
 |---|---|---|
-| Danh sách kho stock trong allowlist mặc định | Smith duyệt | Chưa chốt, là câu hỏi mở số 1 |
+| Danh sách kho stock trong allowlist mặc định | Smith duyệt (đã ủy quyền cho Ember) | Đã chốt 2026-11-23: Pexels, Pixabay, Unsplash — xem mục 12 |
 | Khả năng tìm ảnh, nhìn ảnh và sửa ảnh của ứng dụng chủ | Bên ngoài brandforge | Đã có tiền lệ với sinh ảnh và vision check; khả năng sửa ảnh chưa chạy thử trong dự án này |
 | WordPress exporter cộng attribution vào caption | Ember, trong vòng build | Exporter đã chạy thật; thay đổi nhỏ ở bước đóng gói caption |
 | Field `image_sources` trong brand YAML và validate ở loaders | Ember, trong vòng build | Chưa có; theo khuôn `visual` hiện tại |
@@ -193,9 +193,11 @@ Giả định ba tháng sau khi tính năng chạy và nó đã thất bại. N�
 4. Một ảnh đăng ký sai giấy phép bị phát hiện sau khi bài đã đăng trên site khách. Khả năng 15%. Tín hiệu sớm: một lần rà soát provenance cho thấy `source_url` không khớp ảnh. Giảm thiểu: manifest giữ provenance để gỡ đúng ảnh trong vài phút; quy trình gỡ ảnh là việc vận hành của Smith, và spec này giữ bằng chứng để việc đó làm được.
 5. Ứng dụng chủ đổi hoặc rút khả năng sửa ảnh, và bậc 4 chết lặng lẽ trong khi báo cáo fulfil vẫn trông bình thường. Khả năng 20%. Tín hiệu sớm: tỉ lệ `searched_unedited` tăng đột ngột giữa các batch. Giảm thiểu: báo cáo trial đếm origin theo từng batch, nên sự thay đổi này lộ ra ở số liệu thay vì im lặng.
 
-## 12. Câu hỏi mở
+## 12. Câu hỏi mở — ĐÃ CHỐT (2026-11-23)
 
-1. Kho stock nào vào allowlist mặc định? Đề xuất: Pexels, Pixabay và Unsplash, ba kho có giấy phép cho dùng thương mại không cần mua. Smith duyệt danh sách và điều khoản từng kho. Người quyết: Smith. Chặn bước một của vòng build, vì validate của `image_sources` cần tập nguồn khởi điểm.
-2. Slot `product_specific` chỉ dùng thư viện, hay thư viện rồi sinh? Đề xuất mặc định: thư viện trước, sinh sau, tìm stock bị cấm tuyệt đối cho các slot này. Người quyết: Smith. Chặn hành vi của cờ ở bước một.
-3. Ảnh khách hàng của shop gửi qua Zalo (ảnh khách chụp sản phẩm) có được tính là nguồn `user_supplied` không, và ai xác nhận quyền dùng cho từng brand? Đề xuất: được tính, với Smith xác nhận theo brand khi cấu hình allowlist. Người quyết: Smith. Không chặn trial trên shop của chính Smith, chặn khi dùng cho site khách.
-4. Giấy phép `cc_attribution` được dùng với attribution trong caption, hay loại khỏi tập giấy phép cho gọn? Đề xuất: giữ, kèm luật attribution ở 3.3 và 3.6. Người quyết: Smith. Không chặn bước một; validate chỉ cần biết tập giấy phép có `cc_attribution` hay không.
+Bốn câu hỏi dưới đây đã được chốt ngày 2026-11-23 bởi Ember, theo ủy quyền của Smith ("phần nào về Brandforge bạn tự quyết luôn giúp mình", 23/11/2026). Quyết định cũng ghi ở `pmdecisions.md`, mục "Image search-edit: §12 open questions resolved under Smith's Brandforge delegation".
+
+1. **Kho stock vào allowlist mặc định: Pexels, Pixabay và Unsplash** — đúng như đề xuất gốc, ba kho có giấy phép cho dùng thương mại không cần mua. Lưu ý phạm vi: đây là danh sách mặc định cho brand MỚI; allowlist hiệu lực của từng brand vẫn là field `image_sources` trong brand của brand đó — brand không có field này (hoặc để rỗng) thì bậc tìm ảnh tắt, như luật ở 3.3.
+2. **Slot `product_specific`: thư viện trước, sinh sau; tìm stock bị CẤM tuyệt đối** — đúng như đề xuất gốc. Slot này bỏ qua bậc 2 tới 4 ở mọi bước: không đăng ký ứng viên, không nhận ảnh searched.
+3. **Ảnh từ nhóm Zalo của nhà cung cấp của chính Smith (Vựa khô Quốc Dũng — Nhóm sỉ 1) tính là `user_supplied`** — căn cứ: chỉ đạo thường trực của Smith là nạp toàn bộ ảnh từ nhóm đó vào thư viện shop của anh. Ảnh khách hàng gửi theo các kênh khác KHÔNG mặc định là `user_supplied`: cần Smith xác nhận quyền dùng theo từng brand trước khi đăng ký.
+4. **`cc_attribution` GIỮ trong tập giấy phép** — kèm luật cứng ở 3.3 và 3.6: manifest bắt buộc có `attribution_text` và caption WordPress phải chứa attribution; thiếu là hard issue `attribution_missing`, manifest không ready.

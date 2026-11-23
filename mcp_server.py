@@ -75,6 +75,8 @@ from content_core.loaders import save_facts as _save_facts_file
 from content_core.loaders import validate_facts as _validate_facts
 from content_core.loaders import load_style_profile as _load_style_profile
 from content_core.loaders import save_quality_profile as _save_quality_profile_file
+from content_core.loaders import list_quality_profiles as _list_quality_profiles
+from content_core.loaders import load_quality_profile as _load_quality_profile
 from content_core.loaders import save_style_profile as _save_style_profile_file
 from content_core.quality import PRESETS as _QUALITY_PRESETS
 from content_core.quality import evaluate_quality as _evaluate_quality
@@ -95,10 +97,20 @@ from content_core.loaders import save_brand_draft as _save_brand_draft_file
 from content_core.images import best_library_match as _best_library_match
 from content_core.images import build_manifest as _build_image_manifest
 from content_core.images import check_images as _check_images
+from content_core.images import image_sources_of as _image_sources_of
+from content_core.images import invalid_edit_ops as _invalid_edit_ops
+from content_core.images import match_allowlist as _match_allowlist
 from content_core.images import normalise_ref as _normalise_ref
 from content_core.images import plan_images as _plan_images
 from content_core.images import suggest_alt as _suggest_alt
 from content_core.images import suggest_filename as _suggest_filename
+from content_core.images import vetting_rejection as _vetting_rejection
+from content_core.images import EDIT_OPS as _EDIT_OPS
+from content_core.images import (MAX_CANDIDATES_PER_SLOT
+                                 as _MAX_CANDIDATES_PER_SLOT)
+from content_core.images import VETTING_ISSUES as _VETTING_ISSUES
+from content_core.loaders import (IMAGE_LICENSE_TYPES
+                                  as _IMAGE_LICENSE_TYPES)
 from content_core.loaders import add_image_library_entry as _add_library_image_file
 from content_core.loaders import list_image_library as _list_image_library_file
 from content_core.loaders import set_image_library_tags as _set_library_tags_file
@@ -110,6 +122,7 @@ from content_core import taste as _taste
 from content_core import variants as _variants
 from content_core import backup as _backup
 from content_core import wordpress as _wordpress
+from content_core import wp_convert as _wp_convert
 from content_core.loaders import load_wordpress_target as _load_wp_target
 from content_core.loaders import save_wordpress_target as _save_wp_target
 from content_core.loaders import load_corpus_choice as _load_corpus_choice
@@ -594,8 +607,11 @@ def _core_for_brief(brief: dict) -> Core:
 
 
 def _draft_images_state(draft: dict) -> dict:
-    """The draft's images state {"plan": [...], "images": {...}},
-    defaulted for drafts started before the image layer existed."""
+    """The draft's images state {"plan": [...], "images": {...},
+    "candidates": {...}}, defaulted for drafts started before the
+    image layer existed. `candidates` is the searched-image pool
+    (spec §3.2): {slot_id: [candidate, ...]}, living in the draft
+    like the plan and the fulfilments — no separate store."""
     state = draft.get("images")
     if not isinstance(state, dict):
         state = {}
@@ -603,6 +619,8 @@ def _draft_images_state(draft: dict) -> dict:
         state["plan"] = []
     if not isinstance(state.get("images"), dict):
         state["images"] = {}
+    if not isinstance(state.get("candidates"), dict):
+        state["candidates"] = {}
     return state
 
 
@@ -629,10 +647,67 @@ def _run_gate(draft: dict, quality_profile: dict | None = None,
 # Tools — data layers
 # --------------------------------------------------------------------------
 
+def _brand_persona_ids(brand_id: str) -> list[str]:
+    """The distinct persona_ids the brand's stored drafts name in
+    their briefs — the persona evidence the draft/gate path resolves
+    from (_resolve_writer_context reads brief.persona_id). Drafts
+    naming no brand belong to the server brand (moc-brew), exactly
+    as list_drafts maps them. Corrupt draft files contribute
+    nothing: no brief can be read from them."""
+    found: list[str] = []
+    d = drafts_dir()
+    if not d.exists():
+        return found
+    for path in sorted(d.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        brief = data.get("brief") if isinstance(data.get("brief"), dict) else {}
+        if (brief.get("brand_id") or "moc-brew") != brand_id:
+            continue
+        pid = str(brief.get("persona_id") or "").strip()
+        if pid and pid not in found:
+            found.append(pid)
+    return found
+
+
 @mcp.tool()
-def get_persona() -> dict:
-    """Return the author Persona: Linh, Character Card V2 (who writes)."""
-    return load_persona()
+def get_persona(brand_id: str = "") -> dict:
+    """Return the author Persona (Character Card V2 — who writes).
+
+    With no brand_id: the server default persona (Linh), exactly as
+    before. With a brand_id: the persona THAT BRAND's drafts
+    resolve — the persona resolution the writer/gate path applies
+    (_resolve_writer_context): the persona_id the brand's stored
+    draft briefs name, loaded via load_persona_by_id, with
+    persona_source="brand" marking the provenance. A brand whose
+    drafts name no persona gets the server default WITH
+    persona_source="server_default" — the fallback is explicit,
+    never silent. An unknown brand, drafts naming conflicting
+    personas, or a named persona that no longer resolves are
+    structured errors: a persona is never borrowed or guessed."""
+    if not brand_id:
+        return load_persona()
+    try:
+        _resolve_brand_only(brand_id)  # unknown brand → ValueError
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    persona_ids = _brand_persona_ids(brand_id)
+    if len(persona_ids) > 1:
+        return {"error": f"brand {brand_id!r} drafts name conflicting "
+                         f"personas {sorted(persona_ids)} — refusing to "
+                         f"guess which one the brand writes as",
+                "brand_id": brand_id}
+    if persona_ids:
+        try:
+            persona = _load_persona_by_id(persona_ids[0])
+        except ValueError as exc:  # named persona no longer resolves
+            return {"error": str(exc), "brand_id": brand_id}
+        return {**persona, "persona_source": "brand"}
+    return {**load_persona(), "persona_source": "server_default"}
 
 
 @mcp.tool()
@@ -968,6 +1043,74 @@ def get_brand_draft(draft_id: str = "") -> dict:
                     "available": _list_brand_drafts()}
         return draft
     return {"drafts": _list_brand_drafts()}
+
+
+def _merge_brand_draft_patch(existing: dict, patch: dict) -> dict:
+    """Apply a partial patch to a stored brand draft: shallow-merge
+    per top-level section — when both the stored value and the patch
+    value for a key are objects, the patch's keys win WITHIN that
+    section (one level deep); lists and scalars are replaced whole,
+    and only when the key is present in the patch. Keys the patch
+    does not name are carried over untouched."""
+    merged = dict(existing)
+    for key, value in patch.items():
+        current = merged.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            merged[key] = {**current, **value}
+        else:
+            merged[key] = value
+    return merged
+
+
+@mcp.tool()
+def update_brand_draft(brand_id: str, patch: dict) -> dict:
+    """Edit the EXISTING stored brand draft in place with a partial
+    patch — the structured-editor counterpart to save_brand_draft
+    (which builds a NEW draft from fetched pages and would clobber
+    the human edits prepare_brand_setup works to preserve, S2).
+
+    Merge rule: shallow per top-level section — an object section in
+    the patch merges one level deep into the stored section (the
+    patch's keys win); list and scalar fields are replaced whole,
+    only when present in the patch (a field explicitly set to null
+    is set to null). EVERYTHING the patch does not name is preserved
+    exactly — inferred_fields stamps and brand.review_status
+    included — and those change only when the patch names them
+    explicitly. brand.id is the draft's identity: a patch naming a
+    different brand.id is refused. The merged draft goes through the
+    same validation as save_brand_draft (validate_brand_draft:
+    visual / image_sources boundary rules, competitor reference_only
+    re-stamping) BEFORE anything is written; an invalid patch writes
+    nothing. A brand with no stored draft is a structured error —
+    build it first (save_brand_draft / prepare_brand_setup).
+    Returns {draft, updated_fields, brand_id}."""
+    if not isinstance(patch, dict):
+        return {"error": f"patch must be an object of section updates, "
+                         f"got {type(patch).__name__}",
+                "brand_id": brand_id}
+    try:
+        existing = _load_brand_draft(brand_id)
+    except ValueError as exc:  # corrupt stored draft (review M6)
+        return {"error": str(exc), "brand_id": brand_id}
+    if existing is None:
+        return {"error": f"brand draft not found: {brand_id} — build it "
+                         f"first (save_brand_draft / prepare_brand_setup)",
+                "brand_id": brand_id,
+                "available": _list_brand_drafts()}
+    patch_brand = patch.get("brand")
+    if isinstance(patch_brand, dict) and patch_brand.get("id") not in (
+            None, brand_id):
+        return {"error": f"patch brand.id {patch_brand.get('id')!r} does "
+                         f"not match brand_id {brand_id!r} — a patch "
+                         f"cannot rename or move a brand draft",
+                "brand_id": brand_id}
+    merged = _merge_brand_draft_patch(existing, patch)
+    try:
+        saved = _save_brand_draft_file(merged)
+    except ValueError as exc:  # validation refused the merged draft
+        return {"error": str(exc), "brand_id": brand_id}
+    return {"draft": saved, "updated_fields": sorted(patch),
+            "brand_id": brand_id}
 
 
 @mcp.tool()
@@ -1437,15 +1580,22 @@ def delete_draft(draft_id: str, confirm: bool = False) -> dict:
 # --------------------------------------------------------------------------
 
 @mcp.tool()
-def plan_images(draft_id: str) -> dict:
+def plan_images(draft_id: str,
+                product_specific: list[str] | None = None) -> dict:
     """Plan a draft's image slots: one featured image + one in-content
     image per section (capped — see content_core/images.py). Each slot
     carries a deterministic generation prompt = scene + the brand's
     visual style block (byte-identical across slots; that shared block
     is the style lock). Planning is explicit: starting a draft does
-    not auto-plan. Re-planning keeps fulfilments whose slot ids still
-    exist. The plan lives in the draft's "images" state, under the
-    per-draft lock."""
+    not auto-plan. Re-planning keeps fulfilments AND candidate pools
+    whose slot ids still exist. The plan lives in the draft's
+    "images" state, under the per-draft lock.
+
+    `product_specific` marks slots (by section id, slot id, or
+    "featured") that must show the brand's OWN product — the writer
+    sets it from the section's intent at planning time. A marked slot
+    is fenced off from searched stock entirely: library first,
+    generation last, never a candidate."""
     try:
         with _draft_lock(draft_id):
             draft, error = _load_draft_or_error(draft_id)
@@ -1457,12 +1607,16 @@ def plan_images(draft_id: str) -> dict:
             except ValueError as exc:
                 return {"error": str(exc), "draft_id": draft_id}
             plan = _plan_images(_sections_of(draft), draft.get("brief", {}),
-                                brand)
+                                brand, product_specific=product_specific)
             state = _draft_images_state(draft)
             slot_ids = {p["id"] for p in plan}
             kept = {iid: e for iid, e in state["images"].items()
                     if iid in slot_ids}
-            draft["images"] = {"plan": plan, "images": kept}
+            kept_pools = {iid: pool
+                          for iid, pool in state["candidates"].items()
+                          if iid in slot_ids}
+            draft["images"] = {"plan": plan, "images": kept,
+                               "candidates": kept_pools}
             _store_draft(draft)
     except ValueError as exc:  # lock timeout / invalid draft id
         return {"error": str(exc), "draft_id": draft_id}
@@ -1472,11 +1626,17 @@ def plan_images(draft_id: str) -> dict:
 @mcp.tool()
 def set_image(draft_id: str, image_id: str, source: str, ref: str,
               alt: str = "", caption: str = "", description: str = "",
-              filename: str = "", prompt_used: str = "") -> dict:
+              filename: str = "", prompt_used: str = "",
+              candidate_id: str = "", edit_ops: list[str] | None = None,
+              attribution_text: str = "",
+              mark_generated: bool = False) -> dict:
     """Fulfil ONE planned slot with an image the writer generated or
-    selected. `source` is "ai" (generated for this article) or
-    "client" (the client's real photo); `ref` is its path or URL —
-    the core stores refs and metadata only, never image bytes.
+    selected. `source` is "ai" (generated for this article), "client"
+    (the client's real photo) or "searched" (a real photo found via
+    the brand's image_sources allowlist — see add_image_candidate);
+    `ref` is its path or URL — the core stores refs and metadata
+    only, never image bytes. For a searched image, `ref` is the
+    LOCAL file downloaded from the candidate's source_url.
 
     `filename` defaults to the SEO suggestion (keyword-led slug);
     `alt` defaults to the template suggestion and is then marked
@@ -1485,10 +1645,24 @@ def set_image(draft_id: str, image_id: str, source: str, ref: str,
     the full prompt actually used, which must carry the brand's style
     block (image_check verifies it). Overwriting a slot drops any
     vision_check recorded for the previous image. Returns the stored
-    entry plus this image's immediate check notes."""
-    if source not in ("ai", "client"):
-        return {"error": f"source must be 'ai' or 'client', got {source!r}",
-                "draft_id": draft_id}
+    entry plus this image's immediate check notes.
+
+    Searched fulfilment: pass `candidate_id` (a VETTED, viable
+    candidate from this slot's pool) and `edit_ops` — the AI edits
+    actually applied, from the fixed vocabulary (crop, resize,
+    color_grade, exposure, white_balance, sharpen,
+    background_cleanup). Any other op is refused: an edit must never
+    change the product's colour/shape/label/quantity, replace the
+    background, or remove a watermark. The stored entry gains an
+    `origin` block built from the CANDIDATE's record (source_url and
+    license_type cannot be restated by the caller). `attribution_text`
+    overrides the candidate's recorded attribution. With
+    `mark_generated=True` (ai source only, the fulfil_images_v2
+    last-resort path) the entry gains origin kind "generated" so the
+    manifest marks it as generated."""
+    if source not in ("ai", "client", "searched"):
+        return {"error": f"source must be 'ai', 'client' or 'searched', "
+                         f"got {source!r}", "draft_id": draft_id}
     if not str(ref or "").strip():
         return {"error": "ref must be a non-empty path or URL",
                 "draft_id": draft_id}
@@ -1504,6 +1678,66 @@ def set_image(draft_id: str, image_id: str, source: str, ref: str,
                 return {"error": f"unknown image slot: {image_id!r} — "
                                  f"call plan_images first",
                         "draft_id": draft_id}
+            origin = None
+            candidate = None
+            if source == "searched":
+                if item.get("product_specific"):
+                    return {"error": f"slot {image_id!r} is "
+                                     f"product_specific — searched stock "
+                                     f"can never fulfil it; use the brand "
+                                     f"library or generation",
+                            "draft_id": draft_id}
+                if not candidate_id:
+                    return {"error": "source 'searched' requires "
+                                     "candidate_id — register and vet a "
+                                     "candidate first (add_image_candidate "
+                                     "/ record_candidate_vetting)",
+                            "draft_id": draft_id}
+                pool = state["candidates"].get(image_id) or []
+                candidate = next(
+                    (c for c in pool if c.get("id") == candidate_id), None)
+                if candidate is None:
+                    return {"error": f"unknown candidate {candidate_id!r} "
+                                     f"in slot {image_id!r}'s pool",
+                            "draft_id": draft_id}
+                if candidate.get("status") == "rejected":
+                    return {"error": f"candidate {candidate_id!r} was "
+                                     f"rejected at vetting "
+                                     f"({candidate.get('rejection_reason', '')})"
+                                     f" — it can never fulfil a slot",
+                            "draft_id": draft_id}
+                if candidate.get("status") not in ("viable", "fulfilled"):
+                    return {"error": f"candidate {candidate_id!r} has not "
+                                     f"passed vetting yet (status "
+                                     f"{candidate.get('status')!r}) — record "
+                                     f"its vetting first",
+                            "draft_id": draft_id}
+                bad_ops = _invalid_edit_ops(edit_ops)
+                if bad_ops:
+                    return {"error": f"edit_ops {bad_ops} are outside the "
+                                     f"allowed vocabulary "
+                                     f"{sorted(_EDIT_OPS)} — an edit must "
+                                     f"never change the product or remove "
+                                     f"a watermark",
+                            "draft_id": draft_id}
+                ops = list(edit_ops or [])
+                origin = {
+                    "kind": "searched_edited" if ops
+                            else "searched_unedited",
+                    "source_url": candidate.get("source_url", ""),
+                    "license_type": candidate.get("license_type", ""),
+                    "candidate_id": candidate["id"],
+                    "edit_ops": ops,
+                    "attribution_text": attribution_text
+                    or candidate.get("attribution_text", ""),
+                }
+            elif mark_generated:
+                if source != "ai":
+                    return {"error": "mark_generated is only valid with "
+                                     "source 'ai'", "draft_id": draft_id}
+                origin = {"kind": "generated", "source_url": "",
+                          "license_type": "", "candidate_id": "",
+                          "edit_ops": [], "attribution_text": ""}
             brief = draft.get("brief", {})
             alt_suggested = not str(alt or "").strip()
             entry = {
@@ -1514,7 +1748,12 @@ def set_image(draft_id: str, image_id: str, source: str, ref: str,
                 "caption": caption, "description": description,
                 "prompt_used": prompt_used, "from_library": None,
             }
+            if origin is not None:
+                entry["origin"] = origin
             state["images"][image_id] = entry
+            if candidate is not None:
+                candidate["status"] = "fulfilled"
+                candidate["fulfilled_ref"] = ref
             draft["images"] = state
             _store_draft(draft)
             try:
@@ -1801,6 +2040,375 @@ def fulfil_images_from_library(draft_id: str) -> dict:
             "needs_generation": needs_generation, "images": images}
 
 
+@mcp.tool()
+def add_image_candidate(draft_id: str, image_id: str, source_url: str,
+                        license_type: str, source_name: str = "",
+                        license_note: str = "",
+                        attribution_text: str = "") -> dict:
+    """Register ONE searched-photo candidate for a planned slot —
+    step 2 of the searched-image chain (spec:
+    specs/image-search-edit-feature.md). YOU do the searching with
+    your own tools; the core keeps the pool and referees the license
+    discipline. The DRAFT BRAND must carry an `image_sources`
+    allowlist: without one the search step is off and this is an
+    error. The candidate's source must match the allowlist by
+    `source_name` or by the source_url's host, and `license_type`
+    must be in the fixed set (stock_commercial, stock_paid,
+    brand_owned, user_supplied, public_domain, cc_attribution) and
+    allowed for that source entry — anything else is refused and the
+    pool does not change. At most 5 candidates per slot. A
+    product_specific slot refuses candidates at every step. The
+    candidate then needs a vetting record (record_candidate_vetting)
+    before it can fulfil the slot via set_image(source="searched")."""
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            state = _draft_images_state(draft)
+            item = next((p for p in state["plan"] if p["id"] == image_id),
+                        None)
+            if item is None:
+                return {"error": f"unknown image slot: {image_id!r} — "
+                                 f"call plan_images first",
+                        "draft_id": draft_id}
+            if item.get("product_specific"):
+                return {"error": f"slot {image_id!r} is product_specific "
+                                 f"— it must show the brand's own product, "
+                                 f"so searched candidates are forbidden for "
+                                 f"it at every step",
+                        "draft_id": draft_id}
+            try:
+                brand = _resolve_brand_only(
+                    draft.get("brief", {}).get("brand_id", ""))
+            except ValueError as exc:
+                return {"error": str(exc), "draft_id": draft_id}
+            sources = _image_sources_of(brand)
+            if not sources:
+                return {"error": "the draft's brand has no image_sources "
+                                 "allowlist — the searched-image step is "
+                                 "off for this brand (library, then "
+                                 "generation, as before)",
+                        "draft_id": draft_id}
+            if license_type not in _IMAGE_LICENSE_TYPES:
+                return {"error": f"license_type {license_type!r} is "
+                                 f"outside the fixed set "
+                                 f"{list(_IMAGE_LICENSE_TYPES)} — an image "
+                                 f"whose license cannot be classified is "
+                                 f"refused, never registered",
+                        "draft_id": draft_id}
+            if not str(source_url or "").strip().startswith(
+                    ("http://", "https://")):
+                return {"error": "source_url must be an http(s) URL — "
+                                 "it is the candidate's provenance",
+                        "draft_id": draft_id}
+            matched = _match_allowlist(sources, source_url, source_name)
+            if matched is None:
+                return {"error": f"source of {source_url!r} is not on "
+                                 f"the brand's image_sources allowlist "
+                                 f"{[s.get('name') for s in sources]} — "
+                                 f"only allowlisted sources may be "
+                                 f"registered",
+                        "draft_id": draft_id}
+            allowed = matched.get("license_types")
+            if allowed and license_type not in allowed:
+                return {"error": f"source {matched.get('name')!r} allows "
+                                 f"license_types {allowed}, not "
+                                 f"{license_type!r}",
+                        "draft_id": draft_id}
+            pool = state["candidates"].setdefault(image_id, [])
+            if len(pool) >= _MAX_CANDIDATES_PER_SLOT:
+                return {"error": f"candidate pool for slot {image_id!r} "
+                                 f"is full ({_MAX_CANDIDATES_PER_SLOT} "
+                                 f"candidates max) — vet or drop the "
+                                 f"search before registering more",
+                        "draft_id": draft_id}
+            if any(c.get("source_url") == source_url for c in pool):
+                return {"error": f"candidate {source_url!r} is already "
+                                 f"registered for slot {image_id!r}",
+                        "draft_id": draft_id}
+            candidate = {
+                "id": f"cand-{uuid.uuid4().hex[:10]}",
+                "slot_id": image_id,
+                "source_url": source_url,
+                "source_name": matched.get("name", ""),
+                "license_type": license_type,
+                "license_note": license_note,
+                "attribution_text": attribution_text,
+                "registered_at": datetime.now(timezone.utc).isoformat(
+                    timespec="seconds"),
+                "vetting": None,
+                "status": "pending_vetting",
+                "rejection_reason": "",
+            }
+            pool.append(candidate)
+            draft["images"] = state
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"draft_id": draft_id, "image_id": image_id,
+            "candidate": candidate, "pool_size": len(pool)}
+
+
+@mcp.tool()
+def record_candidate_vetting(draft_id: str, image_id: str,
+                             candidate_id: str, content_grade: int,
+                             issues: list[str] | None = None,
+                             notes: str = "") -> dict:
+    """Record YOUR vetting judgement for one searched candidate —
+    step 3 of the chain, the same judged-layer split as
+    record_vision_check (the core cannot see the image; you can).
+    Look at the actual candidate first: `content_grade` 0/1/2 = how
+    well its subject and scene fit the slot's intent; `issues` from
+    the fixed vocabulary (watermark, embedded_text, low_resolution,
+    wrong_subject, off_brand_scene). A candidate with grade 0, a
+    watermark or the wrong subject is REJECTED — the reason is kept
+    in the pool as trial data, and a rejected candidate can never
+    fulfil the slot. Watermarked images are rejected, never cleaned:
+    removing a watermark is not an allowed edit op anywhere in this
+    system. Re-recording vetting for a non-fulfilled candidate
+    replaces the record."""
+    if isinstance(content_grade, bool) or not isinstance(content_grade, int) \
+            or content_grade not in (0, 1, 2):
+        return {"error": f"content_grade must be an int in 0..2, "
+                         f"got {content_grade!r}", "draft_id": draft_id}
+    bad_issues = [i for i in issues or [] if i not in _VETTING_ISSUES]
+    if bad_issues:
+        return {"error": f"issues {bad_issues} are outside the fixed "
+                         f"vocabulary {sorted(_VETTING_ISSUES)}",
+                "draft_id": draft_id}
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            state = _draft_images_state(draft)
+            pool = state["candidates"].get(image_id) or []
+            candidate = next(
+                (c for c in pool if c.get("id") == candidate_id), None)
+            if candidate is None:
+                return {"error": f"unknown candidate {candidate_id!r} "
+                                 f"in slot {image_id!r}'s pool",
+                        "draft_id": draft_id}
+            if candidate.get("status") == "fulfilled":
+                return {"error": f"candidate {candidate_id!r} already "
+                                 f"fulfilled slot {image_id!r} — its "
+                                 f"vetting is part of the shipped record",
+                        "draft_id": draft_id}
+            vetting = {
+                "content_grade": content_grade,
+                "issues": sorted(set(issues or [])),
+                "notes": notes,
+                "checked_at": datetime.now(timezone.utc).isoformat(
+                    timespec="seconds"),
+            }
+            reason = _vetting_rejection(vetting)
+            candidate["vetting"] = vetting
+            candidate["status"] = "rejected" if reason else "viable"
+            candidate["rejection_reason"] = reason
+            draft["images"] = state
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"draft_id": draft_id, "image_id": image_id,
+            "candidate": candidate}
+
+
+@mcp.tool()
+def fulfil_images_v2(draft_id: str, allow_generation: bool = False) -> dict:
+    """The full slot-filling chain (spec §3.1): library first, then
+    the searched-candidate step, generation LAST. Unlike
+    fulfil_images_from_library (the v1 tool, unchanged), this tool
+    orchestrates all six steps and reports a per-slot status:
+
+    - library matches are fulfilled immediately (origin "library");
+    - a slot with viable vetted candidates reports
+      "candidates_ready" — pick one via set_image(source="searched");
+    - a fulfilled searched image whose vision grade is 0 on either
+      axis reports "reopened" with the deterministic next step:
+      try the candidate's UNEDITED original, then the next viable
+      candidate, then generation;
+    - a slot whose pool is empty reports "awaiting_candidates", all
+      rejected reports "search_exhausted" (reasons kept), unvetted
+      reports "awaiting_vetting";
+    - generation appears in `needs_generation` ONLY when
+      `allow_generation=True` — your explicit confirmation that the
+      search is exhausted for those slots. Without the flag such
+      slots report "awaiting_generation_confirmation" (or their
+      search status). product_specific slots skip the search steps
+      entirely: library, then the generation path. For a brand
+      without an image_sources allowlist there is no search step, so
+      unfilled slots go straight to the generation path."""
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            state = _draft_images_state(draft)
+            if not state["plan"]:
+                return {"error": "draft has no image plan — call "
+                                 "plan_images first", "draft_id": draft_id}
+            brief = draft.get("brief", {})
+            brand_id = brief.get("brand_id") or "moc-brew"
+            try:
+                brand = _resolve_brand_only(
+                    draft.get("brief", {}).get("brand_id", ""))
+            except ValueError as exc:
+                return {"error": str(exc), "draft_id": draft_id}
+            sources = _image_sources_of(brand)
+            try:
+                entries = _list_image_library_file(brand_id)
+            except ValueError as exc:
+                return {"error": str(exc), "draft_id": draft_id}
+            images = state["images"]
+            pools = state["candidates"]
+            used = {e.get("from_library") for e in images.values()
+                    if isinstance(e, dict) and e.get("from_library")}
+            used_refs = {_normalise_ref(e.get("ref") or "")
+                         for e in images.values() if isinstance(e, dict)
+                         and str(e.get("ref") or "").strip()}
+            fulfilled: list[dict] = []
+            slots: list[dict] = []
+            needs_generation: list[dict] = []
+
+            def _generation_path(item: dict, exhausted_status: str,
+                                 detail: str) -> None:
+                if allow_generation:
+                    needs_generation.append({
+                        "image_id": item["id"], "prompt": item["prompt"],
+                        "style_block": item.get("style_block", ""),
+                        "mark_generated": True})
+                else:
+                    slots.append({"image_id": item["id"],
+                                  "status": exhausted_status,
+                                  "detail": detail})
+
+            for item in state["plan"]:
+                iid = item["id"]
+                existing = images.get(iid)
+                if isinstance(existing, dict) \
+                        and str(existing.get("ref") or "").strip():
+                    # Grade-0 fallback for searched fulfilments only:
+                    # the chain reopens the slot with its next step.
+                    origin = existing.get("origin") or {}
+                    vc = existing.get("vision_check")
+                    grades_zero = isinstance(vc, dict) and (
+                        vc.get("content_grade") == 0
+                        or vc.get("style_grade") == 0)
+                    if origin.get("kind") in (
+                            "searched_edited", "searched_unedited") \
+                            and grades_zero:
+                        pool = pools.get(iid) or []
+                        if origin["kind"] == "searched_edited":
+                            slots.append({
+                                "image_id": iid, "status": "reopened",
+                                "next_step": {
+                                    "action": "try_unedited",
+                                    "candidate_id":
+                                        origin.get("candidate_id", "")}})
+                            continue
+                        nxt = next(
+                            (c for c in pool
+                             if c.get("status") == "viable"
+                             and c.get("id") != origin.get(
+                                 "candidate_id")), None)
+                        if nxt is not None:
+                            slots.append({
+                                "image_id": iid, "status": "reopened",
+                                "next_step": {
+                                    "action": "try_candidate",
+                                    "candidate_id": nxt["id"]}})
+                            continue
+                        _generation_path(
+                            item, "search_exhausted",
+                            "the searched candidates for this slot all "
+                            "failed the vision check")
+                    continue
+                match = _best_library_match(item, brief, entries, used,
+                                            used_refs)
+                if match is not None:
+                    entry, score = match
+                    used.add(entry["id"])
+                    used_refs.add(_normalise_ref(entry.get("ref") or ""))
+                    images[iid] = {
+                        "source": entry.get("source", "client"),
+                        "ref": entry.get("ref", ""),
+                        "filename": _suggest_filename(item, brief),
+                        "alt": _suggest_alt(
+                            item, brief,
+                            description=entry.get("description", "")),
+                        "alt_suggested": True,
+                        "caption": "",
+                        "description": entry.get("description", ""),
+                        "prompt_used": "", "from_library": entry["id"],
+                        "origin": {"kind": "library", "source_url": "",
+                                   "license_type": "", "candidate_id": "",
+                                   "edit_ops": [], "attribution_text": ""},
+                    }
+                    fulfilled.append({"image_id": iid,
+                                      "library_id": entry["id"],
+                                      "ref": entry.get("ref", ""),
+                                      "score": round(score, 3),
+                                      "origin": "library"})
+                    continue
+                # No library match: the search steps, unless fenced.
+                if item.get("product_specific") or not sources:
+                    _generation_path(
+                        item, "awaiting_generation_confirmation",
+                        "product_specific slot — library or generation "
+                        "only" if item.get("product_specific") else
+                        "brand has no image_sources allowlist — no "
+                        "search step")
+                    continue
+                pool = pools.get(iid) or []
+                viable = [c for c in pool if c.get("status") == "viable"]
+                if viable:
+                    slots.append({"image_id": iid,
+                                  "status": "candidates_ready",
+                                  "candidates": [c["id"] for c in viable]})
+                    continue
+                rejected = [c for c in pool
+                            if c.get("status") == "rejected"]
+                pending = [c for c in pool
+                           if c.get("status") == "pending_vetting"]
+                if pool and not pending:
+                    if allow_generation:
+                        needs_generation.append({
+                            "image_id": iid, "prompt": item["prompt"],
+                            "style_block": item.get("style_block", ""),
+                            "mark_generated": True})
+                    else:
+                        slots.append({
+                            "image_id": iid, "status": "search_exhausted",
+                            "rejected": [{
+                                "candidate_id": c["id"],
+                                "reason": c.get("rejection_reason", "")}
+                                for c in rejected]})
+                    continue
+                if pending:
+                    slots.append({"image_id": iid,
+                                  "status": "awaiting_vetting",
+                                  "pool_size": len(pool),
+                                  "pending_vetting": len(pending)})
+                    continue
+                if allow_generation:
+                    needs_generation.append({
+                        "image_id": iid, "prompt": item["prompt"],
+                        "style_block": item.get("style_block", ""),
+                        "mark_generated": True})
+                else:
+                    slots.append({"image_id": iid,
+                                  "status": "awaiting_candidates",
+                                  "pool_size": 0})
+            state["images"] = images
+            draft["images"] = state
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"draft_id": draft_id, "fulfilled": fulfilled, "slots": slots,
+            "needs_generation": needs_generation, "images": images}
+
+
 # --------------------------------------------------------------------------
 # Tools — deterministic checks & the final gate
 # --------------------------------------------------------------------------
@@ -1935,6 +2543,26 @@ def save_quality_profile(format: str, weights: dict, floors: dict | None = None,
         # The save sat outside the try (review M6) — same dialect fix
         # as save_facts.
         return {"error": str(exc)}
+
+
+@mcp.tool()
+def list_quality_profiles() -> dict:
+    """List the saved CUSTOM Quality Profiles: id, format, pass_total
+    and the weights summary (the 7-axis budget) for each — the
+    listing counterpart to get_quality_profile's by-id lookup.
+    Shipped format presets are NOT listed (they are not stored
+    profiles; read one with get_quality_profile(<format>)). Corrupt
+    files are listed as corrupt, never silently skipped (the house
+    list discipline)."""
+    out = []
+    for entry in _list_quality_profiles():
+        entry = dict(entry)
+        if not entry.get("corrupt"):
+            profile = _load_quality_profile(entry["id"])
+            if profile is not None:
+                entry["weights"] = profile.get("weights")
+        out.append(entry)
+    return {"profiles": out, "count": len(out)}
 
 
 @mcp.tool()
@@ -3301,6 +3929,21 @@ def get_taste_status(brand_id: str) -> dict:
         return {"error": str(exc), "brand_id": brand_id}
 
 
+@mcp.tool()
+def list_taste_entries(brand_id: str) -> dict:
+    """List a brand's taste entries — one summary row per article
+    (id, ref, source, verdict, imported/marked stamps, word count;
+    the article text itself is not returned). The listing
+    counterpart to get_taste_status's counts: it is how pending
+    articles are found again for marking. An entry too broken to
+    summarise is listed as corrupt with its index, never skipped;
+    a brand with no taste store lists empty."""
+    try:
+        return _taste.list_entries(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+
+
 # --------------------------------------------------------------------------
 # Tools — local data backup
 # --------------------------------------------------------------------------
@@ -3520,7 +4163,18 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
     lost (post created, response/record never landed), the next
     call first searches the site for the open attempt's slug and
     ADOPTS that post (returned with adopted_existing_post=True)
-    instead of creating a duplicate."""
+    instead of creating a duplicate.
+
+    WP-REWRITE (specs/wp-rewrite-feature.md §3.6): a draft imported
+    from WordPress (source.kind == "wp_import") ships ONLY under a
+    standing `rewrite` verdict (set_rewrite_verdict) — audit_only /
+    drop / no verdict and superseded imports are refused before any
+    write. The created post is a NEW draft titled with the
+    "[Viết lại] " prefix, categories inherited from the original
+    (tags are not), the original's own images reused by media id
+    (never re-uploaded), and the export record carries
+    `rewrite_of` {wp_post_id, wp_url, site_url}. No request in this
+    flow ever addresses the original post's id."""
     try:
         target = _load_wp_target(brand_id)
     except ValueError as exc:
@@ -3549,6 +4203,35 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                                  f"as WP post {prev.get('wp_post_id')} "
                                  f"— pass force=True to export again",
                         "brand_id": brand_id, "draft_id": draft_id}
+            # WP-rewrite branch (specs/wp-rewrite-feature.md §3.6):
+            # a superseded import is locked out entirely, and an
+            # imported draft ships ONLY under a standing `rewrite`
+            # verdict — audit_only / drop / no verdict are refusals
+            # with the verdict named, before any WordPress write.
+            draft_source = draft.get("source")
+            is_rewrite = isinstance(draft_source, dict) \
+                and draft_source.get("kind") == "wp_import"
+            if draft.get("status") == "superseded":
+                return {"error": f"draft {draft_id} was superseded "
+                                 f"by a newer import "
+                                 f"({draft.get('superseded_by')}) — "
+                                 f"export the current import instead",
+                        "reason": "superseded",
+                        "brand_id": brand_id, "draft_id": draft_id}
+            if is_rewrite:
+                standing = draft.get("verdict")
+                standing = standing.get("verdict") \
+                    if isinstance(standing, dict) else None
+                if standing != "rewrite":
+                    return {"error": f"draft {draft_id} is a "
+                                     f"WordPress import with verdict "
+                                     f"{standing!r} — only a "
+                                     f"'rewrite' verdict may export "
+                                     f"(record one with "
+                                     f"set_rewrite_verdict)",
+                            "reason": "verdict_not_rewrite",
+                            "brand_id": brand_id,
+                            "draft_id": draft_id}
             password = _wordpress.load_app_password(brand_id)
             if password is None:
                 return {"error": _wordpress.not_configured_message(
@@ -3597,6 +4280,12 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                               "attempt_id": attempt.get("attempt_id"),
                               "adopted_existing_post": True,
                               "media": []}
+                    if is_rewrite:
+                        record["rewrite_of"] = {
+                            "wp_post_id": draft_source.get(
+                                "wp_post_id"),
+                            "wp_url": draft_source.get("wp_url", ""),
+                            "site_url": target["site_url"]}
                     draft["wordpress_export"] = record
                     draft.pop("wordpress_export_attempt", None)
                     _store_draft(draft)
@@ -3685,7 +4374,27 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
             uploaded: list[dict] = []
             media_by_section: dict[str, dict] = {}
             featured_media_id: int | None = None
+            media_uploaded_count = 0
             for entry in manifest:
+                if entry.get("wp_media_id"):
+                    # An imported post's own image (wp-rewrite
+                    # §3.3): it already lives on THIS WordPress —
+                    # reuse the media id as-is, never re-upload.
+                    media_id = int(entry["wp_media_id"])
+                    record = {"filename": entry.get("filename", ""),
+                              "role": entry.get("role", ""),
+                              "section_id": entry.get("section_id"),
+                              "wp_media_id": media_id,
+                              "source_url": entry.get("ref", ""),
+                              "existing_wp": True}
+                    uploaded.append(record)
+                    if entry.get("role") == "featured":
+                        featured_media_id = media_id
+                    elif entry.get("section_id"):
+                        media_by_section[str(entry["section_id"])] = {
+                            **entry,
+                            "source_url": entry.get("ref", "")}
+                    continue
                 ref = str(entry.get("ref") or "")
                 if ref.startswith(("http://", "https://")):
                     return {"error": f"image ref is a URL, not a "
@@ -3702,6 +4411,7 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                     target, password,
                     entry.get("filename") or path.name,
                     path.read_bytes())
+                media_uploaded_count += 1
                 media_id = int(media["id"])
                 fields = {"alt_text": entry.get("alt_text", ""),
                           "caption": entry.get("caption", ""),
@@ -3724,10 +4434,35 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
 
             content = _wordpress.build_content_html(
                 _sections_of(draft), media_by_section)
+            export_title = _draft_title(draft)
+            category_id = target.get("default_category_id")
+            if is_rewrite:
+                # Linked-draft shape (wp-rewrite §3.6 + §12b): the
+                # prefix pairs the rewrite with its original in
+                # wp-admin; categories are inherited from the
+                # original (tags are NOT — §12b decision 2); the
+                # create still targets a NEW post — no request in
+                # this flow ever addresses the original's id.
+                if not export_title.startswith(
+                        _wp_convert.REWRITE_TITLE_PREFIX):
+                    export_title = (_wp_convert.REWRITE_TITLE_PREFIX
+                                    + export_title)
+                orig_categories = (draft.get("original") or {}).get(
+                    "categories") or []
+                if orig_categories:
+                    category_id = orig_categories[0]
+                orig_featured = (draft.get("original") or {}).get(
+                    "featured_media")
+                if orig_featured and featured_media_id is None:
+                    warnings.append(
+                        f"the original's featured media "
+                        f"{orig_featured} was not reused (not in "
+                        f"the draft's image state) — the rewrite "
+                        f"draft carries no featured image")
             payload = _wordpress.build_post_payload(
-                title=_draft_title(draft), content_html=content,
+                title=export_title, content_html=content,
                 featured_media=featured_media_id,
-                category_id=target.get("default_category_id"),
+                category_id=category_id,
                 slug=attempt["slug"])
             post = _wordpress.create_post(target, password, payload)
             post_id = int(post["id"])
@@ -3743,6 +4478,11 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                       "slug": attempt["slug"],
                       "attempt_id": attempt["attempt_id"],
                       "media": uploaded}
+            if is_rewrite:
+                record["rewrite_of"] = {
+                    "wp_post_id": draft_source.get("wp_post_id"),
+                    "wp_url": draft_source.get("wp_url", ""),
+                    "site_url": target["site_url"]}
             draft["wordpress_export"] = record
             draft.pop("wordpress_export_attempt", None)
             _store_draft(draft)
@@ -3753,14 +4493,25 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                     warnings.append(
                         "the SEO profile could not be marked "
                         "exported: " + stamp_error)
-            return {"brand_id": brand_id, "draft_id": draft_id,
-                    "wp_post_id": post_id,
-                    "edit_link": record["edit_link"],
-                    "post_link": record["post_link"],
-                    "status": "draft",
-                    "site_url": target["site_url"],
-                    "media_uploaded": len(uploaded),
-                    "media": uploaded, "warnings": warnings}
+            result = {"brand_id": brand_id, "draft_id": draft_id,
+                      "wp_post_id": post_id,
+                      "edit_link": record["edit_link"],
+                      "post_link": record["post_link"],
+                      "status": "draft",
+                      "site_url": target["site_url"],
+                      "media_uploaded": media_uploaded_count,
+                      "media": uploaded, "warnings": warnings}
+            if is_rewrite:
+                # The parts of the original the rewrite does NOT
+                # restore on its own (spec §3.6): the owner adds
+                # them by hand in wp-admin if they matter.
+                original = draft.get("original") or {}
+                result["rewrite_of"] = record["rewrite_of"]
+                result["unrecovered_raw_blocks"] = \
+                    original.get("raw_blocks", [])
+                result["unrecovered_links"] = \
+                    original.get("links", [])
+            return result
     except _wordpress.WPError as exc:
         return {"error": str(exc), "brand_id": brand_id,
                 "draft_id": draft_id}
@@ -3877,6 +4628,418 @@ def sync_wordpress_edits(brand_id: str = "", draft_id: str = "") -> dict:
     return {"brand_id": brand_id,
             "results": [_sync_one_wp_edit(brand_id, d)
                         for d in candidates]}
+
+
+# --------------------------------------------------------------------------
+# Tools — WordPress rewrite path (specs/wp-rewrite-feature.md):
+# list + import + audit + verdict for posts already published on a
+# brand's site. The importer issues GET requests ONLY; the original
+# post is never written to by any step of this flow (a hard rule in
+# the same class as the exporter's never-publish rule, pinned by
+# the mock-server tests). Export of an imported draft goes through
+# export_draft_to_wordpress above — its wp_import branch is the
+# only addition there.
+# --------------------------------------------------------------------------
+
+def _find_import_draft(brand_id: str, wp_post_id: int) -> dict | None:
+    """The live (non-superseded) imported draft for a (brand,
+    wp_post_id) pair, or None — the import duplicate rule's lookup.
+    Corrupt draft files are list_drafts' story, not the importer's:
+    they are skipped here exactly as the edit sync skips them."""
+    for path in sorted(drafts_dir().glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        source = data.get("source")
+        if not isinstance(source, dict) \
+                or source.get("kind") != "wp_import" \
+                or source.get("brand_id") != brand_id \
+                or source.get("wp_post_id") != wp_post_id \
+                or data.get("status") == "superseded":
+            continue
+        data.setdefault("draft_id", path.stem)
+        return data
+    return None
+
+
+def _audit_original(draft: dict) -> dict:
+    """The original-post audit (spec §3.4): fact check + prohibited
+    claims + brand/craft scores over the CONVERTED ORIGINAL text —
+    advisory context for the owner's verdict, stored on the draft
+    as `original_audit`, NEVER in gate_history: the old post's bad
+    scores must not dirty the rewrite's gate record, and the audit
+    blocks nothing.
+
+    The audit also carries the conversion coverage: re-measured
+    from the draft's stored `original.content_html` snapshot on
+    every run (the converter is deterministic, so this is the same
+    number the import reported — and an imported draft that
+    predates persisted coverage still gets a genuinely measured
+    value here, never an invented one). The audit NEVER writes
+    into the `original` block itself: only the import tool does."""
+    brand_id = draft.get("brief", {}).get("brand_id", "")
+    brand, facts = _resolve_brand_facts(brand_id)
+    sections = _sections_of(draft)
+    fmt = draft.get("brief", {}).get("format", "blog")
+    issues, flagged, _failing = _fact_check_draft(sections, facts,
+                                                  brand)
+    _violations, brand_score, _lf = _lint_draft(sections, fmt, brand)
+    ctx_id, max_sw, banned = _brand_check_context(brand)
+    craft = _craft_check_draft(sections, fmt, brand_id=ctx_id,
+                               max_sentence_words=max_sw,
+                               banned_terms=banned)
+    coverage = None
+    low_coverage = None
+    original = draft.get("original")
+    if isinstance(original, dict):
+        content_html = original.get("content_html")
+        if isinstance(content_html, str):
+            coverage = _wp_convert.convert_post_html(
+                content_html)["coverage"]
+        elif isinstance(original.get("coverage"), (int, float)):
+            coverage = original["coverage"]
+        if coverage is not None:
+            low_coverage = coverage < _wp_convert.COVERAGE_FLOOR
+    return {
+        "checked_at": datetime.now(timezone.utc).isoformat(
+            timespec="seconds"),
+        "coverage": coverage,
+        "low_coverage": low_coverage,
+        "fact_issues": issues,
+        "prohibited_claims": [i for i in issues
+                              if i.get("type") == "prohibited_claim"],
+        "flagged_claims": flagged,
+        "brand_score": brand_score,
+        "craft_score": craft.get("score"),
+    }
+
+
+@mcp.tool()
+def list_wordpress_posts(brand_id: str, status: str = "",
+                         per_page: int = 20) -> dict:
+    """List a brand's WordPress posts (READ-ONLY — a GET): id,
+    title, status, date, modified, link. With credentials
+    configured, `status` may name any WP status (e.g. "draft") and
+    defaults to "publish"; WITHOUT credentials only published
+    posts are visible (the public view) whatever status is asked
+    for — reported honestly via `credentials_configured`."""
+    try:
+        target = _load_wp_target(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    if target is None:
+        return {"error": f"no WordPress target configured for brand "
+                         f"{brand_id} — set one with "
+                         f"set_wordpress_target",
+                "brand_id": brand_id}
+    password = _wordpress.load_app_password(brand_id)
+    effective_status = status or "publish"
+    if password is None:
+        effective_status = "publish"
+    try:
+        posts = _wordpress.list_posts(target, password,
+                                      status=effective_status,
+                                      per_page=per_page)
+    except _wordpress.WPError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    out = []
+    for post in posts:
+        if not isinstance(post, dict) or "id" not in post:
+            continue
+        out.append({
+            "wp_post_id": int(post["id"]),
+            "title": _wp_convert.plain_text(
+                (post.get("title") or {}).get("rendered", "")),
+            "status": post.get("status", ""),
+            "date": post.get("date", ""),
+            "modified": post.get("modified", ""),
+            "link": post.get("link", "")})
+    return {"brand_id": brand_id, "site_url": target["site_url"],
+            "credentials_configured": password is not None,
+            "posts": out, "count": len(out)}
+
+
+@mcp.tool()
+def import_wordpress_post(brand_id: str, wp_post_id: int,
+                          force: bool = False) -> dict:
+    """Import ONE published (or draft) WordPress post into a core
+    draft (READ-ONLY against WordPress — GETs only): the post's
+    content.rendered is snapshotted BYTE-VERBATIM into the draft's
+    immutable `original` block, converted to sections by the fixed
+    rule table (content_core/wp_convert.py), and audited against
+    the brand's current facts (the audit lands in `original_audit`,
+    never gate_history). The post's own images enter the draft's
+    image state as already-fulfilled `existing_wp` entries carrying
+    their wp_media_id, so a later export reuses them without
+    re-uploading.
+
+    Duplicate rule (the exporter's shape): a live imported draft
+    for the same (brand, wp_post_id) REFUSES the import and names
+    itself; force=True snapshots fresh into a NEW draft whose
+    source.supersedes points at the old one, which is marked
+    `superseded` and locked out of export — the old draft's audit
+    trail is never overwritten in place.
+
+    A password-protected post is refused (its rendered content is
+    empty). The import report carries the conversion coverage:
+    below 0.97 the draft is flagged low_coverage and the suggested
+    verdict is audit_only until the owner looks by hand. The
+    coverage, the low_coverage flag and the import warnings are
+    also PERSISTED on the draft — in the `original` block, next to
+    the converter's other output (media / raw_blocks / links) —
+    and the coverage lands in the stored `original_audit` too, so
+    a reader of the draft (e.g. the admin panel) sees the same
+    numbers without the import call's return value."""
+    try:
+        target = _load_wp_target(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    if target is None:
+        return {"error": f"no WordPress target configured for brand "
+                         f"{brand_id} — set one with "
+                         f"set_wordpress_target",
+                "brand_id": brand_id}
+    try:
+        brand = _resolve_brand_only(brand_id)
+        _resolve_brand_facts(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    existing = _find_import_draft(brand_id, wp_post_id)
+    if existing is not None and not force:
+        return {"error": f"post {wp_post_id} on {target['site_url']} "
+                         f"is already imported as draft "
+                         f"{existing['draft_id']} — pass force=True "
+                         f"to snapshot it again into a new draft",
+                "reason": "already_imported",
+                "brand_id": brand_id,
+                "draft_id": existing["draft_id"]}
+    password = _wordpress.load_app_password(brand_id)
+    try:
+        post = _wordpress.get_post(target, password, wp_post_id)
+    except _wordpress.WPError as exc:
+        message = str(exc)
+        if password is None:
+            message += (" — without credentials only published "
+                        "posts are visible: "
+                        + _wordpress.not_configured_message(brand_id))
+        return {"error": message, "brand_id": brand_id,
+                "wp_post_id": wp_post_id}
+    content = post.get("content") or {}
+    if content.get("protected"):
+        return {"error": f"post {wp_post_id} is password-protected "
+                         f"(content.protected) — its rendered "
+                         f"content is empty, so there is nothing "
+                         f"to import",
+                "brand_id": brand_id, "wp_post_id": wp_post_id}
+    content_html = str(content.get("rendered") or "")
+    title = _wp_convert.plain_text(
+        (post.get("title") or {}).get("rendered", ""))
+    converted = _wp_convert.convert_post_html(content_html)
+    sections = converted["sections"]
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    warnings: list[str] = []
+    low_coverage = converted["coverage"] < _wp_convert.COVERAGE_FLOOR
+    if low_coverage:
+        warnings.append(
+            f"conversion coverage {converted['coverage']:.3f} is "
+            f"below {_wp_convert.COVERAGE_FLOOR} — part of the "
+            f"post's text lives in constructs the converter does "
+            f"not route; suggested verdict: audit_only")
+    if converted["no_text"]:
+        warnings.append("the post has no extractable text "
+                        "(no_text) — audit_only or drop are the "
+                        "workable verdicts")
+    if converted["word_count"] > _wp_convert.LONG_POST_WORDS:
+        warnings.append(
+            f"long post: {converted['word_count']} words "
+            f"(> {_wp_convert.LONG_POST_WORDS})")
+
+    brief = {"id": f"wp-import-{brand_id}-{wp_post_id}",
+             "format": "blog", "title": title, "topic": title,
+             "keyword": title, "brand_id": brand_id}
+    draft_id = f"d-{uuid.uuid4().hex[:10]}"
+    import_round = 1
+    supersedes = None
+    if existing is not None:
+        import_round = int(existing.get("source", {}).get(
+            "import_round") or 1) + 1
+        supersedes = existing["draft_id"]
+
+    # Images state: the standard plan over the converted sections,
+    # with the post's own media pre-fulfilled as existing_wp (spec
+    # §3.3) — the exporter reuses their wp_media_id, no re-upload.
+    plan = _plan_images(sections, brief, brand)
+    images: dict[str, dict] = {}
+    featured_id = post.get("featured_media") or 0
+    if featured_id:
+        try:
+            media = _wordpress.get_media(target, password,
+                                         int(featured_id))
+            images["img-featured"] = {
+                "source": "existing_wp",
+                "ref": media.get("source_url", ""),
+                "filename": str(media.get("source_url", "")).rsplit(
+                    "/", 1)[-1],
+                "alt": media.get("alt_text", ""),
+                "alt_suggested": False, "caption": "",
+                "description": "", "prompt_used": "",
+                "from_library": None,
+                "wp_media_id": int(featured_id)}
+        except _wordpress.WPError as exc:
+            warnings.append(
+                f"featured media {featured_id} could not be read "
+                f"({exc}) — the snapshot keeps the id; a rewrite "
+                f"export will go out without it")
+    slot_ids = {p["id"] for p in plan}
+    for section in sections:
+        slot = f"img-{section['id']}"
+        if slot not in slot_ids or not section["source_media"]:
+            continue
+        first = section["source_media"][0]
+        if not first.get("wp_media_id"):
+            continue
+        images[slot] = {
+            "source": "existing_wp", "ref": first["source_url"],
+            "filename": str(first["source_url"]).rsplit("/", 1)[-1],
+            "alt": first.get("alt", ""), "alt_suggested": False,
+            "caption": first.get("caption", ""), "description": "",
+            "prompt_used": "", "from_library": None,
+            "wp_media_id": int(first["wp_media_id"])}
+
+    draft = {
+        "draft_id": draft_id, "brief": brief,
+        "outline": [{"id": s["id"], "heading": s["heading"],
+                     "intent": "", "target_words": 0}
+                    for s in sections],
+        "sections": sections,
+        "rewrite_count": 0, "gate_history": [], "awaiting_rewrite": [],
+        "status": "drafting",
+        "source": {"kind": "wp_import", "brand_id": brand_id,
+                   "site_url": target["site_url"],
+                   "wp_post_id": int(wp_post_id),
+                   "wp_url": post.get("link", ""),
+                   "wp_status": post.get("status", ""),
+                   "wp_modified": post.get("modified", ""),
+                   "imported_at": now, "import_round": import_round,
+                   "supersedes": supersedes},
+        "original": {
+            "title": title, "slug": post.get("slug", ""),
+            "excerpt": _wp_convert.plain_text(
+                (post.get("excerpt") or {}).get("rendered", "")),
+            "content_html": content_html,
+            "featured_media": int(featured_id or 0),
+            "categories": list(post.get("categories") or []),
+            "tags": list(post.get("tags") or []),
+            "media": converted["media"],
+            "raw_blocks": converted["raw_blocks"],
+            "links": [{"section_id": s["id"], **lnk}
+                      for s in sections for lnk in s["links"]],
+            "coverage": converted["coverage"],
+            "low_coverage": low_coverage,
+            "warnings": warnings},
+        "original_audit": None,
+        "verdict": None,
+        "images": {"plan": plan, "images": images, "candidates": {}},
+    }
+    draft["original_audit"] = _audit_original(draft)
+    _store_draft(draft)
+    if existing is not None:
+        with _draft_lock(existing["draft_id"]):
+            old, error = _load_draft_or_error(existing["draft_id"])
+            if error is None:
+                old["status"] = "superseded"
+                old["superseded_by"] = draft_id
+                _store_draft(old)
+    return {"brand_id": brand_id, "draft_id": draft_id,
+            "wp_post_id": int(wp_post_id),
+            "sections": len(sections),
+            "coverage": converted["coverage"],
+            "low_coverage": low_coverage,
+            "raw_blocks": len(converted["raw_blocks"]),
+            "demoted_headings": converted["demoted_headings"],
+            "links_extracted": converted["links_extracted"],
+            "word_count": converted["word_count"],
+            "no_text": converted["no_text"],
+            "suggested_verdict": "audit_only"
+            if (low_coverage or converted["no_text"]) else None,
+            "warnings": warnings,
+            "original_audit": draft["original_audit"]}
+
+
+@mcp.tool()
+def audit_imported_post(draft_id: str) -> dict:
+    """Re-run the original-post audit on an imported draft (e.g.
+    after the brand's facts profile changed): fact issues,
+    prohibited claims and brand/craft scores are recomputed over
+    the converted original text and OVERWRITE `original_audit`.
+    The refreshed audit also carries the conversion coverage,
+    re-measured from the stored snapshot (see _audit_original).
+    gate_history is never touched — the audit is advisory context
+    for the verdict, not a gate. Refused for drafts that did not
+    come from import_wordpress_post."""
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            source = draft.get("source")
+            if not isinstance(source, dict) \
+                    or source.get("kind") != "wp_import":
+                return {"error": f"draft {draft_id} is not a "
+                                 f"WordPress import — "
+                                 f"audit_imported_post only applies "
+                                 f"to imported drafts",
+                        "draft_id": draft_id}
+            try:
+                draft["original_audit"] = _audit_original(draft)
+            except ValueError as exc:
+                return {"error": str(exc), "draft_id": draft_id}
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"draft_id": draft_id,
+            "original_audit": draft["original_audit"]}
+
+
+@mcp.tool()
+def set_rewrite_verdict(draft_id: str, verdict: str,
+                        reason: str = "") -> dict:
+    """Record the OWNER's verdict on an imported draft (spec §3.5):
+    `rewrite` (the draft enters the normal writing flow; export
+    opens), `audit_only` (the audit stands as the record; no
+    rewrite, no export) or `drop` (the post should not exist; the
+    core records the verdict + reason only — removing the post on
+    WordPress is the owner's hand, never a tool's). One verdict per
+    post, the owner's call, like the research pack's per-item
+    discipline. Export of an imported draft is refused unless the
+    standing verdict is `rewrite`."""
+    if verdict not in ("rewrite", "audit_only", "drop"):
+        return {"error": f"verdict must be 'rewrite', 'audit_only' "
+                         f"or 'drop', got {verdict!r}",
+                "draft_id": draft_id}
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            source = draft.get("source")
+            if not isinstance(source, dict) \
+                    or source.get("kind") != "wp_import":
+                return {"error": f"draft {draft_id} is not a "
+                                 f"WordPress import — verdicts only "
+                                 f"apply to imported drafts",
+                        "draft_id": draft_id}
+            record = {"verdict": verdict, "reason": reason,
+                      "decided_at": datetime.now(
+                          timezone.utc).isoformat(timespec="seconds")}
+            draft["verdict"] = record
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"draft_id": draft_id, "verdict": record}
 
 
 @mcp.tool()

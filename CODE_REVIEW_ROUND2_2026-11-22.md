@@ -165,3 +165,39 @@ remain untouched.
 · run_golden **7/7** · run_model_golden **6/6** ·
 test_mcp_client **24/24** · test_mcp_http **PASS** (86 tools) ·
 demos **4/4 exit 0**.
+
+## Closure addendum — L2 (2026-11-23, 2h review run)
+
+L2 was the next untouched round-2 Low after L1 closed; L4–L11
+remain untouched.
+
+- **L2 — FIXED.** `check_images`' `style_block_mismatch` reference
+  is no longer whichever AI image comes first in plan order. When
+  the brand carries a visual style block, the reference is the
+  brand's block; with no brand block it is the majority block
+  among the AI images, ties broken by plan order (the old
+  behaviour, pinned by test). The repro from the report now flags
+  only the odd image: a featured image locked to the wrong block
+  with two correct in-content images after it flags the featured
+  image alone, in both the brand-block and the no-brand cases. An
+  image whose block differs from the brand's still gets
+  `style_not_locked` as well — the two issues are distinct
+  violations (per-image lock vs set agreement), and the pre-existing
+  mismatch test already carried both for one image. No gate,
+  threshold, or checker contract was touched; only which images
+  the image layer's cross-image check blames. Evidence: fail-first
+  tests — both repro cases failed pre-fix with exactly the reported
+  shape (`{'img-s1', 'img-s2'}` flagged instead of
+  `{'img-featured'}`); 3 new tests in `tests/test_images.py`
+  (brand-block repro, no-brand majority repro, tie-break pin).
+  Differential probe over a 9-case matrix (all-agree, both repros,
+  tie, single-AI, no-AI, three-distinct-blocks, s1-odd, two-odd):
+  only the 4 cases the report's defect touches change, and each
+  changes only in which images carry `style_block_mismatch` — the
+  on-brand images stop being flagged, the off-brand ones start;
+  no other issue type appears or disappears in any case.
+
+**Verification (fresh output, this fix):** pytest **798 passed**
+· run_golden **7/7** · run_model_golden **6/6** ·
+test_mcp_client **24/24** · test_mcp_http **PASS** (96 tools) ·
+demos **4/4 exit 0**.

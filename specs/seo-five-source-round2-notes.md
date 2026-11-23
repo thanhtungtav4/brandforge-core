@@ -201,3 +201,6 @@ outline proposal/approval are allowed from `reviewing` as the
 outline-iteration path — the standing review goes stale against
 the new version, computably. Both changes are recorded in
 `seo-five-source-round3-notes.md`.
+
+## Addendum 2026-11-23 — partial-read question RESOLVED
+Smith delegated Brandforge decisions to Ember ("phần nào về Brandforge bạn tự quyết luôn giúp mình", 23 Nov 2026). Decision: partial reads COUNT toward the required 5 — `PARTIAL_READS_COUNT_TOWARD_REQUIRED` stays `True`; `full_read_count` remains reported separately so the mix is always visible. Rationale: a partial read still yields real analysis material, the sufficiency report never hides how many were full reads, and the shortfall-exception path remains for genuinely thin sets.

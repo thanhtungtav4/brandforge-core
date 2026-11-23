@@ -48,14 +48,33 @@ shows. Entries without the record rank exactly as before.
 ADVISORY BOUNDARY: this layer never enters final_gate's verdict in
 this round (like style_match). `ready` on the manifest is the image
 layer's own completeness signal for the WordPress exporter.
+
+SEARCHED IMAGES (spec: specs/image-search-edit-feature.md, §12
+resolved 2026-11-23): between the library and generation sits a
+SEARCH step for brands carrying an `image_sources` allowlist. The
+host model finds real photos (core never calls a search API, same
+split as generation), registers candidates into the draft's pool,
+records a VETTING judgement per candidate, may fulfil from a vetted
+candidate after AI edits from the FIXED op vocabulary below, and
+the result still passes the vision check above. License discipline
+is hard: a license_type from loaders' fixed set, recorded at
+registration against the brand's allowlist; watermarked or
+wrong-subject candidates are rejected at vetting, and watermark
+REMOVAL is not an edit op — no tool path can record it. Fulfilled
+images carry an `origin` block ({kind, source_url, license_type,
+candidate_id, edit_ops, attribution_text}); the manifest derives its
+provenance fields from it. Brands without an allowlist see NONE of
+this: their plans, checks and manifests are byte-identical to v1.
 """
 from __future__ import annotations
 
 import os
 import re
+from urllib.parse import urlparse
 
 from .linter import collapse_letter_spacing, normalize_for_match
-from .loaders import slugify, validate_visual
+from .loaders import (IMAGE_LICENSE_TYPES, slugify, validate_image_sources,
+                      validate_visual)
 
 # --- design constants -------------------------------------------------------
 # One featured image per article + at most 5 in-content images: beyond
@@ -84,6 +103,32 @@ ASPECT_FEATURED = "16:9"      # cover image, social/OG friendly
 ASPECT_IN_CONTENT = "4:3"     # sits inside the article column
 TARGET_FORMAT = "webp"
 SOURCE_PREFERENCE = "client_photo_or_ai"
+
+# --- searched-image chain (spec §3) ------------------------------------------
+# At most 5 candidates per slot: enough to survive vetting losses,
+# few enough that the per-article image step stays inside the
+# trial's 15-minute guardrail (spec §8).
+MAX_CANDIDATES_PER_SLOT = 5
+# The fixed vetting-issue vocabulary (spec §3.4). watermark and
+# wrong_subject REJECT the candidate outright (with content_grade 0):
+# a watermark marks an image the brand has no rights to, and the
+# remedy is rejection — never cleaning (see EDIT_OPS).
+VETTING_ISSUES = {"watermark", "embedded_text", "low_resolution",
+                  "wrong_subject", "off_brand_scene"}
+VETTING_REJECT_ISSUES = {"watermark", "wrong_subject"}
+# The fixed AI-edit vocabulary (spec §3.5). Anything outside this set
+# is forbidden — concretely: changing the product's colour, shape,
+# label or quantity, adding/removing a product, replacing the
+# background, and removing a watermark. The vocabulary is the
+# product-truthfulness rule for images, enforced at set_image and
+# re-checked by check_images on stored records.
+EDIT_OPS = {"crop", "resize", "color_grade", "exposure",
+            "white_balance", "sharpen", "background_cleanup"}
+# Origin kinds a fulfilled image's `origin` block may carry (spec
+# §3.6); the manifest's provenance fields derive from these.
+ORIGIN_KINDS = {"library", "searched_edited", "searched_unedited",
+                "generated"}
+SEARCHED_KINDS = {"searched_edited", "searched_unedited"}
 _IMAGE_EXTS = {".webp", ".jpg", ".jpeg", ".png"}
 _FILENAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*\.(webp|jpg|jpeg|png)$")
 _STYLE_MARKER = "Brand visual style:"
@@ -151,10 +196,78 @@ def extract_style_block(prompt_used: str | None) -> str:
     return text[idx:].strip() if idx >= 0 else ""
 
 
+# --- brand image sources (searched-image allowlist) ---------------------------
+
+def image_sources_of(brand: dict | None) -> list:
+    """The brand's validated `image_sources` allowlist, [] when the
+    brand carries none — [] means the search step is OFF for the
+    brand (spec §3.3). A present field is run through
+    loaders.validate_image_sources, so in-memory brand dicts get the
+    same normalisation the load/save boundaries apply (the
+    visual_of pattern)."""
+    if not isinstance(brand, dict):
+        return []
+    sources = brand.get("image_sources")
+    if not isinstance(sources, list) or not sources:
+        return []
+    return validate_image_sources(sources)
+
+
+def _host_of(url: str) -> str:
+    host = (urlparse(str(url or "")).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def match_allowlist(sources: list, source_url: str,
+                    source_name: str = "") -> dict | None:
+    """The allowlist entry a candidate belongs to, or None. A
+    candidate matches by NAME (the caller names the source, compared
+    case-insensitively against entry names) or by HOST: the URL's
+    host equals an entry domain or is a subdomain of it (CDN hosts
+    like images.pexels.com belong to pexels.com). Entry domains are
+    compared www-insensitively. Name match wins when both could
+    apply — the caller's named source is the provenance claim."""
+    wanted = str(source_name or "").strip().casefold()
+    if wanted:
+        for entry in sources:
+            if str(entry.get("name") or "").strip().casefold() == wanted:
+                return entry
+    host = _host_of(source_url)
+    if host:
+        for entry in sources:
+            for domain in entry.get("domains") or []:
+                d = str(domain).strip().lower()
+                d = d[4:] if d.startswith("www.") else d
+                if host == d or host.endswith("." + d):
+                    return entry
+    return None
+
+
+def vetting_rejection(vetting: dict) -> str:
+    """Why a vetting record rejects its candidate, '' when the
+    candidate survives: content_grade 0, or an issue in
+    VETTING_REJECT_ISSUES (watermark / wrong_subject). All applicable
+    reasons are named — the pool keeps them as trial data (spec §5)."""
+    reasons = []
+    if vetting.get("content_grade") == 0:
+        reasons.append("content grade 0")
+    for issue in sorted(set(vetting.get("issues") or [])
+                        & VETTING_REJECT_ISSUES):
+        reasons.append(issue)
+    return "; ".join(reasons)
+
+
+def invalid_edit_ops(edit_ops) -> list:
+    """The ops in `edit_ops` outside the fixed EDIT_OPS vocabulary —
+    the product-truthfulness check (spec §3.5)."""
+    return [op for op in edit_ops or [] if op not in EDIT_OPS]
+
+
 # --- planning -----------------------------------------------------------------
 
 def plan_images(sections: list[dict], brief: dict,
-                brand: dict | None = None) -> list[dict]:
+                brand: dict | None = None,
+                product_specific=None) -> list[dict]:
     """Plan the image slots for a draft: one featured + one in-content
     slot per section, capped at MAX_IN_CONTENT in-content slots
     (sections beyond the cap get no slot — documented, not silent:
@@ -164,6 +277,13 @@ def plan_images(sections: list[dict], brief: dict,
     purpose, prompt, style_block, source_preference, aspect, format,
     size_budget_kb}. The prompt is a deterministic template (scene +
     the brand's style block) — no LLM is involved in planning.
+
+    `product_specific` (a collection of section ids, slot ids, or
+    "featured") marks slots that must show the brand's OWN product
+    (spec §3.1): such a slot carries "product_specific": True and is
+    fenced off from the searched-image step entirely — library first,
+    generation last, stock NEVER. Unmarked slots carry no key at all,
+    so an unmarked plan is byte-identical to the v1 plan.
 
     Raises ValueError if two planned slots would share one id: two
     sections with the same id (or both without an id), or a section
@@ -179,6 +299,7 @@ def plan_images(sections: list[dict], brief: dict,
     title = (brief.get("title") or brief.get("topic") or "").strip()
     topic = (brief.get("topic") or title).strip()
     keyword = (brief.get("keyword") or topic).strip()
+    ps_marks = {str(m) for m in product_specific or ()}
 
     planned = sections[:MAX_IN_CONTENT]
     slot_ids = ["img-featured"] + [f"img-{sec.get('id', '')}"
@@ -195,7 +316,7 @@ def plan_images(sections: list[dict], brief: dict,
     def _prompt(scene: str) -> str:
         return f"{scene}\n{block}" if block else scene
 
-    plan: list[dict] = [{
+    featured_item = {
         "id": "img-featured", "role": "featured", "section_id": None,
         "section_heading": None, "section_intent": None,
         "purpose": "cover image representing the article's main topic",
@@ -206,7 +327,10 @@ def plan_images(sections: list[dict], brief: dict,
         "style_block": block, "source_preference": SOURCE_PREFERENCE,
         "aspect": ASPECT_FEATURED, "format": TARGET_FORMAT,
         "size_budget_kb": FEATURED_SIZE_BUDGET_KB,
-    }]
+    }
+    if "featured" in ps_marks or "img-featured" in ps_marks:
+        featured_item["product_specific"] = True
+    plan: list[dict] = [featured_item]
     for sec in planned:
         heading = sec.get("heading", "")
         intent = sec.get("intent", "")
@@ -214,7 +338,7 @@ def plan_images(sections: list[dict], brief: dict,
                  f"about {topic}."
                  + (f" Section intent: {intent}." if intent else "")
                  + (f" Brand: {brand_name}." if brand_name else ""))
-        plan.append({
+        item = {
             "id": f"img-{sec.get('id', '')}", "role": "in_content",
             "section_id": sec.get("id", ""), "section_heading": heading,
             "section_intent": intent,
@@ -223,7 +347,10 @@ def plan_images(sections: list[dict], brief: dict,
             "style_block": block, "source_preference": SOURCE_PREFERENCE,
             "aspect": ASPECT_IN_CONTENT, "format": TARGET_FORMAT,
             "size_budget_kb": IN_CONTENT_SIZE_BUDGET_KB,
-        })
+        }
+        if str(sec.get("id", "")) in ps_marks or item["id"] in ps_marks:
+            item["product_specific"] = True
+        plan.append(item)
     return plan
 
 
@@ -401,13 +528,23 @@ def check_images(plan: list[dict], images: dict, brief: dict,
     ref fulfilling 2+ slots — the featured-reuse pair is reported as
     featured_reused only), too_many_images (fulfilments outside
     the plan), alt_too_long (>200), style_not_locked /
-    style_block_mismatch (AI style lock), vision_content_mismatch /
+    style_block_mismatch (AI style lock — the mismatch reference is
+    the brand's block when one exists, else the majority block),
+    vision_content_mismatch /
     vision_style_mismatch (a recorded grade of 0),
     vision_grade_invalid (complete; a stored vision_check whose
     grades are not strict ints in 0..2).
     Flagged: alt_long (125-200), missing_caption (featured only),
     missing_description, file_over_budget / file_format (local files
     only), vision_unchecked (complete), vision_reservations (grade 1).
+
+    Searched-image provenance (only for entries carrying an `origin`
+    block — legacy entries are untouched): image_license_missing (a
+    searched image without a source_url or with a license_type
+    outside the fixed set), edit_op_not_allowed (a recorded edit op
+    outside the fixed vocabulary), attribution_missing (a
+    cc_attribution image with no attribution_text). All three are
+    hard issues: the manifest is not ready while any exist.
     """
     issues: list[dict] = []
     flagged: list[dict] = []
@@ -596,6 +733,37 @@ def check_images(plan: list[dict], images: dict, brief: dict,
                       "vision check: usable with reservations"
                       + (f" — {notes}" if notes else ""))
 
+        # --- searched-image provenance (entries carrying an origin
+        #     block only; the block is re-validated here, not
+        #     trusted — set_image validates at write time, but a
+        #     hand-edited draft can carry anything, the M4 rule) ---
+        origin = entry.get("origin")
+        if isinstance(origin, dict):
+            kind = origin.get("kind")
+            if kind in SEARCHED_KINDS:
+                if not str(origin.get("source_url") or "").strip() \
+                        or origin.get("license_type") \
+                        not in IMAGE_LICENSE_TYPES:
+                    _issue(iid, "image_license_missing",
+                           "searched image has no source_url or its "
+                           "license_type is outside the fixed set — "
+                           "an image without a valid license record "
+                           "must not ship")
+                if origin.get("license_type") == "cc_attribution" \
+                        and not str(origin.get(
+                            "attribution_text") or "").strip():
+                    _issue(iid, "attribution_missing",
+                           "license is cc_attribution but no "
+                           "attribution_text is recorded — the "
+                           "manifest must carry the attribution")
+            bad_ops = invalid_edit_ops(origin.get("edit_ops"))
+            if bad_ops:
+                _issue(iid, "edit_op_not_allowed",
+                       f"recorded edit ops {bad_ops} are outside the "
+                       f"allowed vocabulary {sorted(EDIT_OPS)} — an "
+                       f"edit must never change the product or remove "
+                       f"a watermark")
+
         # --- flagged metadata gaps ---
         if item is not None and item["role"] == "featured" \
                 and not str(entry.get("caption") or "").strip():
@@ -621,16 +789,34 @@ def check_images(plan: list[dict], images: dict, brief: dict,
                       f"budget for this slot)")
 
     # --- AI style blocks must agree with EACH OTHER too: two direct
-    #     generations locked to different blocks are not one set ---
+    #     generations locked to different blocks are not one set.
+    #     The reference is the brand's current block when one exists
+    #     (review round 2 L2: the old reference was whichever AI
+    #     image came first in plan order, so one off-brand featured
+    #     image got the two correct images flagged instead of
+    #     itself); with no brand block it is the majority block
+    #     among the AI images, ties broken by plan order. ---
     distinct = set(ai_blocks.values())
     if len(distinct) > 1:
-        first = next(iter(ai_blocks.values()))
+        brand_norm = normalize_for_match(brand_block) \
+            if brand_block else ""
+        if brand_norm:
+            reference = brand_norm
+            reference_label = "the brand's style block"
+        else:
+            counts: dict[str, int] = {}
+            for block in ai_blocks.values():
+                counts[block] = counts.get(block, 0) + 1
+            best = max(counts.values())
+            reference = next(b for b in ai_blocks.values()
+                             if counts[b] == best)
+            reference_label = "the majority style block"
         for iid, block in ai_blocks.items():
-            if block != first:
+            if block != reference:
                 _issue(iid, "style_block_mismatch",
-                       "this AI image's style block differs from the "
-                       "other AI images' — the set is not style-locked "
-                       "to one look")
+                       "this AI image's style block differs from "
+                       f"{reference_label} — the set is not "
+                       "style-locked to one look")
 
     return issues, flagged
 
@@ -640,14 +826,23 @@ def check_images(plan: list[dict], images: dict, brief: dict,
 def build_manifest(plan: list[dict], images: dict) -> list[dict]:
     """The WordPress-export-ready manifest: fulfilled images only, in
     plan order, in the WP media field names (alt_text / caption /
-    description) the future exporter uploads."""
+    description) the future exporter uploads.
+
+    An entry carrying an `origin` block (spec §3.6) additionally
+    gains the provenance fields — origin, source_url, license_type,
+    attribution_text, edit_ops, generated — and a cc_attribution
+    image's caption GAINS its attribution_text (appended unless
+    already present): the WordPress caption must contain the
+    attribution, and the manifest is the packaging step the exporter
+    consumes verbatim. Entries without an origin block produce
+    exactly the v1 manifest row."""
     out = []
     for item in plan:
         entry = (images or {}).get(item["id"])
         if not isinstance(entry, dict) \
                 or not str(entry.get("ref") or "").strip():
             continue
-        out.append({
+        row = {
             "role": item["role"],
             "section_id": item["section_id"],
             "ref": entry.get("ref", ""),
@@ -655,5 +850,31 @@ def build_manifest(plan: list[dict], images: dict) -> list[dict]:
             "alt_text": entry.get("alt", ""),
             "caption": entry.get("caption", ""),
             "description": entry.get("description", ""),
-        })
+        }
+        if entry.get("wp_media_id"):
+            # An image that already lives on the target WordPress
+            # (an imported post's own media, wp-rewrite spec §3.3):
+            # the exporter reuses the id as-is and never re-uploads.
+            row["wp_media_id"] = entry["wp_media_id"]
+            row["existing_wp"] = True
+        origin = entry.get("origin")
+        if isinstance(origin, dict) \
+                and origin.get("kind") in ORIGIN_KINDS:
+            kind = origin["kind"]
+            attribution = str(origin.get("attribution_text") or "")
+            if attribution and attribution not in row["caption"]:
+                row["caption"] = (
+                    f"{row['caption'].rstrip()} {attribution}".strip()
+                    if row["caption"].strip() else attribution)
+            row.update({
+                "origin": kind,
+                "source_url": origin.get("source_url", "")
+                if kind in SEARCHED_KINDS else "",
+                "license_type": origin.get("license_type", "")
+                if kind in SEARCHED_KINDS else "",
+                "attribution_text": attribution,
+                "edit_ops": list(origin.get("edit_ops") or []),
+                "generated": kind == "generated",
+            })
+        out.append(row)
     return out

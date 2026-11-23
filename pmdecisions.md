@@ -86,3 +86,45 @@
 - Spec at `specs/wp-rewrite-feature.md` defines the importer tools (`list_wordpress_posts`, `import_wordpress_post`, `audit_imported_post`, `set_rewrite_verdict`), the snapshot and provenance blocks on the draft, the conversion table with the coverage metric, the linked-draft export branch on the existing exporter, and the trial: all 9 posts of kho.nttung.dev imported and audited, at least 5 rewritten to gate-pass as linked drafts, every other post closed by a recorded verdict, median 30 minutes per post, and 0 modifications to any original.
 - The never-overwrite invariant joins never-publish as a structural rule of the WordPress layer: importer issues only GET requests, and the export branch creates a new post; a mock-server test asserts no mutating request ever targets the original post id.
 - Open items the spec leaves for Smith: the "[Viết lại] " title prefix (proposed keep), whether drop verdicts need an aggregated removal list before the UI step, tag inheritance from the original (proposed no), and whether product descriptions get a follow-up spec after the trial.
+
+## 2026-11-23 — Image search-edit: §12 open questions resolved under Smith's Brandforge delegation
+
+**Decision:** The four open questions in `specs/image-search-edit-feature.md` §12 are resolved as follows, and build step one of the feature proceeds on them:
+1. **Default stock allowlist for NEW brands: Pexels, Pixabay, Unsplash.** This is a starting list only — the operative allowlist stays per-brand in the brand's `image_sources` field; a brand without the field (or with it empty) has the search step OFF and keeps today's library-then-generation chain exactly.
+2. **product_specific slots: library first, then generation; stock search is FORBIDDEN for them at every step** — no candidate may be registered for, or fulfil, a product_specific slot.
+3. **Photos from Smith's own supplier Zalo group (Vựa khô Quốc Dũng — Nhóm sỉ 1) count as `user_supplied`**, under his standing direction to import that group's photos into his shop's library. Photos customers send through any other channel are NOT `user_supplied` until Smith confirms usage rights per brand.
+4. **`cc_attribution` STAYS in the license set**, with the spec's hard rule: the manifest must carry `attribution_text` and the WordPress caption must contain the attribution; missing attribution is the hard issue `attribution_missing` and blocks manifest readiness.
+
+**Context:** Smith wrote the spec on 2026-11-22 and chose spec-first/build-later, leaving §12's four questions for himself. On 2026-11-23 he delegated Brandforge decisions to Ember ("phần nào về Brandforge bạn tự quyết luôn giúp mình"), the same delegation under which the SEO partial-read counting question was resolved earlier that day. All four resolutions adopt the spec's own proposals, so no design direction changes — the delegation unblocks the build rather than redirecting it.
+
+**Options considered:**
+1. Leave §12 open and keep the build blocked (status quo) — rejected: the questions were the only blocker for build step one, and Smith's delegation was given precisely to stop Brandforge items waiting on him.
+2. Resolve differently from the spec's proposals (e.g. drop `cc_attribution` for simplicity, or make product_specific slots library-only with no generation fallback) — rejected: the spec's proposals were already reasoned from the trial evidence, and a library-only product slot with an empty library would leave articles imageless; the generation fallback stays, marked `generated` in the manifest like every generated image.
+
+**Trade-offs accepted:** Ember, not Smith, now owns these four calls; if the first trial's blind test or a license incident contradicts one, the decision is revisited with that evidence. The `user_supplied` resolution is deliberately narrow — one named supplier group under an existing standing direction — so no general "customer photos are fine" precedent is set for client sites.
+
+**Consequences / next steps:**
+- Spec §12 is marked resolved (2026-11-23) with these decisions and their basis.
+- Build step one implements: the `image_sources` brand field + loader validation, the per-draft candidate pool with allowlist/license checks at registration, the vetting record with the rejection rules (watermark / wrong_subject / grade 0), `set_image` extended with `source="searched"` plus the fixed edit-op vocabulary (watermark removal is not in the vocabulary and no tool path records it), the grade-0 fallback chain in the fulfilment orchestration, and the manifest provenance fields (`origin`, `source_url`, `license_type`, `attribution_text`, `edit_ops`, `generated`).
+- Still Smith's: the first trial on the next Khô Mắm An batch, including his blind scoring of edited vs generated photos (spec §8) — that judgement is the feature's main success metric and is not delegable to a metric the core computes.
+
+## 2026-11-23 — WordPress rewrite: §12 open questions resolved under Smith's Brandforge delegation
+
+**Decision:** The four open questions in `specs/wp-rewrite-feature.md` §12 are resolved as follows, and build step one of the feature (core importer, audit, verdict, linked-draft export branch) proceeds on them:
+1. **The `[Viết lại] ` title prefix is KEPT** on linked rewrite drafts — one named constant, changeable in one place.
+2. **Tags are NOT inherited from the original post; categories ARE inherited** (falling back to the target's `default_category_id` when the original has none, as the exporter already does).
+3. **Drop-list aggregation stays a UI concern.** The core records the per-post `drop` verdict with its reason and nothing more; an aggregated "posts to remove" list belongs to the app step, not v1 core.
+4. **WooCommerce product descriptions are OUT of this build** — a candidate for a follow-up spec once the posts flow is proven, per the spec's out-of-scope list.
+
+**Context:** Smith wrote the spec on 2026-11-22 and chose spec-first/build-later, leaving §12's questions for himself. On 2026-11-23 he delegated Brandforge decisions to Ember ("phần nào về Brandforge bạn tự quyết luôn giúp mình"), the same delegation under which the SEO partial-read question and the image search-edit §12 questions were resolved earlier that day. All four resolutions adopt the spec's own proposals, so no design direction changes — the delegation unblocks the build rather than redirecting it.
+
+**Options considered:**
+1. Leave §12 open and keep the build blocked (status quo) — rejected: the questions were the only blocker for build step one, and the delegation was given precisely to stop Brandforge items waiting on Smith.
+2. Resolve differently from the spec's proposals (e.g. drop the title prefix, or inherit tags for completeness) — rejected: the prefix is the fastest way to spot an original/rewrite pair in wp-admin (the spec's pre-mortem names double-publishing as a real failure mode), and the old site's tags are exactly the kind of legacy mess the rewrite flow exists to clean up.
+
+**Trade-offs accepted:** Ember, not Smith, now owns these four calls; if the 9-post trial contradicts one (e.g. the prefix annoys in wp-admin practice), it is revisited with that evidence. The prefix is a single constant and tag inheritance is a single branch, so any reversal is cheap.
+
+**Consequences / next steps:**
+- Spec §12b records the resolutions with their basis; build step one implements the four tools (`list_wordpress_posts`, `import_wordpress_post`, `audit_imported_post`, `set_rewrite_verdict`) and the `wp_import` export branch on the existing exporter, so the F1 gate and F2 idempotency govern rewrite exports unchanged.
+- The hard invariants stand as specified: the importer issues GETs only, the imported draft's `original` block is byte-verbatim and writable only by the import tool, and no code path edits, overwrites, or changes the status of an existing WordPress post.
+- Still Smith's: the trial itself — his per-post verdicts on the 9 real posts and the rewriting work — and any export against the real site (build step one verifies import + audit read-only against kho.nttung.dev; no real-site export happens in the build round).

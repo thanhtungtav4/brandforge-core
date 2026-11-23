@@ -399,7 +399,9 @@ def test_shipped_cnm_facts_profile_resolves():
     # Updated 23 Nov 2026 (Smith-approved daily-digest item 1): the live
     # shop dropped the 500g/1kg coffee packs, cashew is only the 500g
     # 169.000đ bag now, and drip-bag coffee 119.000đ is new.
-    assert set(facts["facts"]["known_prices_vnd"]) == {169000, 119000}
+    # Hạt mix 219.000đ (500g bag) added later on 23 Nov 2026 from the
+    # same live listing, under Smith's delegation of Brandforge calls.
+    assert set(facts["facts"]["known_prices_vnd"]) == {169000, 119000, 219000}
     assert 359000 not in facts["facts"]["known_prices_vnd"]
     assert 179000 not in facts["facts"]["known_prices_vnd"]
     # The calibration never verified delivery or roast day for CNM:

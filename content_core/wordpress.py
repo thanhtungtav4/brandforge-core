@@ -188,16 +188,25 @@ def _request_json(target: dict, app_password: str, method: str,
     naming the HTTP status and WP's own error message when it sent
     one."""
     url = f"{target['site_url']}/wp-json/wp/v2/{route}"
-    auth = _auth_header(target["username"], app_password)
-    # Everything that could carry the credential into an error body:
-    # the password as configured, its wire (stripped) form, the
-    # base64 token and the full header value a careless server
-    # might echo back.
-    secrets = (app_password, auth, _auth_token(target["username"],
-                                               app_password))
-    headers = {"Authorization": auth,
-               "Accept": "application/json",
+    # app_password=None is the PUBLIC read path (the wp-rewrite
+    # importer listing/importing published posts on a brand whose
+    # credentials were never configured): no Authorization header
+    # is sent at all, and there is no secret to redact.
+    if app_password:
+        auth = _auth_header(target["username"], app_password)
+        # Everything that could carry the credential into an error
+        # body: the password as configured, its wire (stripped)
+        # form, the base64 token and the full header value a
+        # careless server might echo back.
+        secrets = (app_password, auth, _auth_token(target["username"],
+                                                   app_password))
+    else:
+        auth = None
+        secrets = ()
+    headers = {"Accept": "application/json",
                "User-Agent": USER_AGENT}
+    if auth:
+        headers["Authorization"] = auth
     data = raw_body
     if json_body is not None:
         data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
@@ -264,13 +273,41 @@ def create_post(target: dict, app_password: str, payload: dict) -> dict:
                     json_body=payload)
 
 
-def get_post(target: dict, app_password: str, post_id: int) -> dict:
+def get_post(target: dict, app_password: str | None,
+             post_id: int) -> dict:
     """READ one post (the edit-feedback sync's only WP call — a GET;
     this module's sync path never writes to WordPress). Returns the
     WP post object ({id, status, title.rendered, content.rendered,
-    link, ...})."""
+    link, ...}). app_password=None reads the PUBLIC view: published
+    posts only — WordPress answers 404 for anything else, exactly
+    as it does for a post that does not exist."""
     return _request(target, app_password, "GET",
                     f"{target.get('post_type') or 'posts'}/{post_id}")
+
+
+def list_posts(target: dict, app_password: str | None,
+               status: str | None = None, per_page: int = 20,
+               page: int = 1) -> list:
+    """READ: one page of the post collection (the wp-rewrite
+    importer's listing — a GET, like every importer call). With
+    credentials, `status` may name any WP status (draft included);
+    without credentials the public view only ever returns published
+    posts, whatever status is asked for."""
+    from urllib.parse import quote
+    route = (f"{target.get('post_type') or 'posts'}"
+             f"?per_page={int(per_page)}&page={int(page)}")
+    if status:
+        route += f"&status={quote(str(status), safe=',')}"
+    return _request_list(target, app_password, "GET", route)
+
+
+def get_media(target: dict, app_password: str | None,
+              media_id: int) -> dict:
+    """READ one media item ({id, source_url, alt_text, ...}) — the
+    importer resolving an imported post's featured_media id to the
+    URL/alt the export branch will reuse. A GET, like every
+    importer call."""
+    return _request(target, app_password, "GET", f"media/{media_id}")
 
 
 def find_post_by_slug(target: dict, app_password: str,

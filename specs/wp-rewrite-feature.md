@@ -1,6 +1,6 @@
 # Spec: Viết lại bài đã đăng trên WordPress (import, audit, viết lại, xuất nháp liên kết)
 
-Ngày: 2026-11-22. Trạng thái: đã ghi quyết định trong `pmdecisions.md` (mục "Existing WordPress posts get a rewrite path"), xây dựng để sau. Tài liệu này là đầu vào cho vòng build của exporter/importer, chưa phải cam kết xây ngay.
+Ngày: 2026-11-22. Trạng thái: đã ghi quyết định trong `pmdecisions.md` (mục "Existing WordPress posts get a rewrite path"); ngày 2026-11-23 các câu hỏi mở ở mục 12 đã được chốt (xem cuối tài liệu) và bước một (xây ở core) tiến hành trên các quyết định đó.
 
 ## 1. Vấn đề
 
@@ -244,3 +244,14 @@ Giả định ba tháng sau khi tính năng chạy và nó đã thất bại. N�
 2. Phán quyết `drop` chỉ ghi nhận trong core, hay cần một danh sách tổng hợp "bài nên gỡ" xuất ra cho Smith xử lý theo đợt? Đề xuất: ghi trong core ở v1, danh sách tổng hợp để bước ba (UI) lo. Người quyết: Smith. Không chặn trial.
 3. Bài viết lại có nên kế thừa tag của bài gốc cùng với category không? Spec đã chốt category kế thừa theo mặc định. Tag để mở vì tag của site cũ thường lộn xộn. Đề xuất: không kế thừa tag ở v1. Người quyết: Smith. Không chặn bước một.
 4. Sau trial 9 bài, mô tả sản phẩm WooCommerce có được đưa vào một spec tiếp theo không? Spec này để sản phẩm ngoài phạm vi (mục 6). Người quyết: Smith, sau khi có số liệu trial. Không chặn tính năng này.
+
+## 12b. Quyết định đã chốt (2026-11-23, Ember theo ủy quyền Brandforge của Smith)
+
+Smith ủy quyền cho Ember tự quyết các phần Brandforge ("phần nào về Brandforge bạn tự quyết luôn giúp mình", 2026-11-23). Bốn câu hỏi ở mục 12 được chốt như sau — cả bốn đều theo đúng đề xuất đã ghi trong spec, nên hướng thiết kế không đổi; việc ủy quyền chỉ gỡ điểm chờ để bước một tiến hành:
+
+1. **Tiền tố `[Viết lại] ` được GIỮ** trên tiêu đề nháp liên kết (hằng số `REWRITE_TITLE_PREFIX` trong `content_core/wp_convert.py`, dễ đổi một chỗ).
+2. **Tag KHÔNG kế thừa; category kế thừa** theo bài gốc (bài gốc không có category thì dùng `default_category_id` của target như exporter hiện tại).
+3. **Danh sách tổng hợp "bài nên gỡ" là việc của tầng UI** (bước ba). Core chỉ ghi phán quyết `drop` kèm lý do theo từng bài; không có tool tổng hợp ở v1.
+4. **Mô tả sản phẩm WooCommerce nằm NGOÀI vòng build này** — ứng viên cho một spec riêng sau khi luồng posts chạy ổn, đúng mục 6.
+
+Ghi kèm trong `pmdecisions.md` (mục "WordPress rewrite: §12 open questions resolved under Smith's Brandforge delegation").
