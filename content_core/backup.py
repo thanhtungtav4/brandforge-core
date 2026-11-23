@@ -400,3 +400,33 @@ def restore_core_data(archive_name: str, confirm: bool = False,
             "skipped_needs_confirm": skipped_needs_confirm,
             "refused": refused,
             "pre_restore_backup": pre_restore_backup}
+
+
+def delete_backup(archive_name: str, confirm: bool = False) -> dict:
+    """Delete ONE backup archive from the backups dir.
+
+    The name discipline is restore_core_data's, tightened for a
+    destructive op: a bare .zip filename only — any path separator
+    (either OS flavour), a drive/parent reference, or a non-.zip
+    name is refused before anything is looked up. Without
+    confirm=True nothing is deleted: the result is the preview
+    (needs_confirm + what would be deleted). Raises ValueError on
+    a bad name or a missing archive (the MCP wrapper renders it as
+    {"error": ...})."""
+    if not archive_name or "/" in archive_name or "\\" in archive_name \
+            or archive_name in (".", "..") \
+            or not archive_name.endswith(".zip"):
+        raise ValueError(
+            f"archive must be a bare .zip filename in the backups "
+            f"dir, got: {archive_name!r}")
+    archive_path = backups_dir() / archive_name
+    if not archive_path.is_file():
+        raise ValueError(f"backup archive not found: {archive_name}")
+    size = archive_path.stat().st_size
+    if not confirm:
+        return {"archive": archive_name, "needs_confirm": True,
+                "would_delete": {"archive": archive_name,
+                                 "size_bytes": size}}
+    archive_path.unlink()
+    return {"archive": archive_name, "deleted": True,
+            "size_bytes": size}

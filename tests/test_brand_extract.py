@@ -238,9 +238,13 @@ def test_mcp_tool_list_now_29():
     # create_corpus_profile, and the backup-restore round (app
     # gap #7) added restore_core_data, and the SEO five-source
     # round 1 added the 7 profile/source/analysis tools, and the
-    # SEO five-source round 2 added the 5 direction/outline tools.)
+    # SEO five-source round 2 added the 5 direction/outline tools,
+    # and the CRUD-completion round added the 9 persona/delete
+    # tools plus create_brand_draft (the document-store path the
+    # manual brand creation needed — save_brand_draft is the
+    # site builder, not a document store): 106.)
     assert EXPECTED_NEW_TOOLS <= set(srv.TOOL_NAMES)
-    assert len(srv.TOOL_NAMES) == 96
+    assert len(srv.TOOL_NAMES) == 106
     for name in EXPECTED_NEW_TOOLS:
         assert callable(getattr(srv, name)), name
 

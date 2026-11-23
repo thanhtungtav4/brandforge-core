@@ -63,7 +63,12 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "propose_seo_outline", "approve_seo_outline",
                   "reopen_seo_analysis",
                   "record_seo_review", "get_seo_export_readiness",
-                  "export_core_data", "list_backups", "restore_core_data"}
+                  "export_core_data", "list_backups", "restore_core_data",
+                  "save_persona", "remove_library_image",
+                  "delete_style_profile", "delete_quality_profile",
+                  "unregister_corpus", "delete_seo_profile",
+                  "delete_backup", "delete_wordpress_target",
+                  "delete_brand", "create_brand_draft"}
 
 CLEAN_TEXT = (
     "Mộc Brew rang cà phê vào thứ Ba hàng tuần cho bạn. "

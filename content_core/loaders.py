@@ -216,6 +216,101 @@ def load_persona_by_id(persona_id: str) -> dict:
         f"refusing to fall back to the default persona")
 
 
+#: The Card V2 shape save_persona enforces. The read path only
+#: requires the `data` key to exist (_require_stored_object); the
+#: WRITE path is stricter, the save_facts / save_brand_draft
+#: discipline: a card that would confuse the writer must never
+#: reach disk. Fields Card V2 defines are type-checked when
+#: present; unknown keys (extensions, host-app extras) pass through
+#: untouched — the card format is extensible by design.
+PERSONA_SPEC = "chara_card_v2"
+PERSONA_SPEC_VERSION = "2.0"
+_PERSONA_STRING_FIELDS = ("description", "personality", "scenario",
+                          "first_mes", "mes_example", "system_prompt",
+                          "post_history_instructions", "creator_notes",
+                          "character_version", "creator")
+_PERSONA_STRING_LIST_FIELDS = ("alternate_greetings", "tags")
+_PERSONA_OBJECT_FIELDS = ("character_book", "extensions")
+
+
+def validate_persona(persona: dict) -> dict:
+    """Schema-check a persona card (Character Card V2) BEFORE it is
+    persisted. Required: an object whose `data` is an object with a
+    non-empty name; `spec` / `spec_version`, when present, must be
+    the Card V2 values; the Card V2 fields inside `data` must carry
+    their proper types when present. Raises ValueError; returns the
+    persona."""
+    if not isinstance(persona, dict):
+        raise ValueError("persona must be an object (a Card V2 document)")
+    if persona.get("spec", PERSONA_SPEC) != PERSONA_SPEC:
+        raise ValueError(
+            f"persona spec must be {PERSONA_SPEC!r}, "
+            f"got {persona.get('spec')!r}")
+    if persona.get("spec_version", PERSONA_SPEC_VERSION) \
+            != PERSONA_SPEC_VERSION:
+        raise ValueError(
+            f"persona spec_version must be {PERSONA_SPEC_VERSION!r}, "
+            f"got {persona.get('spec_version')!r}")
+    data = persona.get("data")
+    if not isinstance(data, dict):
+        raise ValueError("persona needs a 'data' object (Card V2)")
+    if not str(data.get("name") or "").strip():
+        raise ValueError("persona data needs a non-empty name")
+    for field in _PERSONA_STRING_FIELDS:
+        value = data.get(field)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"persona data.{field} must be a string")
+    for field in _PERSONA_STRING_LIST_FIELDS:
+        value = data.get(field)
+        if value is not None and not (
+                isinstance(value, list)
+                and all(isinstance(v, str) for v in value)):
+            raise ValueError(
+                f"persona data.{field} must be a list of strings")
+    for field in _PERSONA_OBJECT_FIELDS:
+        value = data.get(field)
+        if value is not None and not isinstance(value, dict):
+            raise ValueError(f"persona data.{field} must be an object")
+    return persona
+
+
+def persona_file_for(name: str) -> Path:
+    """The file a persona with this name lives in (or would live
+    in): the direct persona_<slug>.json when it exists, else an
+    existing persona_*.json whose data.name matches (the
+    load_persona_by_id resolution, so a save updates the file the
+    readers actually resolve), else the direct path."""
+    direct = personas_dir() / f"persona_{slugify(name)}.json"
+    if direct.exists():
+        return direct
+    for path in sorted(personas_dir().glob("persona_*.json")):
+        try:
+            card = _load_json_file(path)
+        except ValueError:
+            continue
+        if not isinstance(card, dict):
+            continue
+        data = card.get("data")
+        stored = data.get("name") if isinstance(data, dict) else None
+        if isinstance(stored, str) and stored.casefold() == name.casefold():
+            return path
+    return direct
+
+
+def save_persona(persona: dict) -> dict:
+    """Validate + persist a persona card (atomic write), stamping
+    the Card V2 spec markers when the caller omitted them — the
+    same normalisation _apply_persona_item applies on the research
+    pack path. Returns the stored card."""
+    validate_persona(persona)
+    card = dict(persona)
+    card.setdefault("spec", PERSONA_SPEC)
+    card.setdefault("spec_version", PERSONA_SPEC_VERSION)
+    path = persona_file_for(str(persona["data"]["name"]))
+    atomic_write_text(path, json.dumps(card, ensure_ascii=False, indent=2))
+    return card
+
+
 def load_brand(path: Path | None = None) -> dict:
     brand = yaml.safe_load(
         (path or DATA_DIR / "brand_mocbrew.yaml").read_text(encoding="utf-8"))
@@ -615,6 +710,18 @@ def list_style_profiles() -> list[dict]:
     return out
 
 
+def delete_style_profile(profile_id: str) -> dict:
+    """Remove ONE stored style profile file. The caller (the
+    delete_style_profile tool) owns the reference guards — corpus
+    registry, taste profiles — this helper only removes the file.
+    Raises ValueError for an unknown profile."""
+    path = _style_profile_path(profile_id)
+    if not path.exists():
+        raise ValueError(f"unknown style profile: {profile_id}")
+    path.unlink()
+    return {"profile_id": profile_id, "deleted": True}
+
+
 # --- Brand drafts (Brand Builder) ---
 # Same pattern as style profiles: ALL file IO for brand drafts lives HERE.
 # content_core/brand_extract.py is pure computation; mcp_server.py persists
@@ -725,6 +832,18 @@ def list_brand_drafts() -> list[dict]:
     return out
 
 
+def delete_brand_draft(brand_id: str) -> dict:
+    """Remove ONE brand draft document. The caller (the delete_brand
+    tool) owns the guard discipline — dependent stores, the
+    server-default brand — this helper only removes the file.
+    Raises ValueError for an unknown brand draft."""
+    path = _brand_draft_path(brand_id)
+    if not path.exists():
+        raise ValueError(f"unknown brand draft: {brand_id}")
+    path.unlink()
+    return {"brand_id": brand_id, "deleted": True}
+
+
 # --- Quality profiles (Quality Profile gate layer) ---
 # Same pattern as style profiles: ALL file IO for quality profiles lives
 # HERE. content_core/quality.py is pure computation + validation and never
@@ -776,6 +895,18 @@ def list_quality_profiles() -> list[dict]:
         out.append({"id": p.get("id", path.stem), "format": p.get("format", ""),
                     "pass_total": p.get("pass_total"), "corrupt": False})
     return out
+
+
+def delete_quality_profile(profile_id: str) -> dict:
+    """Remove ONE stored CUSTOM quality profile file. The built-in
+    format presets are code-defined (content_core/quality.PRESETS)
+    and have no file — refusing those ids is the caller's job.
+    Raises ValueError for an unknown profile."""
+    path = _quality_profile_path(profile_id)
+    if not path.exists():
+        raise ValueError(f"unknown quality profile: {profile_id}")
+    path.unlink()
+    return {"profile_id": profile_id, "deleted": True}
 
 
 def slugify(name: str | None, fallback: str = "brand") -> str:
@@ -837,6 +968,15 @@ def median_range(brand: dict, fmt: str) -> tuple[int, int]:
 def image_library_dir() -> Path:
     override = os.environ.get("CONTENT_CORE_IMAGE_LIBRARY_DIR")
     return Path(override) if override else DATA_DIR / "image_library"
+
+
+def image_library_inbox_dir() -> Path:
+    """Where uploaded image files land before/without being filed
+    into a brand's library folder (the app's upload route writes
+    data/image_library_inbox/<brand>/). Files under here are
+    core-managed, like the library dir itself."""
+    override = os.environ.get("CONTENT_CORE_IMAGE_LIBRARY_INBOX_DIR")
+    return Path(override) if override else DATA_DIR / "image_library_inbox"
 
 
 def _image_library_index_path(brand_id: str) -> Path:
@@ -1120,6 +1260,30 @@ def list_image_library(brand_id: str) -> list[dict]:
     return load_image_library(brand_id)["images"]
 
 
+def image_library_exists(brand_id: str) -> bool:
+    """True when the brand has a library INDEX file at all (even an
+    empty one) — the delete_brand guard needs store existence, not
+    contents."""
+    return _image_library_index_path(brand_id).exists()
+
+
+def remove_image_library_entry(brand_id: str, image_id: str) -> dict | None:
+    """Remove ONE entry from a brand's library index and return it,
+    or None when the brand's library holds no such id. Only the
+    index record is removed here — what happens to the image FILE
+    (move-to-removed for core-managed files) is the caller's call,
+    driven by the returned entry's ref."""
+    library = load_image_library(brand_id)
+    removed = next((e for e in library["images"]
+                    if e.get("id") == image_id), None)
+    if removed is None:
+        return None
+    library["images"] = [e for e in library["images"]
+                         if e.get("id") != image_id]
+    save_image_library(brand_id, library)
+    return removed
+
+
 def _utc_now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -1317,6 +1481,19 @@ def list_corpus_entries() -> list[dict]:
     return out
 
 
+def delete_corpus_entry(corpus_id: str) -> dict:
+    """Remove ONE corpus registry entry. The style profile the
+    entry pointed at is NOT touched — unregistering a corpus is a
+    registry decision, not a profile deletion. The caller (the
+    unregister_corpus tool) owns the chosen-by guard. Raises
+    ValueError for an unknown corpus."""
+    path = _corpus_entry_path(corpus_id)
+    if not path.exists():
+        raise ValueError(f"unknown corpus: {corpus_id}")
+    path.unlink()
+    return {"corpus_id": corpus_id, "deleted": True}
+
+
 # --- Brand corpus choices ---
 # The per-brand half of the corpus decision: which registered corpus
 # (and version) a brand has chosen, and which style profile that
@@ -1460,6 +1637,23 @@ def load_taste_doc(brand_id: str) -> dict | None:
                                   "taste document", required="brand_id")
 
 
+def list_taste_docs() -> list[dict]:
+    """Every brand's taste document (full records — the store is
+    small). Corrupt files are listed as corrupt, never skipped."""
+    d = taste_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        doc = _store_doc_or_none(path)
+        if doc is None:
+            out.append({"brand_id": path.stem, "corrupt": True})
+            continue
+        doc.setdefault("corrupt", False)
+        out.append(doc)
+    return out
+
+
 # --- WordPress export targets (P3) ---
 # Per-brand NON-SECRET delivery config for the WordPress draft
 # exporter (pmdecisions 2026-11-22: finished articles are delivered
@@ -1561,6 +1755,18 @@ def list_wordpress_targets() -> list[dict]:
                     "site_url": target.get("site_url", ""),
                     "corrupt": False})
     return out
+
+
+def delete_wordpress_target(brand_id: str) -> dict:
+    """Remove ONE brand's WordPress target record. This store holds
+    non-secret config only — the Application Password lives in the
+    secrets file / environment and is NEVER touched here. Raises
+    ValueError for an unknown brand target."""
+    path = _wordpress_target_path(brand_id)
+    if not path.exists():
+        raise ValueError(f"unknown WordPress target for brand: {brand_id}")
+    path.unlink()
+    return {"brand_id": brand_id, "deleted": True}
 
 
 # --- Brand setups (setup assist) ---
@@ -1941,6 +2147,19 @@ def load_seo_profile(draft_id: str) -> dict | None:
     data = _require_stored_object(_load_json_file(path), path,
                                   "seo profile", required="draft_id")
     return validate_seo_profile(data)
+
+
+def delete_seo_profile(draft_id: str) -> dict:
+    """Remove ONE draft's SEO profile file. The caller (the
+    delete_seo_profile tool) owns the state guard — an `exported`
+    profile is a historical record and is refused there. The
+    per-draft lock file is left in place (the lock design never
+    unlinks lock files). Raises ValueError for an unknown draft."""
+    path = _seo_profile_path(draft_id)
+    if not path.exists():
+        raise ValueError(f"unknown SEO profile for draft: {draft_id}")
+    path.unlink()
+    return {"draft_id": draft_id, "deleted": True}
 
 
 def list_seo_profiles() -> list[dict]:

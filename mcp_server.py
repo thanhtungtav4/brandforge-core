@@ -137,6 +137,24 @@ from content_core.loaders import seo_profiles_dir as _seo_profiles_dir
 from content_core.loaders import save_corpus_choice as _save_corpus_choice
 from content_core.loaders import save_corpus_entry as _save_corpus_entry
 from content_core.loaders import save_research_pack as _save_research_pack
+from content_core.loaders import save_persona as _save_persona_file
+from content_core.loaders import validate_persona as _validate_persona
+from content_core.loaders import persona_file_for as _persona_file_for
+from content_core.loaders import delete_style_profile as _delete_style_profile_file
+from content_core.loaders import delete_quality_profile as _delete_quality_profile_file
+from content_core.loaders import delete_corpus_entry as _delete_corpus_entry_file
+from content_core.loaders import delete_seo_profile as _delete_seo_profile_file
+from content_core.loaders import delete_wordpress_target as _delete_wp_target_file
+from content_core.loaders import delete_brand_draft as _delete_brand_draft_file
+from content_core.loaders import load_facts_profile as _load_facts_profile
+from content_core.loaders import load_taste_doc as _load_taste_doc
+from content_core.loaders import list_taste_docs as _list_taste_docs
+from content_core.loaders import load_image_library as _load_image_library
+from content_core.loaders import remove_image_library_entry as _remove_library_entry
+from content_core.loaders import image_library_exists as _image_library_exists
+from content_core.loaders import image_library_dir as _image_library_dir
+from content_core.loaders import image_library_inbox_dir as _image_library_inbox_dir
+from content_core.loaders import corpus_choices_dir as _corpus_choices_dir
 from content_core.style import analyze_samples as _analyze_samples
 from content_core.style import fingerprint as _fingerprint
 from content_core.style import build_profile as _build_profile
@@ -712,6 +730,32 @@ def get_persona(brand_id: str = "") -> dict:
 
 
 @mcp.tool()
+def save_persona(persona: dict) -> dict:
+    """Create or update a persona card (Character Card V2) — the
+    write half of get_persona, which until now existed only
+    indirectly (a research-pack persona_frame item applied into a
+    file). The card is validated through the persona loader rules
+    BEFORE anything is written: an object whose `data` carries a
+    non-empty name and correctly typed Card V2 fields; an invalid
+    card is a structured error and writes nothing. The persona is
+    keyed by data.name: a name that already resolves updates its
+    existing file (never a duplicate), a new name creates one.
+    Returns {persona_id, created, persona} — `created` says which
+    of the two happened."""
+    try:
+        _validate_persona(persona)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    name = str(persona["data"]["name"]).strip()
+    created = not _persona_file_for(name).exists()
+    try:
+        card = _save_persona_file(persona)
+    except ValueError as exc:
+        return {"error": str(exc), "persona_id": name}
+    return {"persona_id": name, "created": created, "persona": card}
+
+
+@mcp.tool()
 def get_brand() -> dict:
     """Return the Mộc Brew Brand Voice profile (parsed YAML): checkable voice
     rules, banned terms, prohibited claims, few-shot examples, anti-examples."""
@@ -914,6 +958,56 @@ def save_style_profile(name: str, samples: list[str], qualitative: dict | None =
 
 
 @mcp.tool()
+def delete_style_profile(profile_id: str, confirm: bool = False) -> dict:
+    """Delete ONE stored style profile — guarded by its references.
+
+    Refused (even with confirm=True) while the profile is still
+    referenced: by the corpus registry (a registered corpus's
+    linked profile) or as a brand's taste profile — the refusal
+    names the reference, and the reference must be removed first.
+    Without confirm=True nothing is deleted: the result previews
+    what would be deleted. An unknown id is a structured error."""
+    try:
+        profile = _load_style_profile(profile_id)
+    except ValueError as exc:  # corrupt profile file
+        return {"error": str(exc), "profile_id": profile_id}
+    if profile is None:
+        return {"error": f"unknown style profile: {profile_id}",
+                "profile_id": profile_id}
+    referenced_by: list[str] = []
+    for entry in _list_corpus_entries():
+        if not entry.get("corrupt") \
+                and entry.get("profile_id") == profile_id:
+            referenced_by.append(
+                f"corpus registry entry {entry.get('id')!r}")
+    for doc in _list_taste_docs():
+        if doc.get("corrupt"):
+            continue
+        taste_profile = doc.get("taste_profile")
+        if isinstance(taste_profile, dict) \
+                and taste_profile.get("profile_id") == profile_id:
+            referenced_by.append(
+                f"taste profile of brand {doc.get('brand_id')!r}")
+    if referenced_by:
+        return {"error": f"style profile {profile_id} is still "
+                         f"referenced by {'; '.join(referenced_by)} — "
+                         f"remove the reference first",
+                "profile_id": profile_id,
+                "referenced_by": referenced_by}
+    if not confirm:
+        return {"error": f"pass confirm=True to delete style "
+                         f"profile {profile_id}",
+                "needs_confirm": True, "profile_id": profile_id,
+                "would_delete": {"profile_id": profile_id,
+                                 "name": profile.get("name", "")}}
+    try:
+        _delete_style_profile_file(profile_id)
+    except ValueError as exc:
+        return {"error": str(exc), "profile_id": profile_id}
+    return {"deleted": profile_id, "profile_id": profile_id}
+
+
+@mcp.tool()
 def get_style_profile(profile_id: str = "") -> dict:
     """Return a stored Style Profile by id ('default' → the shipped
     mocbrew-blog-voice profile). With no id: the list of available
@@ -1046,6 +1140,42 @@ def get_brand_draft(draft_id: str = "") -> dict:
     return {"drafts": _list_brand_drafts()}
 
 
+@mcp.tool()
+def create_brand_draft(draft: dict) -> dict:
+    """Persist a COMPLETE brand draft document for a brand that
+    does not have one yet — the manual creation path (a brand
+    with no website for the Brand Builder to read). This is NOT
+    save_brand_draft: that tool BUILDS a draft from fetched site
+    pages; this one stores the document it is given, through the
+    same loaders validation (a brand object with a non-empty id;
+    examples/anti_examples lists of objects; a competitor draft's
+    examples re-stamped reference_only at the boundary; visual /
+    image_sources normalised). CREATE-ONLY: an id that already
+    has a stored draft is refused — editing an existing brand
+    goes through update_brand_draft, never a silent overwrite.
+    Returns the stored draft."""
+    if not isinstance(draft, dict):
+        return {"error": "brand draft must be an object"}
+    brand = draft.get("brand")
+    brand_id = brand.get("id") if isinstance(brand, dict) else None
+    if not brand_id or not str(brand_id).strip():
+        return {"error": "brand draft needs a 'brand' object with "
+                         "a non-empty id"}
+    brand_id = str(brand_id).strip()
+    try:
+        existing = _load_brand_draft(brand_id)
+    except ValueError as exc:  # corrupt stored draft / unusable id
+        return {"error": str(exc), "brand_id": brand_id}
+    if existing is not None:
+        return {"error": f"brand draft already exists: {brand_id} — "
+                         f"edit it with update_brand_draft instead",
+                "brand_id": brand_id}
+    try:
+        return _save_brand_draft_file(draft)
+    except ValueError as exc:  # validation refused the document
+        return {"error": str(exc), "brand_id": brand_id}
+
+
 def _merge_brand_draft_patch(existing: dict, patch: dict) -> dict:
     """Apply a partial patch to a stored brand draft: merge per
     top-level section, RECURSING wherever both the stored value and
@@ -1119,6 +1249,84 @@ def update_brand_draft(brand_id: str, patch: dict) -> dict:
         return {"error": str(exc), "brand_id": brand_id}
     return {"draft": saved, "updated_fields": sorted(patch),
             "brand_id": brand_id}
+
+
+def _brand_delete_blockers(brand_id: str) -> list[str]:
+    """The dependent stores that make a brand undeletable: article
+    drafts naming it, a research pack, a taste store, a facts
+    profile, an image library, a WordPress target. Each blocker is
+    a human-readable line naming the store — delete_brand lists
+    them and refuses; NOTHING is cascade-deleted, ever."""
+    blockers: list[str] = []
+    draft_count = 0
+    for path in sorted(drafts_dir().glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        brief = data.get("brief") if isinstance(data.get("brief"), dict) else {}
+        if (brief.get("brand_id") or "moc-brew") == brand_id:
+            draft_count += 1
+    if draft_count:
+        blockers.append(f"{draft_count} article draft(s) name this brand")
+    if _load_research_pack(brand_id) is not None:
+        blockers.append("research pack (research_packs store)")
+    if _load_taste_doc(brand_id) is not None:
+        blockers.append("taste store (taste store, per-brand verdicts)")
+    if _load_facts_profile(brand_id) is not None:
+        blockers.append("facts profile (facts_profiles store)")
+    if _image_library_exists(brand_id):
+        blockers.append("image library (image_library store)")
+    if _load_wp_target(brand_id) is not None:
+        blockers.append("WordPress target (wordpress_targets store)")
+    return blockers
+
+
+@mcp.tool()
+def delete_brand(brand_id: str, confirm: bool = False) -> dict:
+    """Delete ONE brand's draft document — guarded, never cascaded.
+
+    Refused outright for moc-brew, the server-default brand.
+    Refused while dependent stores exist for the brand (article
+    drafts, research pack, taste store, facts profile, image
+    library, WordPress target): the result lists them as
+    `blockers` and the owner removes those first — this tool
+    deletes the brand draft document ONLY. Without confirm=True
+    nothing is deleted: the result is the preview (blockers, or
+    what would be deleted). An id with neither a brand draft nor
+    any dependent store is an unknown-brand error."""
+    if brand_id == "moc-brew":
+        return {"error": "moc-brew is the server-default brand — "
+                         "it cannot be deleted",
+                "brand_id": brand_id}
+    try:
+        draft = _load_brand_draft(brand_id)
+    except ValueError as exc:  # corrupt brand draft file
+        return {"error": str(exc), "brand_id": brand_id}
+    blockers = _brand_delete_blockers(brand_id)
+    if draft is None and not blockers:
+        return {"error": f"unknown brand: {brand_id}",
+                "brand_id": brand_id}
+    if blockers:
+        return {"error": f"brand {brand_id} cannot be deleted while "
+                         f"dependent stores exist — remove them first "
+                         f"(nothing is cascade-deleted)",
+                "brand_id": brand_id, "blockers": blockers,
+                "needs_confirm": not confirm}
+    if not confirm:
+        return {"error": f"pass confirm=True to delete brand "
+                         f"{brand_id}",
+                "needs_confirm": True, "brand_id": brand_id,
+                "blockers": [],
+                "would_delete": {"brand_draft":
+                                 f"brand_drafts/{stored_file_stem(brand_id)}.json"}}
+    try:
+        _delete_brand_draft_file(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return {"deleted": brand_id, "brand_id": brand_id}
 
 
 @mcp.tool()
@@ -1958,6 +2166,87 @@ def tag_library_image(brand_id: str, ref: str, ai_tags: dict,
         return {"error": str(exc), "brand_id": brand_id}
 
 
+def _image_ref_location(ref: str) -> tuple[str, Path | None]:
+    """Classify a library entry's ref for removal: "external" for
+    http(s) refs (no local file exists), "managed" for a file under
+    the core's own image dirs (library / inbox — the core owns
+    those bytes), "unmanaged" for any other local path (the file
+    belongs to the caller's world; only the record is dropped)."""
+    if ref.startswith(("http://", "https://")):
+        return "external", None
+    path = Path(ref)
+    if not path.is_absolute():
+        path = PROJECT_DIR / path
+    path = path.resolve()
+    for root in (_image_library_dir(), _image_library_inbox_dir()):
+        resolved_root = root.resolve()
+        if path == resolved_root or resolved_root in path.parents:
+            return "managed", path
+    return "unmanaged", path
+
+
+@mcp.tool()
+def remove_library_image(brand_id: str, image_id: str,
+                         confirm: bool = False) -> dict:
+    """Remove ONE image from a brand's library.
+
+    The library record is dropped. The image FILE is handled by
+    where it lives: a file under the core's own image dirs
+    (image_library/ or image_library_inbox/) is MOVED into that
+    root's `_removed/` subfolder — recoverable, never unlinked;
+    a URL or any other external/unmanaged ref just drops the
+    record and leaves the file alone. Without confirm=True
+    nothing is removed: the result previews the entry and the
+    file action that would follow. An unknown image id (or
+    brand) is a structured error."""
+    try:
+        library = _load_image_library(brand_id)
+    except ValueError as exc:  # corrupt library file / unusable id
+        return {"error": str(exc), "brand_id": brand_id}
+    entry = next((e for e in library["images"]
+                  if e.get("id") == image_id), None)
+    if entry is None:
+        return {"error": f"no library image {image_id!r} for brand "
+                         f"{brand_id}",
+                "brand_id": brand_id, "image_id": image_id}
+    kind, path = _image_ref_location(str(entry.get("ref") or ""))
+    if not confirm:
+        return {"error": f"pass confirm=True to remove library "
+                         f"image {image_id} from brand {brand_id}",
+                "needs_confirm": True, "brand_id": brand_id,
+                "image_id": image_id,
+                "would_remove": {"image_id": image_id,
+                                 "ref": entry.get("ref"),
+                                 "file_action": "moved" if kind == "managed"
+                                 else kind}}
+    removed = _remove_library_entry(brand_id, image_id)
+    file_action, file_moved_to = kind, None
+    if kind == "managed" and path is not None:
+        if path.exists():
+            # _removed sits at the managed ROOT that owns the file
+            # (the library or inbox dir), not per brand folder.
+            removed_dir = path.parent
+            for root in (_image_library_dir(),
+                         _image_library_inbox_dir()):
+                resolved_root = root.resolve()
+                if path == resolved_root or resolved_root in path.parents:
+                    removed_dir = resolved_root / "_removed"
+                    break
+            removed_dir.mkdir(parents=True, exist_ok=True)
+            dest = removed_dir / path.name
+            counter = 2
+            while dest.exists():
+                dest = removed_dir / f"{path.stem}-{counter}{path.suffix}"
+                counter += 1
+            path.rename(dest)
+            file_action, file_moved_to = "moved", str(dest)
+        else:
+            file_action = "missing"
+    return {"removed": image_id, "brand_id": brand_id,
+            "file_action": file_action, "file_moved_to": file_moved_to,
+            "entry": removed}
+
+
 @mcp.tool()
 def list_library_images(brand_id: str) -> dict:
     """List a brand's image library entries ([] when the brand has
@@ -2551,6 +2840,44 @@ def save_quality_profile(format: str, weights: dict, floors: dict | None = None,
         # The save sat outside the try (review M6) — same dialect fix
         # as save_facts.
         return {"error": str(exc)}
+
+
+@mcp.tool()
+def delete_quality_profile(profile_id: str, confirm: bool = False) -> dict:
+    """Delete ONE stored CUSTOM Quality Profile.
+
+    The built-in format presets are code-defined
+    (content_core/quality.PRESETS) — naming one, by format name or
+    by its `preset-<format>` id, is refused: there is no file to
+    delete and the preset cannot be removed. Without confirm=True
+    nothing is deleted: the result previews what would be
+    deleted. An unknown custom id is a structured error."""
+    key = str(profile_id or "").strip()
+    if key in _QUALITY_PRESETS or (
+            key.startswith("preset-")
+            and key[len("preset-"):] in _QUALITY_PRESETS):
+        return {"error": f"{profile_id} is a built-in format preset — "
+                         f"presets are code-defined and cannot be "
+                         f"deleted",
+                "profile_id": profile_id}
+    try:
+        stored = _load_quality_profile(profile_id)
+    except ValueError as exc:  # corrupt profile file
+        return {"error": str(exc), "profile_id": profile_id}
+    if stored is None:
+        return {"error": f"unknown quality profile: {profile_id}",
+                "profile_id": profile_id}
+    if not confirm:
+        return {"error": f"pass confirm=True to delete quality "
+                         f"profile {profile_id}",
+                "needs_confirm": True, "profile_id": profile_id,
+                "would_delete": {"profile_id": profile_id,
+                                 "format": stored.get("format", "")}}
+    try:
+        _delete_quality_profile_file(profile_id)
+    except ValueError as exc:
+        return {"error": str(exc), "profile_id": profile_id}
+    return {"deleted": profile_id, "profile_id": profile_id}
 
 
 @mcp.tool()
@@ -3294,6 +3621,53 @@ def get_seo_profile(draft_id: str) -> dict:
                 profile, _draft_content_sha_or_none(draft_id))}
 
 
+@mcp.tool()
+def delete_seo_profile(draft_id: str, confirm: bool = False) -> dict:
+    """Delete ONE draft's SEO profile (the per-draft store file).
+
+    A profile in state `exported` is REFUSED, with or without
+    confirm: it is the historical record of an article that was
+    delivered to WordPress — deleting it would erase the audit
+    trail of what was researched and approved for a live post.
+    Without confirm=True nothing is deleted: the result previews
+    the profile that would be deleted. A draft with no SEO
+    profile is a structured error. The article draft itself is
+    never touched."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            try:
+                profile = _load_seo_profile(draft_id)
+            except ValueError as exc:  # corrupt profile file
+                return {"error": str(exc), "draft_id": draft_id}
+            if profile is None:
+                return {"error": f"draft {draft_id} has no SEO "
+                                 f"profile to delete",
+                        "draft_id": draft_id}
+            if profile.get("state") == "exported":
+                return {"error": f"SEO profile for draft {draft_id} "
+                                 f"is in state 'exported' — it is "
+                                 f"the historical record of a "
+                                 f"delivered article and cannot be "
+                                 f"deleted",
+                        "draft_id": draft_id, "state": "exported"}
+            if not confirm:
+                return {"error": f"pass confirm=True to delete the "
+                                 f"SEO profile of draft {draft_id}",
+                        "needs_confirm": True, "draft_id": draft_id,
+                        "would_delete": {
+                            "draft_id": draft_id,
+                            "brand_id": profile.get("brand_id"),
+                            "keyword": profile.get("keyword"),
+                            "state": profile.get("state")}}
+            try:
+                _delete_seo_profile_file(draft_id)
+            except ValueError as exc:
+                return {"error": str(exc), "draft_id": draft_id}
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"deleted": draft_id, "draft_id": draft_id}
+
+
 def _draft_content_sha_or_none(draft_id: str) -> str | None:
     """The draft's current content fingerprint, or None when the
     draft cannot be loaded (currency checks then report stale —
@@ -3816,6 +4190,62 @@ def set_corpus_choice(brand_id: str, corpus_id: str) -> dict:
 
 
 @mcp.tool()
+def unregister_corpus(corpus_id: str, confirm: bool = False) -> dict:
+    """Remove ONE corpus from the system registry.
+
+    Refused (even with confirm=True) while any brand's corpus
+    choice still points at it — the refusal names the brands, and
+    their choices must be cleared first (clear_corpus_choice).
+    The style profile the corpus feeds is NOT deleted:
+    unregistering is a registry decision, and the result says so
+    (`style_profile_deleted: False`). Without confirm=True
+    nothing is removed: the result previews the entry. An
+    unknown corpus id is a structured error."""
+    entry = _load_corpus_entry(corpus_id)
+    if entry is None:
+        return {"error": f"corpus not registered: {corpus_id}",
+                "corpus_id": corpus_id}
+    chosen_by: list[str] = []
+    candidate_brands = {row.get("id") for row in _list_brand_drafts()
+                        if not row.get("corrupt")}
+    choices_dir = _corpus_choices_dir()
+    if choices_dir.exists():
+        for path in sorted(choices_dir.glob("*.json")):
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError, ValueError):
+                continue
+            if isinstance(doc, dict) and doc.get("brand_id"):
+                candidate_brands.add(doc["brand_id"])
+    for brand_id in sorted(b for b in candidate_brands if b):
+        try:
+            choice = _load_corpus_choice(brand_id)
+        except ValueError:
+            continue  # corrupt choice/draft — not evidence of a choice
+        if choice is not None and choice.get("corpus_id") == corpus_id:
+            chosen_by.append(brand_id)
+    if chosen_by:
+        return {"error": f"corpus {corpus_id} is still chosen by "
+                         f"brand(s): {', '.join(chosen_by)} — clear "
+                         f"their corpus choices first",
+                "corpus_id": corpus_id, "chosen_by": chosen_by}
+    if not confirm:
+        return {"error": f"pass confirm=True to unregister corpus "
+                         f"{corpus_id}",
+                "needs_confirm": True, "corpus_id": corpus_id,
+                "would_delete": {"corpus_id": corpus_id,
+                                 "title": entry.get("title", ""),
+                                 "profile_id": entry.get("profile_id")}}
+    try:
+        _delete_corpus_entry_file(corpus_id)
+    except ValueError as exc:
+        return {"error": str(exc), "corpus_id": corpus_id}
+    return {"unregistered": corpus_id, "corpus_id": corpus_id,
+            "style_profile_id": entry.get("profile_id"),
+            "style_profile_deleted": False}
+
+
+@mcp.tool()
 def get_corpus_choice(brand_id: str) -> dict:
     """Return a brand's recorded corpus choice (corpus_id, version,
     resolved profile_id, source), or an error when the brand has not
@@ -4001,6 +4431,22 @@ def restore_core_data(archive_name: str, confirm: bool = False,
         return {"error": str(exc), "archive": archive_name}
 
 
+@mcp.tool()
+def delete_backup(archive_name: str, confirm: bool = False) -> dict:
+    """Delete ONE backup archive from the backups dir.
+
+    The name discipline is restore_core_data's, tightened for a
+    destructive op: a bare .zip filename only — any path separator,
+    parent reference or non-.zip name is refused before anything
+    is looked up. Without confirm=True nothing is deleted: the
+    result previews the archive that would be deleted (name +
+    size). An unknown archive is a structured error."""
+    try:
+        return _backup.delete_backup(archive_name, confirm=confirm)
+    except ValueError as exc:
+        return {"error": str(exc), "archive": archive_name}
+
+
 # --------------------------------------------------------------------------
 # Tools — WordPress draft exporter (P3). Delivery decision
 # (pmdecisions 2026-11-22): finished articles are delivered as
@@ -4059,6 +4505,40 @@ def get_wordpress_target(brand_id: str) -> dict:
     return {**target,
             "credentials_configured":
                 _wordpress.credentials_configured(brand_id)}
+
+
+@mcp.tool()
+def delete_wordpress_target(brand_id: str, confirm: bool = False) -> dict:
+    """Remove ONE brand's WordPress target record.
+
+    Only the non-secret target config (site URL, username) is
+    removed. The Application Password is NOT touched: it lives in
+    the secrets file / environment, outside this store, and this
+    tool never reads or writes it — the result states that
+    (`secrets_touched: False`). Without confirm=True nothing is
+    deleted: the result previews the target that would be
+    removed. A brand with no target is a structured error."""
+    try:
+        target = _load_wp_target(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    if target is None:
+        return {"error": f"no WordPress target configured for brand "
+                         f"{brand_id}",
+                "brand_id": brand_id}
+    if not confirm:
+        return {"error": f"pass confirm=True to delete the "
+                         f"WordPress target of brand {brand_id}",
+                "needs_confirm": True, "brand_id": brand_id,
+                "secrets_touched": False,
+                "would_delete": {"brand_id": brand_id,
+                                 "site_url": target.get("site_url", "")}}
+    try:
+        _delete_wp_target_file(brand_id)
+    except ValueError as exc:
+        return {"error": str(exc), "brand_id": brand_id}
+    return {"deleted": brand_id, "brand_id": brand_id,
+            "secrets_touched": False}
 
 
 def _export_attempt_slug(draft_id: str, attempt_id: str) -> str:
