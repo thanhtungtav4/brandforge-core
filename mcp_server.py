@@ -2767,6 +2767,27 @@ def list_backups() -> dict:
     return {"backups": backups, "count": len(backups)}
 
 
+@mcp.tool()
+def restore_core_data(archive_name: str, confirm: bool = False,
+                      dry_run: bool = False) -> dict:
+    """Restore files from a backup archive (see list_backups) into
+    the live stores. Per archived file: missing -> restored;
+    identical -> skipped; differing -> restored only with
+    confirm=True, otherwise skipped and reported. dry_run=True
+    returns the full plan and writes NOTHING. Before any real write
+    the current live stores are snapshotted as a pre-restore-*
+    archive, so a restore is itself reversible. The archive is
+    validated first: any traversal/absolute entry path refuses the
+    whole restore; a credential-pattern entry, a sha256 mismatch
+    against the manifest, or unparseable JSON is refused per file
+    and named in the report — never landed."""
+    try:
+        return _backup.restore_core_data(archive_name, confirm=confirm,
+                                         dry_run=dry_run)
+    except ValueError as exc:
+        return {"error": str(exc), "archive": archive_name}
+
+
 # --------------------------------------------------------------------------
 # Tools — WordPress draft exporter (P3). Delivery decision
 # (pmdecisions 2026-11-22): finished articles are delivered as

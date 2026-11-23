@@ -49,7 +49,7 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "export_draft_to_wordpress", "sync_wordpress_edits",
                   "score_section_variants",
                   "prepare_brand_setup", "get_brand_setup",
-                  "export_core_data", "list_backups"}
+                  "export_core_data", "list_backups", "restore_core_data"}
 
 CLEAN_TEXT = (
     "Mộc Brew rang cà phê vào thứ Ba hàng tuần cho bạn. "

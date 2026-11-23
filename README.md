@@ -704,6 +704,7 @@ any host app's model can be the writer; the core stays the referee.
 | `get_taste_status(brand_id)` | Taste layer: verdict counts + whether a taste profile exists and what it was built from |
 | `export_core_data()` | Backup: snapshot ALL local stores into one timestamped zip under `backups/` with a manifest (per-store counts, per-file sha256); credential-pattern files are excluded and recorded in the manifest |
 | `list_backups()` | Backup: list archives (newest first) with manifest summaries; an unreadable archive is listed as corrupt, never skipped |
+| `restore_core_data(archive, confirm=False, dry_run=False)` | Backup: restore an archive into the live stores — missing files restored, identical skipped, differing only with `confirm=True`; `dry_run=True` reports the full plan and writes nothing; any traversal entry refuses the whole restore, credential-pattern/sha-mismatched/invalid-JSON entries are refused per file and named; the current stores are snapshotted as `pre-restore-*` before the first write |
 | `set_wordpress_target(brand_id, site_url, username, post_type?, default_category_id?)` | WordPress exporter (P3): record a brand's NON-SECRET delivery target (site base URL, WP username, REST post type, optional category). The Application Password is never accepted or stored here — see the WordPress section below |
 | `get_wordpress_target(brand_id)` | WordPress exporter: the stored target + `credentials_configured` (boolean only; the password is never returned) |
 | `export_draft_to_wordpress(brand_id, draft_id, force=false)` | WordPress exporter: upload the draft's images per its media manifest (featured → `featured_media`, alt/caption/description set), create the post with status **"draft" — always; there is no publish path**, record the export on the draft (post id + edit link). A second export is refused unless `force=True` |
@@ -914,7 +915,16 @@ per-file sha256) so an archive can be verified without trusting
 it. Files matching credential patterns are excluded and recorded
 in the manifest: the stores hold no credentials by design, and a
 planted one is reported, never silently archived. `list_backups`
-reads the manifests back.
+reads the manifests back. `restore_core_data` is the return path:
+the archive is validated before anything is planned (a traversal
+or absolute entry path anywhere refuses the whole restore; a
+credential-pattern entry, a sha256 mismatch against the manifest,
+or JSON that does not parse is refused per file and named), then
+planned per file — missing files are restored, identical files
+skipped, differing files restored only with `confirm=True`
+(`dry_run=True` returns the plan and writes nothing) — and the
+current live stores are first snapshotted as a `pre-restore-*`
+archive, so a restore is itself reversible.
 
 ### WordPress draft exporter — delivery as drafts (P3)
 
