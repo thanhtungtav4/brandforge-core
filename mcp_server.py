@@ -1047,17 +1047,22 @@ def get_brand_draft(draft_id: str = "") -> dict:
 
 
 def _merge_brand_draft_patch(existing: dict, patch: dict) -> dict:
-    """Apply a partial patch to a stored brand draft: shallow-merge
-    per top-level section — when both the stored value and the patch
-    value for a key are objects, the patch's keys win WITHIN that
-    section (one level deep); lists and scalars are replaced whole,
-    and only when the key is present in the patch. Keys the patch
-    does not name are carried over untouched."""
+    """Apply a partial patch to a stored brand draft: merge per
+    top-level section, RECURSING wherever both the stored value and
+    the patch value for a key are objects — the patch's keys win at
+    every level, and a group the patch names one key of keeps its
+    other keys (Codex review 23 Nov: the old one-level merge let a
+    patch of voice.sentence_rules.max_sentence_words replace the
+    whole sentence_rules group, silently dropping the per-format
+    medians). Lists and scalars are replaced whole, and only when
+    the key is present in the patch; an explicit null sets that one
+    key to null. Keys the patch does not name — at any depth — are
+    carried over untouched."""
     merged = dict(existing)
     for key, value in patch.items():
         current = merged.get(key)
         if isinstance(current, dict) and isinstance(value, dict):
-            merged[key] = {**current, **value}
+            merged[key] = _merge_brand_draft_patch(current, value)
         else:
             merged[key] = value
     return merged
@@ -1070,14 +1075,16 @@ def update_brand_draft(brand_id: str, patch: dict) -> dict:
     (which builds a NEW draft from fetched pages and would clobber
     the human edits prepare_brand_setup works to preserve, S2).
 
-    Merge rule: shallow per top-level section — an object section in
-    the patch merges one level deep into the stored section (the
-    patch's keys win); list and scalar fields are replaced whole,
-    only when present in the patch (a field explicitly set to null
-    is set to null). EVERYTHING the patch does not name is preserved
-    exactly — inferred_fields stamps and brand.review_status
-    included — and those change only when the patch names them
-    explicitly. brand.id is the draft's identity: a patch naming a
+    Merge rule: per top-level section, recursing into nested object
+    groups — when both sides hold an object for a key, the patch's
+    keys win INSIDE that group at every depth, so naming one key of
+    a group (voice.sentence_rules.max_sentence_words) preserves the
+    group's other keys (the per-format medians); list and scalar
+    fields are replaced whole, only when present in the patch (a
+    field explicitly set to null is set to null). EVERYTHING the
+    patch does not name is preserved exactly — inferred_fields
+    stamps and brand.review_status included — and those change only
+    when the patch names them explicitly. brand.id is the draft's identity: a patch naming a
     different brand.id is refused. The merged draft goes through the
     same validation as save_brand_draft (validate_brand_draft:
     visual / image_sources boundary rules, competitor reference_only

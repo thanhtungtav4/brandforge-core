@@ -94,6 +94,48 @@ def test_update_brand_draft_patches_one_field_only(stores):
     assert out["draft"] == saved
 
 
+def test_update_brand_draft_nested_group_patch_preserves_siblings(stores):
+    """A patch naming ONE key inside a nested object group (the app
+    editor sends voice.sentence_rules.max_sentence_words alone) must
+    keep the group's other keys — the merge recurses into dict-valued
+    keys instead of replacing the whole group (Codex review 23 Nov:
+    the one-level merge silently dropped median_words_default /
+    median_words_by_format on every max-words save)."""
+    draft = _seed_brand_draft()
+    draft["voice"]["sentence_rules"] = {
+        "max_sentence_words": 30,
+        "median_words_default": [11, 14],
+        "median_words_by_format": {"blog": [11, 14], "product": [9, 12]},
+    }
+    loaders.save_brand_draft(copy.deepcopy(draft))
+    out = srv.update_brand_draft(
+        "gap-brand",
+        {"voice": {"sentence_rules": {"max_sentence_words": 45}}})
+    assert "error" not in out
+    saved = loaders.load_brand_draft("gap-brand")
+    assert saved["voice"]["sentence_rules"] == {
+        "max_sentence_words": 45,
+        "median_words_default": [11, 14],
+        "median_words_by_format": {"blog": [11, 14], "product": [9, 12]},
+    }
+    # Lists nested inside a merged group are still replaced whole,
+    # and an explicit null inside a group still clears just that key.
+    out = srv.update_brand_draft(
+        "gap-brand",
+        {"voice": {"sentence_rules": {"median_words_default": [10, 13]}}})
+    assert "error" not in out
+    rules = loaders.load_brand_draft("gap-brand")["voice"]["sentence_rules"]
+    assert rules["median_words_default"] == [10, 13]
+    assert rules["max_sentence_words"] == 45
+    out = srv.update_brand_draft(
+        "gap-brand",
+        {"voice": {"sentence_rules": {"median_words_by_format": None}}})
+    assert "error" not in out
+    rules = loaders.load_brand_draft("gap-brand")["voice"]["sentence_rules"]
+    assert rules["median_words_by_format"] is None
+    assert rules["max_sentence_words"] == 45
+
+
 def test_update_brand_draft_preserves_human_edits_outside_patch(stores):
     seeded = _seed_brand_draft()
     out = srv.update_brand_draft("gap-brand",
