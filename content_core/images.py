@@ -163,13 +163,34 @@ def plan_images(sections: list[dict], brief: dict,
     Each item: {id, role, section_id, section_heading, section_intent,
     purpose, prompt, style_block, source_preference, aspect, format,
     size_budget_kb}. The prompt is a deterministic template (scene +
-    the brand's style block) — no LLM is involved in planning."""
+    the brand's style block) — no LLM is involved in planning.
+
+    Raises ValueError if two planned slots would share one id: two
+    sections with the same id (or both without an id), or a section
+    id of "featured" colliding with the featured slot. Slot ids are
+    the plan's identity — a collision used to emit the same slot
+    twice and flag its own image as a duplicate (review round 2 L1).
+    Only the planned slice (first MAX_IN_CONTENT sections) is
+    guarded; a duplicate id past the cap never becomes a slot.
+    """
     brand = brand or {}
     brand_name = (brand.get("brand") or {}).get("name", "")
     block = style_block(visual_of(brand))
     title = (brief.get("title") or brief.get("topic") or "").strip()
     topic = (brief.get("topic") or title).strip()
     keyword = (brief.get("keyword") or topic).strip()
+
+    planned = sections[:MAX_IN_CONTENT]
+    slot_ids = ["img-featured"] + [f"img-{sec.get('id', '')}"
+                                   for sec in planned]
+    seen: set[str] = set()
+    for slot_id in slot_ids:
+        if slot_id in seen:
+            raise ValueError(
+                f"duplicate image slot id {slot_id!r} — two sections "
+                f"share an id, so their image slots collide; fix the "
+                f"section ids and plan again")
+        seen.add(slot_id)
 
     def _prompt(scene: str) -> str:
         return f"{scene}\n{block}" if block else scene
@@ -186,7 +207,7 @@ def plan_images(sections: list[dict], brief: dict,
         "aspect": ASPECT_FEATURED, "format": TARGET_FORMAT,
         "size_budget_kb": FEATURED_SIZE_BUDGET_KB,
     }]
-    for sec in sections[:MAX_IN_CONTENT]:
+    for sec in planned:
         heading = sec.get("heading", "")
         intent = sec.get("intent", "")
         scene = (f"Illustration for the section '{heading}' of an article "

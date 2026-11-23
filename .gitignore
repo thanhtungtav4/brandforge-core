@@ -12,6 +12,7 @@ data/image_library/
 data/research_packs/
 data/taste/
 data/corpus_choices/
+data/seo_profiles/
 backups/
 # Raw calibration evidence scraped from the live site (review M16):
 # kept as LOCAL working-tree evidence only — never tracked, never

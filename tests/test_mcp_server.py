@@ -49,6 +49,14 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "export_draft_to_wordpress", "sync_wordpress_edits",
                   "score_section_variants",
                   "prepare_brand_setup", "get_brand_setup",
+                  "create_seo_profile", "get_seo_profile",
+                  "add_seo_source", "record_source_read",
+                  "add_replacement_source", "save_seo_analysis",
+                  "record_shortfall_exception",
+                  "save_seo_direction", "record_direction_decision",
+                  "propose_seo_outline", "approve_seo_outline",
+                  "reopen_seo_analysis",
+                  "record_seo_review", "get_seo_export_readiness",
                   "export_core_data", "list_backups", "restore_core_data"}
 
 CLEAN_TEXT = (

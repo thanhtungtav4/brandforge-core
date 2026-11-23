@@ -104,6 +104,7 @@ from content_core.loaders import list_image_library as _list_image_library_file
 from content_core.loaders import set_image_library_tags as _set_library_tags_file
 from content_core.seo import seo_pass as _seo_pass
 from content_core import research as _research
+from content_core import seo_profile as _seo
 from content_core import setup_assist as _setup_assist
 from content_core import taste as _taste
 from content_core import variants as _variants
@@ -116,6 +117,9 @@ from content_core.loaders import delete_corpus_choice as _delete_corpus_choice
 from content_core.loaders import load_corpus_entry as _load_corpus_entry
 from content_core.loaders import list_corpus_entries as _list_corpus_entries
 from content_core.loaders import load_research_pack as _load_research_pack
+from content_core.loaders import load_seo_profile as _load_seo_profile
+from content_core.loaders import save_seo_profile as _save_seo_profile
+from content_core.loaders import seo_profiles_dir as _seo_profiles_dir
 from content_core.loaders import save_corpus_choice as _save_corpus_choice
 from content_core.loaders import save_corpus_entry as _save_corpus_entry
 from content_core.loaders import save_research_pack as _save_research_pack
@@ -454,14 +458,22 @@ def _acquire_token_lock(lock_path: Path, draft_id: str):
 
 
 @contextlib.contextmanager
-def _draft_lock(draft_id: str):
+def _draft_lock(draft_id: str, directory: Path | None = None):
     """Hold the per-draft lock (see the design note above). Timeout
-    raises ValueError, which the tools surface as {"error": ...}."""
+    raises ValueError, which the tools surface as {"error": ...}.
+
+    `directory` overrides WHERE the lock file lives (default: the
+    drafts dir). The SEO profile tools lock in the seo_profiles
+    dir: they serialise read-modify-write on a DIFFERENT file than
+    the draft itself, so sharing the draft's lock file would both
+    over-serialise and, worse, suggest the two files move together
+    when they do not."""
     try:
         stem = stored_file_stem(draft_id)
     except ValueError:
         raise ValueError("invalid draft_id") from None
-    lock_path = drafts_dir() / f"{stem}.lock"
+    lock_path = (directory or drafts_dir()) / f"{stem}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
     key = str(lock_path)
     ident = threading.get_ident()
     with _HELD_LOCKS_GUARD:
@@ -2550,6 +2562,512 @@ def apply_pack(brand_id: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Tools — SEO five-source research profiles (specs/
+# seo-five-source-feature.md, Round 1: profile store + sources +
+# analysis). ONE profile per DRAFT: the 5 observed Google results
+# for one keyword, their read states, the host model's provenance-
+# checked analysis claims, and any shortfall exception the owner
+# confirmed. Deliberately separate from research packs: a pack
+# configures a BRAND, a profile researches ONE article — and
+# nothing here writes to facts / brand / corpus / taste stores
+# (spec A7). Mutations run under the per-draft lock in the SEO
+# store's own dir (see _draft_lock's `directory` parameter).
+# --------------------------------------------------------------------------
+
+def _seo_profile_or_error(draft_id: str) -> tuple[dict | None, dict | None]:
+    """(profile, None) or (None, {"error": ...}) for the SEO tools."""
+    try:
+        profile = _load_seo_profile(draft_id)
+    except ValueError as exc:  # corrupt stored profile / unusable id
+        return None, {"error": str(exc), "draft_id": draft_id}
+    if profile is None:
+        return None, {"error": f"seo profile not found: {draft_id} — "
+                               f"create it first (create_seo_profile)",
+                      "draft_id": draft_id}
+    return profile, None
+
+
+@mcp.tool()
+def create_seo_profile(draft_id: str, keyword: str,
+                       search_context: dict,
+                       brand_id: str | None = None) -> dict:
+    """Create the SEO research profile for ONE draft (five-source
+    workflow, Round 1). The brand is PINNED from the draft's own
+    brief — a brief without a brand_id is refused rather than
+    assumed, and a `brand_id` argument that disagrees with the
+    brief is a structured error. `search_context` records where
+    the results were observed: {market, language, location,
+    device, searched_at} — all five required, no defaults are
+    invented. One profile per draft; re-creating is refused.
+    Starts in state `collecting`."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            brief_brand = str(
+                draft.get("brief", {}).get("brand_id") or "").strip()
+            if not brief_brand:
+                return {"error":
+                        f"draft {draft_id} brief carries no brand_id "
+                        f"— an SEO profile pins the draft's own "
+                        f"brand; refusing to assume one",
+                        "draft_id": draft_id}
+            if brand_id is not None \
+                    and str(brand_id).strip() != brief_brand:
+                return {"error":
+                        f"brand_id mismatch: the draft's brief pins "
+                        f"brand {brief_brand!r}, not {brand_id!r}",
+                        "draft_id": draft_id}
+            try:
+                existing = _load_seo_profile(draft_id)
+            except ValueError as exc:  # corrupt stored profile
+                return {"error": str(exc), "draft_id": draft_id}
+            if existing is not None:
+                return {"error":
+                        f"seo profile already exists for draft "
+                        f"{draft_id}", "draft_id": draft_id}
+            profile = _seo.new_profile(draft_id, brief_brand, keyword,
+                                       search_context)
+            _save_seo_profile(profile)
+            return {**profile,
+                    "sufficiency": _seo.sufficiency(profile)}
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def get_seo_profile(draft_id: str) -> dict:
+    """Return the draft's full SEO profile — keyword, search
+    context, workflow state, sources with read states, analysis
+    claims with provenance flags, shortfall exception, the
+    direction + its recorded user decision, the outline versions
+    with their approval status, and the reopen log — plus the
+    `sufficiency` report: read_count (policy: partial counts,
+    see seo_profile.PARTIAL_READS_COUNT_TOWARD_REQUIRED) and
+    full_read_count against the required 5, whether a shortfall
+    stands, whether an exception is recorded, and whether
+    proceeding is authorised (spec A3)."""
+    profile, error = _seo_profile_or_error(draft_id)
+    if error:
+        return error
+    return {**profile, "sufficiency": _seo.sufficiency(profile),
+            "review_status": _seo.review_status(
+                profile, _draft_content_sha_or_none(draft_id))}
+
+
+def _draft_content_sha_or_none(draft_id: str) -> str | None:
+    """The draft's current content fingerprint, or None when the
+    draft cannot be loaded (currency checks then report stale —
+    an unverifiable review is never reported current)."""
+    draft, error = _load_draft_or_error(draft_id)
+    if error:
+        return None
+    return _content_sha(_sections_of(draft), _draft_title(draft))
+
+
+@mcp.tool()
+def add_seo_source(draft_id: str, url: str, observed_rank: int,
+                   title: str | None = None,
+                   observed_at: str | None = None) -> dict:
+    """Record ONE of the original observed Google results for the
+    draft's keyword. Ranks 1..5 are unique among originals and are
+    never overwritten (spec A2); entry is always `manual` in V1 —
+    the user searched and enters what they saw. `observed_at`
+    defaults to the profile's searched_at. The new source starts
+    with read_status `pending`: having a URL says nothing about
+    whether it was read."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            source = _seo.add_source(profile, url, observed_rank,
+                                     title=title,
+                                     observed_at=observed_at)
+            _save_seo_profile(profile)
+            return source
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def record_source_read(draft_id: str, source_id: str,
+                       read_status: str, reason: str = "",
+                       content_truncated: bool = False,
+                       page_type: str | None = None) -> dict:
+    """Record the host model's explicit read outcome for one
+    source: read / partial / failed / excluded, with the reason
+    (a failure without a reason is a dead end for the user) and
+    whether the content was truncated. Every recording appends to
+    the source's read_events — a failed-then-read history is kept,
+    not overwritten (spec A2). `page_type` (article / product /
+    category / video / tool / other) is assigned here, at read
+    time — the moment the model has actually seen the page;
+    omitting it leaves a previously set value alone."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            source = _seo.record_read(profile, source_id, read_status,
+                                      reason=reason,
+                                      content_truncated=content_truncated,
+                                      page_type=page_type)
+            _save_seo_profile(profile)
+            return source
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def add_replacement_source(draft_id: str, replaces_source_id: str,
+                           url: str, observed_rank: int, reason: str,
+                           title: str | None = None,
+                           observed_at: str | None = None) -> dict:
+    """Record a replacement for a source that could not be used
+    (unreadable, off-intent). The ORIGINAL record is never
+    rewritten: the replacement is a new source linked via
+    replaces_source_id, carrying the rank IT was observed at and
+    the reason it exists (spec section 3.3) — it never pretends
+    to be one of the original top 5."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            source = _seo.add_replacement(
+                profile, replaces_source_id, url, observed_rank,
+                reason, title=title, observed_at=observed_at)
+            _save_seo_profile(profile)
+            return source
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def save_seo_analysis(draft_id: str, claims: list) -> dict:
+    """Save the host model's analysis of the read sources as
+    provenance-checked claims: [{text, kind, source_ids,
+    confidence?}] where kind is `sourced` (must cite >= 1 recorded
+    source) or `inference` (the model's own reading, labelled as
+    such). A claim citing a source that is not read/partial is
+    stored WITH a flag and reported in `flagged_claim_ids` — it is
+    never silently treated as fully analysed (spec A4). Saving
+    moves the profile to state `analyzing`; a re-save versions the
+    analysis and keeps the previous one in analysis_history."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            analysis, flagged = _seo.save_analysis(profile, claims)
+            _save_seo_profile(profile)
+            return {"draft_id": draft_id, "state": profile["state"],
+                    "analysis_version": analysis["version"],
+                    "claims": analysis["claims"],
+                    "flagged_claim_ids": flagged}
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def record_shortfall_exception(draft_id: str, reason: str) -> dict:
+    """Record the owner's deliberate decision to proceed with
+    fewer than 5 read sources (spec 'Thiếu nguồn'): the reason is
+    required and at least 1 source must have been read — with 0
+    reads there is nothing to analyse and no exception can
+    authorise proceeding (spec A3). The exception is stored with
+    the read count at confirmation; the shortfall itself stays
+    reported — the profile is never labelled as having analysed
+    5 sources it did not read."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            exception = _seo.record_exception(profile, reason)
+            _save_seo_profile(profile)
+            return {"draft_id": draft_id,
+                    "shortfall_exception": exception,
+                    "sufficiency": _seo.sufficiency(profile)}
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+# --------------------------------------------------------------------------
+# Tools — SEO five-source, Round 2: direction + the user's decision,
+# the sufficiency-gated versioned outline (linked to the draft via
+# make_outline — the draft stays the writing artefact), and A6
+# invalidation through reopen_seo_analysis, the only way back once
+# approvals exist.
+# --------------------------------------------------------------------------
+
+@mcp.tool()
+def save_seo_direction(draft_id: str, primary_intent: str,
+                       secondary_intents: list | None = None,
+                       rationale_claim_ids: list | None = None) -> dict:
+    """Propose the article's direction from the saved analysis:
+    ONE primary intent (when the top 5 serve competing intents,
+    the choice is a decision, not an average — a proposal without
+    a primary intent is refused, spec A5), optional secondary
+    intents, and the analysis claim ids the reading rests on
+    (each must resolve to a claim of the CURRENT analysis).
+    Moves the profile analyzing → direction_review; the direction
+    is only a proposal until the user decides."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            direction = _seo.save_direction(
+                profile, primary_intent,
+                secondary_intents=secondary_intents,
+                rationale_claim_ids=rationale_claim_ids)
+            _save_seo_profile(profile)
+            return {"draft_id": draft_id, "state": profile["state"],
+                    "direction": direction}
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def record_direction_decision(draft_id: str, decision: str,
+                              note: str = "") -> dict:
+    """Record the USER's decision on the proposed direction:
+    `approved` (direction_review → outline_review; the direction
+    and its decision stay readable on the profile) or `rejected`
+    (the direction moves to direction_history with its decision,
+    and the profile returns to analyzing for a new proposal).
+    The core never approves its own proposal (spec section 6.2)."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            direction = _seo.decide_direction(profile, decision,
+                                              note=note)
+            _save_seo_profile(profile)
+            return {"draft_id": draft_id, "state": profile["state"],
+                    "direction": direction}
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def propose_seo_outline(draft_id: str, sections: list) -> dict:
+    """Propose a new outline version for the draft: `sections` is
+    the make_outline shape ([{heading, intent?, target_words?}]).
+    GATE (spec A3): the direction must be approved AND
+    sufficiency.proceed_ready must hold — 5 counted reads, or
+    fewer under a recorded shortfall exception; the refusal names
+    both ways forward. The sections go through make_outline into
+    the DRAFT (the writing artefact — no second outline store);
+    the profile records the version, mirroring the normalised
+    sections so any version can be read back. A still-pending
+    proposed version is superseded; an approved version stays
+    approved-current until a newer one is approved."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            if not isinstance(sections, list) or not sections:
+                return {"error": "sections must be a non-empty list "
+                                 "of {heading, intent?, "
+                                 "target_words?} — an empty outline "
+                                 "is not an outline",
+                        "draft_id": draft_id}
+            _seo.require_outline_proposable(profile)
+            draft, derr = _load_draft_or_error(draft_id)
+            if derr:
+                return derr
+            result = make_outline(draft.get("brief", {}),
+                                  proposed_outline=sections,
+                                  draft_id=draft_id)
+            if not result.get("ok"):
+                return {"error": result.get(
+                    "error", "outline refused by make_outline"),
+                    "draft_id": draft_id}
+            record = _seo.record_outline_proposal(
+                profile, result["outline"])
+            _save_seo_profile(profile)
+            return {"draft_id": draft_id, "state": profile["state"],
+                    "version": record["version"], "outline": record}
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def approve_seo_outline(draft_id: str, version: int) -> dict:
+    """Approve ONE proposed outline version — the user's act,
+    recorded with its timestamp. The previously approved version
+    (if any) becomes superseded: exactly one approved-current
+    version exists at any time. A superseded or invalidated
+    version can never be approved (it is history). Approval moves
+    the profile to `writing` and stamps the version with the
+    draft's current content fingerprint (gates.content_sha) —
+    Round 3's export check compares the shipped content against
+    it (spec A6)."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            draft, derr = _load_draft_or_error(draft_id)
+            if derr:
+                return derr
+            sha = _content_sha(_sections_of(draft), _draft_title(draft))
+            record = _seo.approve_outline(profile, version, sha)
+            _save_seo_profile(profile)
+            return {"draft_id": draft_id, "state": profile["state"],
+                    "outline": record}
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def reopen_seo_analysis(draft_id: str, reason: str) -> dict:
+    """Reopen the analysis after approvals exist (spec A6) — the
+    ONLY way to change sources / analysis once a direction or
+    outline stands: direct mutation in those states stays refused.
+    The current direction and every live outline version are
+    marked INVALIDATED and kept whole in history with the reason
+    and timestamp (never deleted, never silently mutated); the
+    profile returns to `analyzing`, where inputs change normally
+    again and the flow re-runs. A reason is required."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            summary = _seo.reopen_analysis(profile, reason)
+            _save_seo_profile(profile)
+            return {"draft_id": draft_id, "state": profile["state"],
+                    "invalidated": {
+                        "outlines": summary["invalidated_outlines"],
+                        "reviews": summary["invalidated_reviews"],
+                        "direction": summary["direction_invalidated"]},
+                    "from_state": summary["from_state"]}
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+# --------------------------------------------------------------------------
+# Tools — SEO five-source, Round 3: review records bound to the
+# approved outline version + the current content fingerprint, and
+# the ONE export-readiness decision the exporter enforces. There
+# is deliberately no stored `ready_to_export` state: readiness is
+# computed from live bindings every time it is asked, so it can
+# never go stale (specs/seo-five-source-round3-notes.md).
+# --------------------------------------------------------------------------
+
+def _seo_readiness(draft: dict, profile: dict) -> dict:
+    """Assemble the readiness decision for one draft + profile:
+    the F1 gate verdict comes from _export_gate_refusal itself
+    (reused, never re-implemented), the fingerprint from the same
+    helper the exporter and the gate share."""
+    refusal = _export_gate_refusal(draft)
+    current_sha = _content_sha(_sections_of(draft), _draft_title(draft))
+    reasons = _seo.export_readiness_reasons(
+        profile, current_sha,
+        refusal["reason"] if refusal else None,
+        refusal["error"] if refusal else "")
+    return {"draft_id": draft.get("draft_id", ""),
+            "state": profile.get("state"),
+            "ready": not reasons, "reasons": reasons}
+
+
+def _mark_seo_exported(draft_id: str, wp_post_id: int,
+                       site_url: str) -> str | None:
+    """After a successful export, stamp the draft's SEO profile
+    `exported` (post id + site + time). Reloads under the SEO
+    store's own lock so a concurrent profile change is never
+    clobbered. Returns an error string when the stamp could not
+    be written (the export itself already happened — the caller
+    surfaces this as a warning, never as an export failure), or
+    None when there is nothing to stamp / the stamp landed."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile = _load_seo_profile(draft_id)
+            if profile is None:
+                return None
+            if profile.get("state") == "exported" \
+                    and (profile.get("export") or {}).get(
+                        "wp_post_id") == int(wp_post_id):
+                return None  # already stamped for this very post
+            _seo.mark_exported(profile, wp_post_id, site_url)
+            _save_seo_profile(profile)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
+@mcp.tool()
+def record_seo_review(draft_id: str, items: list, verdict: str,
+                      expert_review: dict | None = None) -> dict:
+    """Record ONE review of the written article (five-source
+    Round 3). `items` is the checklist: [{key (or id), label,
+    status: ok|issue|na, mandatory: bool, note?}] — keys unique.
+    `verdict` is the review's decision: approved |
+    changes_requested. `expert_review` (optional) covers
+    specialist claims: {required: bool, status:
+    not_required|pending|done, reviewer?} — a required review is
+    pending until done, and `done` MUST name the reviewer (who +
+    when are recorded; automated scores never substitute for a
+    qualified reviewer, spec section 6.5).
+
+    The review BINDS to the current approved outline version and
+    to the draft's content fingerprint right now: edit the article
+    or approve a newer outline afterwards and the review is stale
+    — computably, via get_seo_profile's review_status — and export
+    readiness falls until a fresh review is recorded. The first
+    review moves the profile writing → reviewing."""
+    try:
+        with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+            profile, error = _seo_profile_or_error(draft_id)
+            if error:
+                return error
+            draft, derr = _load_draft_or_error(draft_id)
+            if derr:
+                return derr
+            sha = _content_sha(_sections_of(draft), _draft_title(draft))
+            record = _seo.record_review(profile, items, verdict,
+                                        expert_review, sha)
+            _save_seo_profile(profile)
+            return {"draft_id": draft_id, "state": profile["state"],
+                    "review": record,
+                    "review_status": _seo.review_status(profile, sha)}
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+
+
+@mcp.tool()
+def get_seo_export_readiness(draft_id: str) -> dict:
+    """THE export-readiness decision for a draft WITH an SEO
+    profile (spec section 6.6) — the same decision
+    export_draft_to_wordpress enforces. Returns {ready, reasons}:
+    every unmet condition as a named reason {code, detail} —
+    state_not_exportable / no_approved_outline /
+    edited_after_outline_approval / no_review_recorded /
+    review_invalidated / review_stale_outline /
+    review_stale_content / open_mandatory_items (with the item
+    keys) / expert_review_pending / review_changes_requested /
+    the F1 gate codes (never_ran_gate / gate_failed /
+    edited_after_pass / pass_unverifiable). An empty reasons list
+    means ready. Drafts WITHOUT a profile get a structured error:
+    legacy drafts are governed by the exporter's F1 gate rule
+    alone, and this tool does not pretend otherwise."""
+    profile, error = _seo_profile_or_error(draft_id)
+    if error:
+        return error
+    draft, derr = _load_draft_or_error(draft_id)
+    if derr:
+        return derr
+    return _seo_readiness(draft, profile)
+
+
+# --------------------------------------------------------------------------
 # Tools — corpus registry (system-level) + brand corpus choices
 # --------------------------------------------------------------------------
 
@@ -2790,8 +3308,9 @@ def get_taste_status(brand_id: str) -> dict:
 @mcp.tool()
 def export_core_data() -> dict:
     """Snapshot ALL local stores (personas, brand files/drafts, facts,
-    style/quality profiles, image libraries, research packs, corpus
-    registry + choices, taste stores, drafts) into ONE timestamped
+    style/quality profiles, image libraries, research packs, SEO
+    profiles, corpus registry + choices, taste stores, drafts) into
+    ONE timestamped
     zip in the backups dir, with a manifest (per-store counts,
     per-file sha256). Files matching credential patterns are EXCLUDED
     and recorded in the manifest — the stores hold no credentials by
@@ -2983,6 +3502,17 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
     edited_after_pass / pass_unverifiable) BEFORE any WordPress
     write is made.
 
+    SEO RULE (five-source Round 3): when the draft HAS an SEO
+    profile, export additionally requires the core readiness
+    decision (get_seo_export_readiness) to be READY for the
+    current content — approved outline standing with its
+    fingerprint intact, a current review with no open mandatory
+    items and expert review satisfied, on top of the gate rule
+    below. Refusal is structured: reason `seo_not_ready` plus the
+    named `reasons` list, before any WordPress write. A successful
+    SEO export stamps the profile `exported` (including when an
+    earlier attempt's post is adopted under the idempotency rule).
+
     IDEMPOTENCY (fix round F2): before creating anything, the
     export records an attempt on the draft (attempt id + a
     deterministic slug marker, "bf-<draft>-<attempt>") and creates
@@ -3025,6 +3555,16 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                     brand_id), "brand_id": brand_id,
                     "draft_id": draft_id}
 
+            # SEO five-source, Round 3: if this draft HAS an SEO
+            # profile, its export is governed by the readiness
+            # decision below. A corrupt profile refuses the export
+            # (the ValueError lands in the structured handler) —
+            # an unreadable workflow record is never shipped past.
+            # Drafts WITHOUT a profile skip everything SEO here
+            # and keep the F1/F2 behaviour byte-identically.
+            with _draft_lock(draft_id, directory=_seo_profiles_dir()):
+                seo_profile = _load_seo_profile(draft_id)
+
             # F2: idempotency reconciliation. An OPEN attempt from
             # an earlier call whose outcome was lost (the post was
             # created but the response/record never landed) is
@@ -3060,6 +3600,21 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                     draft["wordpress_export"] = record
                     draft.pop("wordpress_export_attempt", None)
                     _store_draft(draft)
+                    adopt_warnings = [
+                        "an earlier export attempt had "
+                        "already created this post on "
+                        "WordPress — adopted it instead of "
+                        "creating a duplicate; its media "
+                        "were uploaded by that attempt"]
+                    if seo_profile is not None:
+                        # The adoption COMPLETES an SEO export:
+                        # stamp the profile exported for this post.
+                        stamp_error = _mark_seo_exported(
+                            draft_id, post_id, target["site_url"])
+                        if stamp_error:
+                            adopt_warnings.append(
+                                "the SEO profile could not be "
+                                "marked exported: " + stamp_error)
                     return {"brand_id": brand_id,
                             "draft_id": draft_id,
                             "wp_post_id": post_id,
@@ -3069,12 +3624,31 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                             "site_url": target["site_url"],
                             "media_uploaded": 0, "media": [],
                             "adopted_existing_post": True,
-                            "warnings": [
-                                "an earlier export attempt had "
-                                "already created this post on "
-                                "WordPress — adopted it instead of "
-                                "creating a duplicate; its media "
-                                "were uploaded by that attempt"]}
+                            "warnings": adopt_warnings}
+
+            # SEO readiness (Round 3) — before any WordPress
+            # WRITE, and before the attempt is recorded: an SEO
+            # draft ships only when the core confirms EVERY
+            # condition for the CURRENT content (approved outline
+            # standing + fingerprint match, a current review with
+            # no open mandatory items and expert review satisfied,
+            # and the F1 gate — whose check is part of the
+            # readiness decision itself, reused not duplicated).
+            if seo_profile is not None:
+                readiness = _seo_readiness(draft, seo_profile)
+                if not readiness["ready"]:
+                    codes = ", ".join(r["code"]
+                                        for r in readiness["reasons"])
+                    return {"error":
+                            f"draft {draft_id} is not ready to "
+                            f"export under the SEO five-source "
+                            f"workflow: {codes} — see `reasons` "
+                            f"(get_seo_export_readiness reports "
+                            f"the same decision)",
+                            "reason": "seo_not_ready",
+                            "reasons": readiness["reasons"],
+                            "brand_id": brand_id,
+                            "draft_id": draft_id}
 
             # F1: gate eligibility — before any WordPress WRITE.
             refusal = _export_gate_refusal(draft)
@@ -3172,6 +3746,13 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
             draft["wordpress_export"] = record
             draft.pop("wordpress_export_attempt", None)
             _store_draft(draft)
+            if seo_profile is not None:
+                stamp_error = _mark_seo_exported(
+                    draft_id, post_id, target["site_url"])
+                if stamp_error:
+                    warnings.append(
+                        "the SEO profile could not be marked "
+                        "exported: " + stamp_error)
             return {"brand_id": brand_id, "draft_id": draft_id,
                     "wp_post_id": post_id,
                     "edit_link": record["edit_link"],

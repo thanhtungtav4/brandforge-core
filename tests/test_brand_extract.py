@@ -236,9 +236,11 @@ def test_mcp_tool_list_now_29():
     # setup-assist round added prepare_brand_setup + get_brand_setup,
     # and the corpus-creation round (app gap #8) added
     # create_corpus_profile, and the backup-restore round (app
-    # gap #7) added restore_core_data.)
+    # gap #7) added restore_core_data, and the SEO five-source
+    # round 1 added the 7 profile/source/analysis tools, and the
+    # SEO five-source round 2 added the 5 direction/outline tools.)
     assert EXPECTED_NEW_TOOLS <= set(srv.TOOL_NAMES)
-    assert len(srv.TOOL_NAMES) == 72
+    assert len(srv.TOOL_NAMES) == 86
     for name in EXPECTED_NEW_TOOLS:
         assert callable(getattr(srv, name)), name
 

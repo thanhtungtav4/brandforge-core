@@ -141,6 +141,44 @@ def test_plan_without_visual_has_no_style_block():
     assert not [i for i in issues if i["type"] == "style_not_locked"]
 
 
+def test_plan_images_rejects_duplicate_section_ids():
+    # L1 (review round 2): two sections sharing one id used to produce
+    # two identical plan rows (img-s1 twice); the fulfilled image was
+    # then flagged for duplicating its own alt, and the manifest
+    # emitted it twice. Planning must refuse instead.
+    dup = [dict(SECTIONS[0]),
+           dict(SECTIONS[0], heading="Một phần khác cùng id")]
+    with pytest.raises(ValueError, match="img-s1"):
+        img.plan_images(dup, BRIEF, _moc_brand())
+
+
+def test_plan_images_rejects_sections_without_ids():
+    # Two sections with no id both map to the same slot id "img-".
+    no_ids = [{"heading": "Phần một", "intent": "", "text": "x"},
+              {"heading": "Phần hai", "intent": "", "text": "y"}]
+    with pytest.raises(ValueError, match="img-"):
+        img.plan_images(no_ids, BRIEF, _moc_brand())
+
+
+def test_plan_images_rejects_section_id_featured():
+    # A section id of "featured" collides with the featured slot itself.
+    clash = [{"id": "featured", "heading": "Phần bìa?", "intent": "",
+              "text": "x"}]
+    with pytest.raises(ValueError, match="img-featured"):
+        img.plan_images(clash, BRIEF, _moc_brand())
+
+
+def test_plan_images_ignores_duplicate_beyond_cap():
+    # The guard covers only the planned slice: a duplicate id on a
+    # section past the MAX_IN_CONTENT cap never becomes a slot.
+    many = [{"id": f"s{i}", "heading": f"Phần {i}", "intent": "", "text": ""}
+            for i in range(1, 7)]
+    many[5]["id"] = "s1"
+    plan = img.plan_images(many, BRIEF, _moc_brand())
+    assert [p["id"] for p in plan] == (
+        ["img-featured"] + [f"img-s{i}" for i in range(1, 6)])
+
+
 # -- suggestions --------------------------------------------------------------
 
 def test_suggest_filename_slug_rules():
@@ -460,6 +498,21 @@ def test_mcp_set_image_validation():
     assert "error" in srv.set_image(draft_id, "img-s1", "ai", "")
     assert "error" in srv.plan_images("d-khong-ton-tai")
     assert "error" in srv.image_check("d-khong-ton-tai")
+
+
+def test_mcp_plan_images_rejects_duplicate_section_ids():
+    # L1 end to end: a hand-edited draft whose sections share an id
+    # (save_section overwrites by id, so this only arrives via a
+    # hand-edited draft) gets a structured error and no half-written
+    # plan stored.
+    draft_id = _draft_with_sections()
+    draft = srv.get_draft(draft_id)
+    draft["sections"].append(dict(draft["sections"][0],
+                                  heading="Phần trùng id"))
+    srv._store_draft(draft)
+    out = srv.plan_images(draft_id)
+    assert "error" in out and "img-s1" in out["error"]
+    assert "images" not in srv.get_draft(draft_id)
 
 
 def test_mcp_image_check_reports_broken_variants():

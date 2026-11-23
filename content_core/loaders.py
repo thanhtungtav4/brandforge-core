@@ -1562,3 +1562,317 @@ def list_brand_setups() -> list[dict]:
                     "corrupt": False})
     return out
 
+
+# --- SEO profiles (five-source SEO research, per-draft) ---
+# The per-ARTICLE research store of specs/seo-five-source-feature.md:
+# ONE profile per draft at data/seo_profiles/<draft-id>.json; tests
+# point CONTENT_CORE_SEO_PROFILES_DIR at a tmp dir. Deliberately
+# separate from research packs (which configure a BRAND): a profile
+# holds the 5 observed Google results for ONE keyword, their read
+# states, the host model's analysis claims (each sourced or labelled
+# inference) and any shortfall exception the owner confirmed.
+# Competitor data in here NEVER flows into facts / brand / corpus /
+# taste stores — the module content_core/seo_profile.py has no write
+# path to them, and the invariant is pinned by test (spec A7).
+# All file IO lives HERE; content_core/seo_profile.py is the pure
+# record logic, mcp_server.py persists only through these helpers.
+
+SEO_SCHEMA_VERSION = 1
+SEO_WORKFLOW_STATES = ("collecting", "analyzing", "direction_review",
+                       "outline_review", "writing", "reviewing",
+                       "ready_to_export", "exported")
+SEO_READ_STATUSES = ("pending", "read", "partial", "failed", "excluded")
+#: Statuses record_source_read may SET: "pending" is the initial
+#: state a source is born with, never a read outcome.
+SEO_RECORDED_READ_STATUSES = ("read", "partial", "failed", "excluded")
+SEO_CLAIM_KINDS = ("sourced", "inference")
+#: Page types the host model assigns when it records a read
+#: (Round 2 — the field existed schema-only in Round 1).
+SEO_PAGE_TYPES = ("article", "product", "category", "video",
+                  "tool", "other")
+SEO_DIRECTION_STATUSES = ("proposed", "approved", "rejected",
+                          "superseded", "invalidated")
+#: Round 3 review vocabularies: checklist item outcomes, the
+#: review's own verdict, and the expert (specialist) review states.
+SEO_REVIEW_ITEM_STATUSES = ("ok", "issue", "na")
+SEO_REVIEW_VERDICTS = ("approved", "changes_requested")
+SEO_EXPERT_REVIEW_STATUSES = ("not_required", "pending", "done")
+SEO_OUTLINE_STATUSES = ("proposed", "approved", "superseded",
+                        "invalidated")
+SEO_REQUIRED_SOURCES = 5
+SEO_SEARCH_CONTEXT_FIELDS = ("market", "language", "location",
+                             "device", "searched_at")
+
+
+def seo_profiles_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_SEO_PROFILES_DIR")
+    return Path(override) if override else DATA_DIR / "seo_profiles"
+
+
+def _seo_profile_path(draft_id: str) -> Path:
+    return seo_profiles_dir() / f"{stored_file_stem(draft_id)}.json"
+
+
+def validate_seo_profile(profile: dict) -> dict:
+    """Schema-check an SEO profile BEFORE it is persisted (the
+    save_facts / save_brand_draft discipline) and on load. Required:
+    schema_version (== SEO_SCHEMA_VERSION), draft_id, brand_id,
+    keyword, a complete search_context (market / language /
+    location / device / searched_at — all non-empty; the core
+    invents NO defaults for them, spec section 9 leaves them open),
+    a known workflow state, sources / analysis_history lists,
+    analysis None-or-object with provenance-checked claims, and a
+    shortfall_exception that is None or carries a reason and a
+    read_count_at_confirmation >= 1 (an exception over 0 reads must
+    not exist, spec A3). Raises ValueError; returns the profile."""
+    if not isinstance(profile, dict):
+        raise ValueError("seo profile must be an object")
+    if profile.get("schema_version") != SEO_SCHEMA_VERSION:
+        raise ValueError(
+            f"seo profile schema_version must be {SEO_SCHEMA_VERSION}, "
+            f"got {profile.get('schema_version')!r}")
+    for key in ("draft_id", "brand_id", "keyword"):
+        if not str(profile.get(key) or "").strip():
+            raise ValueError(f"seo profile needs a non-empty {key}")
+    context = profile.get("search_context")
+    if not isinstance(context, dict):
+        raise ValueError("seo profile needs a search_context object")
+    for field in SEO_SEARCH_CONTEXT_FIELDS:
+        if not str(context.get(field) or "").strip():
+            raise ValueError(
+                f"seo profile search_context needs a non-empty "
+                f"{field} (no defaults are invented for it)")
+    if profile.get("state") not in SEO_WORKFLOW_STATES:
+        raise ValueError(
+            f"seo profile state must be one of {SEO_WORKFLOW_STATES}, "
+            f"got {profile.get('state')!r}")
+    sources = profile.get("sources")
+    if not isinstance(sources, list) \
+            or not all(isinstance(s, dict) for s in sources):
+        raise ValueError("seo profile sources must be a list of objects")
+    for source in sources:
+        if not str(source.get("source_id") or "").strip():
+            raise ValueError("seo source needs a non-empty source_id")
+        if not str(source.get("url") or "").strip():
+            raise ValueError("seo source needs a non-empty url")
+        rank = source.get("observed_rank")
+        if not (isinstance(rank, int) and not isinstance(rank, bool)
+                and rank >= 1):
+            raise ValueError("seo source observed_rank must be a "
+                             "positive int")
+        if source.get("entry_source") != "manual":
+            raise ValueError("seo source entry_source must be 'manual' "
+                             "in V1 (results are entered by the user)")
+        if source.get("read_status") not in SEO_READ_STATUSES:
+            raise ValueError(
+                f"seo source read_status must be one of "
+                f"{SEO_READ_STATUSES}, got {source.get('read_status')!r}")
+        page_type = source.get("page_type")
+        if page_type is not None and page_type not in SEO_PAGE_TYPES:
+            raise ValueError(
+                f"seo source page_type must be null or one of "
+                f"{SEO_PAGE_TYPES}, got {page_type!r}")
+        replaces = source.get("replaces_source_id")
+        if replaces is not None and not str(replaces).strip():
+            raise ValueError("seo source replaces_source_id must be "
+                             "null or a source id")
+    analysis = profile.get("analysis")
+    if analysis is not None:
+        if not isinstance(analysis, dict) \
+                or not isinstance(analysis.get("claims"), list):
+            raise ValueError("seo profile analysis must be an object "
+                             "with a claims list")
+        for claim in analysis["claims"]:
+            if not isinstance(claim, dict) \
+                    or not str(claim.get("text") or "").strip():
+                raise ValueError("seo analysis claim needs text")
+            if claim.get("kind") not in SEO_CLAIM_KINDS:
+                raise ValueError(
+                    f"seo claim kind must be one of "
+                    f"{SEO_CLAIM_KINDS}, got {claim.get('kind')!r}")
+            ids = claim.get("source_ids")
+            if not isinstance(ids, list) \
+                    or not all(isinstance(i, str) for i in ids):
+                raise ValueError("seo claim source_ids must be a "
+                                 "list of source id strings")
+    history = profile.get("analysis_history")
+    if not isinstance(history, list) \
+            or not all(isinstance(h, dict) for h in history):
+        raise ValueError("seo profile analysis_history must be a "
+                         "list of objects")
+    exception = profile.get("shortfall_exception")
+    if exception is not None:
+        if not isinstance(exception, dict) \
+                or not str(exception.get("reason") or "").strip():
+            raise ValueError("shortfall exception needs a non-empty "
+                             "reason")
+        count = exception.get("read_count_at_confirmation")
+        if not (isinstance(count, int) and not isinstance(count, bool)
+                and count >= 1):
+            raise ValueError(
+                "shortfall exception read_count_at_confirmation "
+                "must be an int >= 1 (0 reads can never proceed)")
+    # Round 2 records — all OPTIONAL keys: a Round 1 profile file
+    # (which predates them) must still load (spec A9).
+    def _check_direction(record: dict, where: str) -> None:
+        if not isinstance(record, dict) \
+                or not str(record.get("primary_intent") or "").strip():
+            raise ValueError(f"seo {where} needs a primary_intent")
+        if record.get("status") not in SEO_DIRECTION_STATUSES:
+            raise ValueError(
+                f"seo {where} status must be one of "
+                f"{SEO_DIRECTION_STATUSES}, got "
+                f"{record.get('status')!r}")
+        decision = record.get("decision")
+        if decision is not None:
+            if not isinstance(decision, dict) \
+                    or decision.get("decision") \
+                    not in ("approved", "rejected"):
+                raise ValueError(
+                    f"seo {where} decision must record 'approved' "
+                    f"or 'rejected'")
+
+    direction = profile.get("direction")
+    if direction is not None:
+        _check_direction(direction, "direction")
+    dir_history = profile.get("direction_history", [])
+    if not isinstance(dir_history, list) \
+            or not all(isinstance(h, dict) for h in dir_history):
+        raise ValueError("seo profile direction_history must be a "
+                         "list of objects")
+    for entry in dir_history:
+        _check_direction(entry, "direction_history entry")
+    outlines = profile.get("outlines", [])
+    if not isinstance(outlines, list) \
+            or not all(isinstance(o, dict) for o in outlines):
+        raise ValueError("seo profile outlines must be a list of "
+                         "objects")
+    approved = 0
+    for record in outlines:
+        version = record.get("version")
+        if not (isinstance(version, int)
+                and not isinstance(version, bool) and version >= 1):
+            raise ValueError("seo outline version must be a "
+                             "positive int")
+        if record.get("status") not in SEO_OUTLINE_STATUSES:
+            raise ValueError(
+                f"seo outline status must be one of "
+                f"{SEO_OUTLINE_STATUSES}, got "
+                f"{record.get('status')!r}")
+        sections = record.get("sections")
+        if not isinstance(sections, list) \
+                or not all(isinstance(s, dict)
+                           and str(s.get("heading") or "").strip()
+                           for s in sections):
+            raise ValueError("seo outline sections must be a list "
+                             "of objects with headings")
+        if record.get("status") == "approved":
+            approved += 1
+    if approved > 1:
+        raise ValueError(
+            "seo profile has more than one approved outline "
+            "version — exactly one approved-current may exist")
+    reopen_log = profile.get("reopen_log", [])
+    if not isinstance(reopen_log, list) \
+            or not all(isinstance(e, dict) for e in reopen_log):
+        raise ValueError("seo profile reopen_log must be a list "
+                         "of objects")
+    # Round 3 records — likewise OPTIONAL keys (a Round 1/2 file
+    # predates them and must still load, spec A9).
+    reviews = profile.get("reviews", [])
+    if not isinstance(reviews, list) \
+            or not all(isinstance(r, dict) for r in reviews):
+        raise ValueError("seo profile reviews must be a list of "
+                         "objects")
+    for record in reviews:
+        items = record.get("items")
+        if not isinstance(items, list) or not items \
+                or not all(isinstance(i, dict) for i in items):
+            raise ValueError("seo review items must be a non-empty "
+                             "list of objects")
+        for item in items:
+            if item.get("status") not in SEO_REVIEW_ITEM_STATUSES:
+                raise ValueError(
+                    f"seo review item status must be one of "
+                    f"{SEO_REVIEW_ITEM_STATUSES}, got "
+                    f"{item.get('status')!r}")
+        if record.get("verdict") not in SEO_REVIEW_VERDICTS:
+            raise ValueError(
+                f"seo review verdict must be one of "
+                f"{SEO_REVIEW_VERDICTS}, got "
+                f"{record.get('verdict')!r}")
+        expert = record.get("expert_review")
+        if expert is not None:
+            if not isinstance(expert, dict) \
+                    or expert.get("status") \
+                    not in SEO_EXPERT_REVIEW_STATUSES:
+                raise ValueError(
+                    f"seo review expert_review status must be one "
+                    f"of {SEO_EXPERT_REVIEW_STATUSES}")
+    export = profile.get("export")
+    if export is not None:
+        post_id = export.get("wp_post_id") if isinstance(export, dict) \
+            else None
+        if not (isinstance(post_id, int)
+                and not isinstance(post_id, bool)):
+            raise ValueError("seo profile export must record an "
+                             "integer wp_post_id")
+    return profile
+
+
+def save_seo_profile(profile: dict) -> dict:
+    """Validate + persist an SEO profile (atomic write). Stamps
+    updated_at and maintains `version` as a store-level revision
+    counter: 1 at creation, +1 on every later save (the peek at the
+    stored file is corrupt-tolerant — a corrupt file errors on load
+    long before a tool would save over it). Returns the profile."""
+    validate_seo_profile(profile)
+    path = _seo_profile_path(profile["draft_id"])
+    existing = _store_doc_or_none(path) if path.exists() else None
+    if existing is not None:
+        prev = existing.get("version")
+        profile["version"] = (prev if isinstance(prev, int)
+                              and not isinstance(prev, bool)
+                              and prev >= 1 else 1) + 1
+    else:
+        profile.setdefault("version", 1)
+    profile["updated_at"] = _utc_now()
+    atomic_write_text(path, json.dumps(profile, ensure_ascii=False,
+                                       indent=2))
+    return profile
+
+
+def load_seo_profile(draft_id: str) -> dict | None:
+    """Return the stored SEO profile for a draft, or None. Stored
+    shape is fully validated like every other store (review M7):
+    a corrupt or schema-drifted file is the named ValueError, not
+    a husk served as if real."""
+    path = _seo_profile_path(draft_id)
+    if not path.exists():
+        return None
+    data = _require_stored_object(_load_json_file(path), path,
+                                  "seo profile", required="draft_id")
+    return validate_seo_profile(data)
+
+
+def list_seo_profiles() -> list[dict]:
+    """Summaries of every stored SEO profile: draft_id, brand,
+    keyword, state, source count. Corrupt files are listed as
+    corrupt, never silently skipped (house discipline)."""
+    d = seo_profiles_dir()
+    if not d.exists():
+        return []
+    out = []
+    for path in sorted(d.glob("*.json")):
+        profile = _store_doc_or_none(path)
+        if profile is None:
+            out.append({"draft_id": path.stem, "corrupt": True})
+            continue
+        out.append({"draft_id": profile.get("draft_id", path.stem),
+                    "brand_id": profile.get("brand_id", ""),
+                    "keyword": profile.get("keyword", ""),
+                    "state": profile.get("state", ""),
+                    "sources": len(profile.get("sources", [])),
+                    "corrupt": False})
+    return out
+

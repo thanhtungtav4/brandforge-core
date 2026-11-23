@@ -1,8 +1,9 @@
 """Local data backup — one timestamped archive of every local store.
 
 The stores hold the accumulated client asset base (brand drafts,
-facts, style/quality profiles, research packs, corpus registry and
-choices, taste verdicts, image libraries, drafts, personas). Until
+facts, style/quality profiles, research packs, SEO profiles,
+corpus registry and choices, taste verdicts, image libraries,
+drafts, personas). Until
 this module they had NO backup path: everything lived as loose
 files in data/ and drafts/. export_core_data snapshots them into a
 single zip under the backups dir with a manifest (per-store counts,
@@ -65,6 +66,7 @@ def _store_sources() -> list[tuple[str, Path, bool]]:
         ("quality_profiles", loaders.quality_profiles_dir(), False),
         ("image_library", loaders.image_library_dir(), True),
         ("research_packs", loaders.research_packs_dir(), False),
+        ("seo_profiles", loaders.seo_profiles_dir(), False),
         ("corpus_registry", loaders.corpus_registry_dir(), False),
         ("corpus_choices", loaders.corpus_choices_dir(), False),
         ("wordpress_targets", loaders.wordpress_targets_dir(), False),

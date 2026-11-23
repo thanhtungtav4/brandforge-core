@@ -130,3 +130,38 @@ L4–L11 remain untouched.
 · run_golden **7/7** · run_model_golden **6/6** ·
 test_mcp_client **24/24** · test_mcp_http **PASS** (72 tools) ·
 demos **4/4 exit 0**.
+
+## Closure addendum — L1 (2026-11-23, 2h review run)
+
+L1 was the next untouched round-2 Low after L3 closed; L2, L4–L11
+remain untouched.
+
+- **L1 — FIXED.** `plan_images` now guards slot-id uniqueness at
+  plan time: it raises `ValueError` naming the duplicated slot id
+  when two planned sections share an id, when two sections both
+  have no id (both map to `img-`), or when a section id of
+  `"featured"` collides with the featured slot itself. The guard
+  covers the featured slot plus the planned slice only
+  (`sections[:MAX_IN_CONTENT]`); a duplicate id past the cap never
+  becomes a slot and still plans fine. The MCP tool needs no change:
+  its existing `except ValueError` returns the guard as a structured
+  `{"error": ...}` and stores no half-written plan. Valid drafts are
+  unaffected — `save_section` overwrites by id, so a duplicate can
+  only arrive via a hand-edited draft or a direct call — and the
+  plan builder now reuses the single guarded slice instead of
+  re-slicing. Evidence: fail-first tests — the duplicate-id,
+  missing-id, `featured`-collision, and MCP end-to-end cases all
+  failed pre-fix (the MCP case showed the live bug: two `img-s1`
+  rows in one plan); 5 new tests in `tests/test_images.py`
+  (4 unit + 1 MCP, plus a control pinning that a duplicate past
+  the cap still plans). Differential over the real stores:
+  `plan_images` over all 151 stored drafts — byte-identical
+  before/after (0 drafts carry a duplicate section id, so the guard
+  fires nowhere in the store). `check_images` is unchanged by
+  design: the guard lives at plan time, the one place a plan is
+  built.
+
+**Verification (fresh output, this fix):** pytest **711 passed**
+· run_golden **7/7** · run_model_golden **6/6** ·
+test_mcp_client **24/24** · test_mcp_http **PASS** (86 tools) ·
+demos **4/4 exit 0**.
