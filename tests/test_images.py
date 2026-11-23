@@ -220,6 +220,52 @@ def test_check_stuffed_alt():
     assert any(i["type"] == "stuffed_alt" for i in issues)
 
 
+def test_check_stuffed_alt_glued_keyword_repeat():
+    """Round 2 L3: glued tokens hide the keyword from the plain scan —
+    "càphê càphê ngon" repeats the keyword twice, glued."""
+    plan = _plan()
+    images = _good_images(plan)
+    images["img-s1"]["alt"] = "càphê càphê ngon"
+    issues, _ = img.check_images(plan, images, BRIEF, _moc_brand(),
+                                 complete=True)
+    assert any(i["image_id"] == "img-s1" and i["type"] == "stuffed_alt"
+               for i in issues)
+
+
+def test_check_stuffed_alt_letter_spaced_keyword():
+    """Round 2 L3: letter-spacing hides the keyword — "c à p h ê"
+    is the keyword with its letters spaced out."""
+    plan = _plan()
+    images = _good_images(plan)
+    images["img-s1"]["alt"] = "c à p h ê c à p h ê ngon"
+    issues, _ = img.check_images(plan, images, BRIEF, _moc_brand(),
+                                 complete=True)
+    assert any(i["image_id"] == "img-s1" and i["type"] == "stuffed_alt"
+               for i in issues)
+    images = _good_images(plan)
+    images["img-s1"]["alt"] = "c à p h ê"  # nothing but the keyword, spaced
+    issues, _ = img.check_images(plan, images, BRIEF, _moc_brand(),
+                                 complete=True)
+    assert any(i["type"] == "stuffed_alt" for i in issues)
+
+
+def test_check_stuffed_alt_glued_single_occurrence_is_not_stuffed():
+    """Round 2 L3 guard: one glued occurrence is not stuffing — the
+    fix must not flag a normal alt that writes the keyword without
+    its space, but a glued alt made of only the keyword is stuffed."""
+    plan = _plan()
+    images = _good_images(plan)
+    images["img-s1"]["alt"] = "càphê rang xay thơm ngon"
+    issues, _ = img.check_images(plan, images, BRIEF, _moc_brand(),
+                                 complete=True)
+    assert not [i for i in issues if i["type"] == "stuffed_alt"]
+    images = _good_images(plan)
+    images["img-s1"]["alt"] = "càphê"  # only the keyword, glued
+    issues, _ = img.check_images(plan, images, BRIEF, _moc_brand(),
+                                 complete=True)
+    assert any(i["type"] == "stuffed_alt" for i in issues)
+
+
 def test_check_filename_rules():
     plan = _plan()
     images = _good_images(plan)

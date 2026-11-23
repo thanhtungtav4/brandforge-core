@@ -451,12 +451,35 @@ def refresh_profile(profile: dict) -> dict:
     Other warnings (e.g. the duplicate-sample note, a build-time fact)
     pass through untouched. The fingerprint itself is NOT recomputed:
     the samples are not stored, by design (copyright rule).
+
+    Because the fingerprint is NOT recomputed, a version bump leaves
+    it STALE (fix round F3): its numbers were produced by the OLD
+    algorithm, while every new text is measured by the current one —
+    when a metric's definition changed between versions (v3 counts
+    the self-reference "em"; v2 did not), the comparison is silently
+    skewed. The bump therefore stamps `fingerprint_stale`
+    {from_version, to_version, reason} on the refreshed copy, and
+    style_match surfaces it as an additive warning. The stamp is
+    sticky: once a refreshed copy is saved, later refreshes (already
+    at the current version) return it unchanged, stamp included.
     """
     if not isinstance(profile, dict):
         return profile
     if profile.get("algorithm_version") == ALGORITHM_VERSION:
         return profile
     refreshed = copy.deepcopy(profile)
+    refreshed["fingerprint_stale"] = {
+        "from_version": profile.get("algorithm_version"),
+        "to_version": ALGORITHM_VERSION,
+        "reason": (
+            "fingerprint computed under algorithm "
+            f"v{profile.get('algorithm_version')} and NOT recomputed "
+            f"by the v{ALGORITHM_VERSION} refresh — the original "
+            "samples are not stored, so it cannot be recomputed; "
+            "metric definitions that changed between versions make "
+            "comparisons against current-algorithm text metrics "
+            "approximate. Rebuild the profile from its samples for "
+            "exact scoring.")}
     old = refreshed.get("consistency_warnings", [])
     kept = [w for w in old
             if not (w.startswith("only ") or w.startswith("total words ")
@@ -665,6 +688,18 @@ def style_match(text: str, profile: dict) -> dict:
     if capped:
         score = SHORT_TEXT_SCORE_CAP
     result: dict = {"score": score, "metrics": metrics, "advice": advice}
+    stale = profile.get("fingerprint_stale")
+    if isinstance(stale, dict):
+        # Additive honesty (fix round F3): the profile's fingerprint
+        # predates the current algorithm — the score above is still
+        # computed exactly as before, but the caller is told the
+        # comparison is cross-version so a skewed metric is not
+        # mistaken for a voice verdict.
+        result["fingerprint_warning"] = (
+            f"fingerprint computed under algorithm "
+            f"v{stale.get('from_version')}, current "
+            f"v{stale.get('to_version', ALGORITHM_VERSION)} — rebuild "
+            f"from samples for exact scoring")
     if short_text:
         result["reliability_note"] = (
             f"short text ({word_count} words < {SHORT_TEXT_WORDS}): "

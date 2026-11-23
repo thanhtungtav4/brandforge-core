@@ -407,3 +407,101 @@ N4 remains untouched.
 (594 + 1 new) · run_golden **7/7** · run_model_golden **6/6** ·
 test_mcp_client **24/24** · test_mcp_http **PASS** (70 tools) ·
 demos **4/4 exit 0**.
+
+## Closure addendum — fix round F1–F5 (2026-11-23, Smith's chat review)
+
+Five findings Smith handed over in chat (2 High, 2 Medium, 1 Low),
+fixed in his priority order, one commit per finding, LOCAL ONLY —
+nothing pushed this round. Fail-first tests per finding;
+differentials over copies of the real stores wherever gate/verdict
+paths were touched; NO writes to the real WordPress site (all
+export evidence is against the local mock WP server).
+
+- **F4 (Medium) — final_gate S3 parity — FIXED, core `abbbf71`.**
+  `final_gate` now returns the structured error
+  `{"error": "style profile not found: <id>", ...}` and records NO
+  gate_history entry when the BRIEF's `style_profile_id` no longer
+  resolves; a corrupt stored profile surfaces the same way via the
+  loader's ValueError. Parity exception kept: briefs carrying
+  `style_profile_source == "brand_corpus_choice"` treat a stale id
+  as silently no style part (assemble_context behaviour). The
+  LangGraph graph path was deliberately NOT changed — its resolver
+  swallows stale ids by documented design (see the B/N2 addendum).
+  Evidence: 4 fail-first tests (`test_fg_*`, tests/test_quality_uplift.py);
+  differential over all 140 real drafts: verdicts identical
+  **140/140** (0 real briefs name a missing profile). Suite 626.
+
+- **F3 (Medium) — stale style fingerprints — FIXED, core `f2fe952`.**
+  `refresh_profile` now stamps `fingerprint_stale`
+  ({from_version, to_version, reason}, sticky once saved) whenever
+  it version-bumps a profile without recomputing the fingerprint;
+  `style_match` adds an additive `fingerprint_warning` naming both
+  versions. Scores/metrics byte-identical. Data fix: the one known
+  real case, `mien-tay-van-hoa-voice` (stored at algorithm v2;
+  original samples unrecoverable — NO recompute fabricated), was
+  stamped through the refresh path; its fingerprint is verified
+  byte-identical before/after and it is the ONLY live-store change
+  of this round (md5 d2ca0a5b… → b0509f75…). The other 4 stored
+  profiles were already v3. Evidence: 4 new tests in
+  tests/test_style.py. Suite 630.
+
+- **F1 (High) — gate-checked WordPress export — FIXED, core
+  `940b93f`.** New `gates.content_sha(sections, title)` (sha256 of
+  canonical JSON) is recorded as `content_sha` on every gate_history
+  entry in BOTH gate paths (MCP final_gate and the graph node).
+  `export_draft_to_wordpress` refuses BEFORE any WordPress write
+  unless the LATEST gate entry passed AND its content_sha matches
+  the content as it stands now. Structured reasons: `never_ran_gate`
+  / `gate_failed` / `edited_after_pass` / `pass_unverifiable`.
+  LEGACY RULE (the safer choice): passes recorded before
+  fingerprinting are NOT honoured — a workflow status cannot prove
+  the text never changed, so such a draft re-runs final_gate once.
+  Evidence: 4 refusal tests each asserting the reason AND zero
+  requests reaching the mock, plus content_sha unit tests
+  (tests/test_wordpress.py, tests/test_gates.py); differential vs
+  the post-F4 baseline **140/140** identical; the 4 real exported
+  drafts (posts 777–780) keep their records untouched — the
+  duplicate rule still fires before the gate check for them.
+  Suite 638.
+
+- **F2 (High) — idempotent export — FIXED, core `fda6a00`, app
+  `07397e3`.** Marker mechanism: a deterministic post SLUG
+  (`bf-<draft>-<attempt prefix>`) — stock WP REST creates with an
+  explicit slug and queries by it; a meta field would need
+  register_meta on the client's site, which the exporter cannot
+  assume. The export records `wordpress_export_attempt`
+  (attempt id + slug + site + timestamp) on the draft BEFORE any
+  upload/create; on a later call it first searches the site for the
+  open attempt's slug and ADOPTS a found post
+  (`adopted_existing_post: True`) instead of creating a second one;
+  a retry whose attempt never created reuses the same attempt +
+  slug; force mints a fresh attempt. App side: `callTool` gains
+  `{retry: false}` and the export call opts out of the blind
+  reconnect retry; WpExportPanel's banner reports adoption honestly.
+  Evidence (MOCK ONLY — not verified against a real WordPress):
+  simulated lost response (create lands, WPError raised) → retry
+  adopts post 4242, mock post count stays 1, no second create, no
+  media re-upload; slug-reuse and find_post_by_slug roundtrip tests
+  in tests/test_wordpress.py (mock extended with post storage + GET
+  slug search). Suite 642.
+
+- **F5 (Low) — app stats staleness — FIXED, app `2910724`.**
+  "Latest quality" in src/lib/core/stats.ts is now the latest RUN's
+  own weighted_total — a draft whose newest run carries no quality
+  report contributes no score instead of silently presenting an
+  older run's; the series still plots all quality-bearing runs as
+  history; totals are the brand-weighted mean of the brand values.
+  Verified against the real store: NO displayed average changes
+  today — mambagiaokhoe (the only real brand with gated drafts:
+  9 drafts, 7 counted) has quality on every latest run, brand and
+  totals averages stay 96.07; across all 138 gated drafts zero
+  exhibit the stale pattern, so this closes a latent mislabelling.
+
+**Verification (fresh output, this round):** pytest **642 passed**
+· run_golden **7/7** · run_model_golden **6/6** · test_mcp_client
+**24/24** · test_mcp_http **PASS** (72 tools) · demos **4/4 exit 0**
+· app `tsc --noEmit` clean · app production build PASS. Live
+stores md5-verified against the pre-round snapshot: identical
+except the single intended F3 stamp above (two demo-created drafts
+from the verification run were deleted via delete_draft and the
+store re-verified).

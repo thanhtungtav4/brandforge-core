@@ -58,6 +58,7 @@ from content_core.fact_check import find_refused_claims
 # MAX_REWRITES, and the craft constants re-exported from craft.py). Both
 # this server's final_gate and the LangGraph graph call gates.evaluate_gate.
 from content_core.gates import BRAND_PASS_SCORE, CRAFT_PASS_SCORE, MAX_REWRITES
+from content_core.gates import content_sha as _content_sha
 from content_core.gates import evaluate_gate as _evaluate_gate
 # NOTE: content_core.graph (and its langgraph chain, ~1 s of import) is
 # deliberately NOT imported at module level — see _core_class (perf P8).
@@ -495,6 +496,15 @@ def _draft_lock(draft_id: str):
 
 def _sections_of(draft: dict) -> list[dict]:
     return draft.get("sections", [])
+
+
+def _draft_title(draft: dict) -> str:
+    """The title the WordPress exporter would post for this draft —
+    ONE resolution shared by the exporter and the gate's content
+    fingerprint (fix round F1), so the fingerprint covers exactly
+    the title that ships."""
+    return draft.get("brief", {}).get("title") or \
+        draft.get("title") or "Untitled"
 
 
 def _brand_max_sentence_words(brand: dict | None = None) -> int | None:
@@ -2173,6 +2183,11 @@ def final_gate(draft_id: str, quality_profile: str = "",
     a `style_match` report against that Style Profile is included and its
     score recorded in gate_history as `style_score`. It NEVER changes
     `passed`. Without a profile in the brief, the result is unchanged.
+    A brief naming a profile that no longer resolves is a structured
+    error naming the id (S3 parity with quality_score / check_draft_all,
+    fix round F4) — unless the id arrived as the brand's corpus-choice
+    default (`style_profile_source` == "brand_corpus_choice"), which is
+    silently skipped exactly as assemble_context treats a stale default.
 
     The gate's load→verdict→store runs under the per-draft lock (see
     _draft_lock): concurrent gates in another server process queue
@@ -2214,8 +2229,28 @@ def _final_gate_impl(draft_id: str, quality_profile: str = "",
 
     # Style profile (if the brief carries one): feeds the advisory style
     # report below AND the quality layer's voice axis when that runs.
-    style_profile = _resolve_style_profile(
-        draft.get("brief", {}).get("style_profile_id"))
+    # S3 parity (fix round F4, Smith-approved via the 23 Nov review):
+    # a brief that NAMES a profile which no longer resolves is a
+    # structured error naming the id — the gate never silently runs
+    # without the intended profile, exactly as quality_score and
+    # check_draft_all already behave (approved item A). The one
+    # exception mirrors assemble_context: a brief whose id arrived as
+    # the brand's corpus-choice DEFAULT (style_profile_source ==
+    # "brand_corpus_choice") treats a stale id as silently no style
+    # part. A corrupt stored profile raises in the loader and becomes
+    # the same structured error — never a crash, never a verdict.
+    wanted_style = draft.get("brief", {}).get("style_profile_id")
+    style_profile = None
+    if wanted_style:
+        try:
+            style_profile = _resolve_style_profile(wanted_style)
+        except ValueError as exc:  # corrupt stored profile (review M6)
+            return {"error": str(exc), "draft_id": draft_id}
+        if style_profile is None and draft.get(
+                "brief", {}).get("style_profile_source") \
+                != "brand_corpus_choice":
+            return {"error": f"style profile not found: {wanted_style}",
+                    "draft_id": draft_id}
 
     try:
         # The gate judges against the DRAFT's brand (brief.brand_id)
@@ -2256,7 +2291,13 @@ def _final_gate_impl(draft_id: str, quality_profile: str = "",
              "brand_violations": len(hard["brand_violations"]),
              "fact_issues": len(hard["fact_issues"]), "passed": passed,
              "craft_score": craft["score"], "craft_blocking": craft_blocking,
-             "craft_advisory": not craft_blocking}
+             "craft_advisory": not craft_blocking,
+             # Fix round F1: the fingerprint of the exact content
+             # this verdict describes — the WordPress exporter
+             # refuses to ship a draft whose current content no
+             # longer matches its recorded pass.
+             "content_sha": _content_sha(_sections_of(draft),
+                                         _draft_title(draft))}
     if style_report is not None:
         entry["style_score"] = style_report["score"]
         entry["style_profile_id"] = style_report["profile_id"]
@@ -2848,6 +2889,69 @@ def get_wordpress_target(brand_id: str) -> dict:
                 _wordpress.credentials_configured(brand_id)}
 
 
+def _export_attempt_slug(draft_id: str, attempt_id: str) -> str:
+    """The deterministic WordPress slug marking one export attempt
+    (fix round F2): "bf-<draft>-<attempt prefix>". The slug is the
+    reconciliation marker — stock WP REST creates with an explicit
+    slug and queries by it, so no site-side registration is needed.
+    Stored on the draft's attempt record, so every retry of the
+    SAME attempt looks for the SAME slug."""
+    import re as _re
+    base = _re.sub(r"[^a-z0-9]+", "-", str(draft_id).lower()
+                   ).strip("-")[:60] or "draft"
+    return f"bf-{base}-{str(attempt_id)[:8]}"
+
+
+def _export_gate_refusal(draft: dict) -> dict | None:
+    """Fix round F1: the exporter's gate eligibility — a draft may
+    ship to WordPress ONLY when its CURRENT content carries a
+    recorded final_gate PASS. Returns {"error", "reason"} or None.
+
+    The proof is the gate entry's content fingerprint
+    (gates.content_sha, recorded by both gate paths since F1): the
+    LATEST gate entry must be a pass AND its fingerprint must equal
+    the fingerprint of the content as it stands now. Reasons:
+    - never_ran_gate: no gate_history at all;
+    - gate_failed: the latest gate run failed;
+    - edited_after_pass: the latest run passed, but the content has
+      changed since (fingerprint mismatch);
+    - pass_unverifiable: the latest pass predates fingerprinting
+      (a legacy entry with no content_sha). Deliberately NOT
+      honoured: a workflow status flag cannot prove the text never
+      changed — the fingerprint is the only content-bound evidence,
+      so a legacy draft simply re-runs final_gate once.
+    """
+    draft_id = draft.get("draft_id", "")
+    history = draft.get("gate_history") or []
+    if not history:
+        return {"error": f"draft {draft_id} has never run final_gate "
+                         f"— run final_gate and fix any failures "
+                         f"before exporting to WordPress",
+                "reason": "never_ran_gate"}
+    latest = history[-1]
+    if not latest.get("passed"):
+        return {"error": f"draft {draft_id}'s latest final_gate run "
+                         f"FAILED — fix the failing sections and "
+                         f"re-run final_gate before exporting to "
+                         f"WordPress",
+                "reason": "gate_failed"}
+    recorded = latest.get("content_sha")
+    if not recorded:
+        return {"error": f"draft {draft_id}'s recorded final_gate "
+                         f"pass predates content fingerprinting and "
+                         f"cannot be verified against the current "
+                         f"text — re-run final_gate before exporting "
+                         f"to WordPress",
+                "reason": "pass_unverifiable"}
+    current = _content_sha(_sections_of(draft), _draft_title(draft))
+    if recorded != current:
+        return {"error": f"draft {draft_id} was edited after its "
+                         f"recorded final_gate pass — re-run "
+                         f"final_gate before exporting to WordPress",
+                "reason": "edited_after_pass"}
+    return None
+
+
 @mcp.tool()
 def export_draft_to_wordpress(brand_id: str, draft_id: str,
                               force: bool = False) -> dict:
@@ -2867,7 +2971,26 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
     exports text-only; unfulfilled plan slots are reported as a
     warning, never silently dropped. Errors are structured and
     credential-free: WP failures name the HTTP status and WP's
-    message with the password scrubbed out."""
+    message with the password scrubbed out.
+
+    GATE RULE (fix round F1): the draft ships ONLY when its current
+    content carries a recorded final_gate PASS — the latest gate
+    entry must be a pass whose content fingerprint (content_sha)
+    matches the content as it stands now. A draft that never ran
+    the gate, whose latest run failed, that was edited after its
+    pass, or whose pass predates fingerprinting is REFUSED with a
+    structured `reason` (never_ran_gate / gate_failed /
+    edited_after_pass / pass_unverifiable) BEFORE any WordPress
+    write is made.
+
+    IDEMPOTENCY (fix round F2): before creating anything, the
+    export records an attempt on the draft (attempt id + a
+    deterministic slug marker, "bf-<draft>-<attempt>") and creates
+    the post WITH that slug. If an earlier attempt's outcome was
+    lost (post created, response/record never landed), the next
+    call first searches the site for the open attempt's slug and
+    ADOPTS that post (returned with adopted_existing_post=True)
+    instead of creating a duplicate."""
     try:
         target = _load_wp_target(brand_id)
     except ValueError as exc:
@@ -2901,6 +3024,79 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                 return {"error": _wordpress.not_configured_message(
                     brand_id), "brand_id": brand_id,
                     "draft_id": draft_id}
+
+            # F2: idempotency reconciliation. An OPEN attempt from
+            # an earlier call whose outcome was lost (the post was
+            # created but the response/record never landed) is
+            # resolved first: search the site for the attempt's
+            # slug and ADOPT the post instead of creating a second
+            # one. This runs before the gate check on purpose: an
+            # attempt could only be recorded by a call that already
+            # passed the gate, and the adopted post embodies that
+            # gated content — nothing new is shipped by adopting.
+            attempt = draft.get("wordpress_export_attempt")
+            if not isinstance(attempt, dict):
+                attempt = None
+            if attempt and attempt.get("slug") and \
+                    attempt.get("site_url") == target["site_url"]:
+                found = _wordpress.find_post_by_slug(
+                    target, password, str(attempt["slug"]))
+                if found is not None:
+                    post_id = int(found["id"])
+                    record = {"brand_id": brand_id,
+                              "site_url": target["site_url"],
+                              "wp_post_id": post_id,
+                              "edit_link": _wordpress.edit_link(
+                                  target["site_url"], post_id),
+                              "post_link": found.get("link", ""),
+                              "status": found.get("status") or "draft",
+                              "exported_at": datetime.now(
+                                  timezone.utc).isoformat(
+                                      timespec="seconds"),
+                              "slug": attempt["slug"],
+                              "attempt_id": attempt.get("attempt_id"),
+                              "adopted_existing_post": True,
+                              "media": []}
+                    draft["wordpress_export"] = record
+                    draft.pop("wordpress_export_attempt", None)
+                    _store_draft(draft)
+                    return {"brand_id": brand_id,
+                            "draft_id": draft_id,
+                            "wp_post_id": post_id,
+                            "edit_link": record["edit_link"],
+                            "post_link": record["post_link"],
+                            "status": record["status"],
+                            "site_url": target["site_url"],
+                            "media_uploaded": 0, "media": [],
+                            "adopted_existing_post": True,
+                            "warnings": [
+                                "an earlier export attempt had "
+                                "already created this post on "
+                                "WordPress — adopted it instead of "
+                                "creating a duplicate; its media "
+                                "were uploaded by that attempt"]}
+
+            # F1: gate eligibility — before any WordPress WRITE.
+            refusal = _export_gate_refusal(draft)
+            if refusal is not None:
+                return {**refusal, "brand_id": brand_id,
+                        "draft_id": draft_id}
+
+            # F2: record the attempt BEFORE uploading or creating
+            # anything, so any failure from here leaves a
+            # reconcilable trace. A retry whose earlier attempt
+            # never created a post reuses the SAME attempt + slug;
+            # force (a deliberate fresh post) mints a fresh attempt.
+            if force or attempt is None:
+                attempt_id = uuid.uuid4().hex
+                attempt = {
+                    "attempt_id": attempt_id,
+                    "slug": _export_attempt_slug(draft_id, attempt_id),
+                    "site_url": target["site_url"],
+                    "started_at": datetime.now(
+                        timezone.utc).isoformat(timespec="seconds")}
+                draft["wordpress_export_attempt"] = attempt
+                _store_draft(draft)
 
             state = _draft_images_state(draft)
             manifest = (_build_image_manifest(state["plan"],
@@ -2954,12 +3150,11 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
 
             content = _wordpress.build_content_html(
                 _sections_of(draft), media_by_section)
-            title = draft.get("brief", {}).get("title") or \
-                draft.get("title") or "Untitled"
             payload = _wordpress.build_post_payload(
-                title=title, content_html=content,
+                title=_draft_title(draft), content_html=content,
                 featured_media=featured_media_id,
-                category_id=target.get("default_category_id"))
+                category_id=target.get("default_category_id"),
+                slug=attempt["slug"])
             post = _wordpress.create_post(target, password, payload)
             post_id = int(post["id"])
             record = {"brand_id": brand_id,
@@ -2971,8 +3166,11 @@ def export_draft_to_wordpress(brand_id: str, draft_id: str,
                       "status": "draft",
                       "exported_at": datetime.now(
                           timezone.utc).isoformat(timespec="seconds"),
+                      "slug": attempt["slug"],
+                      "attempt_id": attempt["attempt_id"],
                       "media": uploaded}
             draft["wordpress_export"] = record
+            draft.pop("wordpress_export_attempt", None)
             _store_draft(draft)
             return {"brand_id": brand_id, "draft_id": draft_id,
                     "wp_post_id": post_id,

@@ -33,6 +33,9 @@ the rule. Both production call sites use the default, "blocking".
 """
 from __future__ import annotations
 
+import hashlib
+import json
+
 from .craft import CRAFT_BLOCKING_FORMATS, CRAFT_PASS_SCORE, craft_check_sections
 from .fact_check import check_draft
 from .linter import lint_draft, word_count
@@ -46,7 +49,28 @@ BRAND_PASS_SCORE = 85
 MAX_REWRITES = 2
 
 __all__ = ["BRAND_PASS_SCORE", "MAX_REWRITES", "CRAFT_PASS_SCORE",
-           "CRAFT_BLOCKING_FORMATS", "evaluate_gate"]
+           "CRAFT_BLOCKING_FORMATS", "evaluate_gate", "content_sha"]
+
+
+def content_sha(sections: list[dict], title: str = "") -> str:
+    """Fingerprint of a draft's EXPORTABLE content: the post title
+    plus each section's id / heading / text, in order — exactly what
+    the WordPress exporter turns into a post. Recorded on every
+    gate_history entry (fix round F1) so the exporter can prove a
+    recorded PASS still describes the CURRENT text: any edit after
+    the pass changes this hash. Deterministic (canonical JSON,
+    sorted keys); intent/target_words are planning metadata, not
+    content, and are excluded."""
+    canonical = {
+        "title": str(title or ""),
+        "sections": [{"id": str(s.get("id", "")),
+                      "heading": str(s.get("heading", "")),
+                      "text": str(s.get("text", ""))}
+                     for s in sections or []],
+    }
+    raw = json.dumps(canonical, ensure_ascii=False, sort_keys=True,
+                     separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def evaluate_gate(sections: list[dict], fmt: str, brand: dict, facts: dict,

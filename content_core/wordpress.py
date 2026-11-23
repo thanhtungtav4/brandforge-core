@@ -151,9 +151,42 @@ def _auth_header(username: str, app_password: str) -> str:
 def _request(target: dict, app_password: str, method: str, route: str,
              json_body: dict | None = None, raw_body: bytes | None = None,
              extra_headers: dict | None = None) -> dict:
-    """One authenticated WP REST call. Returns the decoded JSON
-    body. Any failure raises WPError with a redacted message naming
-    the HTTP status and WP's own error message when it sent one."""
+    """One authenticated WP REST call whose response must be a JSON
+    OBJECT (a single resource). List endpoints use _request_list.
+    Any failure raises WPError with a redacted message naming the
+    HTTP status and WP's own error message when it sent one."""
+    parsed = _request_json(target, app_password, method, route,
+                           json_body=json_body, raw_body=raw_body,
+                           extra_headers=extra_headers)
+    if not isinstance(parsed, dict):
+        raise WPError(redact(
+            f"WordPress {method} {route} returned an unexpected "
+            f"response shape", app_password))
+    return parsed
+
+
+def _request_list(target: dict, app_password: str, method: str,
+                  route: str) -> list:
+    """One authenticated WP REST call whose response must be a JSON
+    ARRAY (a collection endpoint — the slug search that powers the
+    exporter's idempotency reconciliation, fix round F2)."""
+    parsed = _request_json(target, app_password, method, route)
+    if not isinstance(parsed, list):
+        raise WPError(redact(
+            f"WordPress {method} {route} returned an unexpected "
+            f"response shape (expected a list)", app_password))
+    return parsed
+
+
+def _request_json(target: dict, app_password: str, method: str,
+                  route: str, json_body: dict | None = None,
+                  raw_body: bytes | None = None,
+                  extra_headers: dict | None = None):
+    """The shared wire path: one authenticated WP REST call,
+    returning the decoded JSON body of WHATEVER shape (object or
+    array). Any failure raises WPError with a redacted message
+    naming the HTTP status and WP's own error message when it sent
+    one."""
     url = f"{target['site_url']}/wp-json/wp/v2/{route}"
     auth = _auth_header(target["username"], app_password)
     # Everything that could carry the credential into an error body:
@@ -198,10 +231,6 @@ def _request(target: dict, app_password: str, method: str, route: str,
         raise WPError(redact(
             f"WordPress {method} {route} returned a non-JSON response",
             *secrets)) from None
-    if not isinstance(parsed, dict):
-        raise WPError(redact(
-            f"WordPress {method} {route} returned an unexpected "
-            f"response shape", *secrets))
     return parsed
 
 
@@ -244,6 +273,29 @@ def get_post(target: dict, app_password: str, post_id: int) -> dict:
                     f"{target.get('post_type') or 'posts'}/{post_id}")
 
 
+def find_post_by_slug(target: dict, app_password: str,
+                      slug: str) -> dict | None:
+    """READ: the post carrying `slug`, or None (fix round F2 — the
+    exporter's idempotency reconciliation). The marker mechanism is
+    the post SLUG: stock WP REST supports creating with an explicit
+    slug and querying by it, no site-side meta registration needed
+    (a meta field would need register_meta on the client's site,
+    which the exporter cannot assume). The query asks for every
+    status a draft can be in by the time a retry happens (draft,
+    plus publish/pending/private in case the owner already acted on
+    it); a returned post counts ONLY on an exact slug match — a
+    server that ignores the slug parameter must never make us adopt
+    the wrong post."""
+    from urllib.parse import quote
+    route = (f"{target.get('post_type') or 'posts'}"
+             f"?slug={quote(str(slug), safe='')}"
+             f"&status=draft,publish,pending,private")
+    for post in _request_list(target, app_password, "GET", route):
+        if isinstance(post, dict) and post.get("slug") == slug:
+            return post
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Payload + content builders (pure)
 # ---------------------------------------------------------------------------
@@ -251,16 +303,22 @@ def get_post(target: dict, app_password: str, post_id: int) -> dict:
 def build_post_payload(title: str, content_html: str,
                        status: str | None = None,
                        featured_media: int | None = None,
-                       category_id: int | None = None) -> dict:
+                       category_id: int | None = None,
+                       slug: str | None = None) -> dict:
     """The WP post payload. `status` is accepted so callers can
     pass whatever they hold — and IGNORED: the payload always
-    carries "draft" (the delivery decision is not a parameter)."""
+    carries "draft" (the delivery decision is not a parameter).
+    `slug`, when given, is the export attempt's deterministic
+    marker (fix round F2): it is how a later retry recognises the
+    post an earlier attempt already created."""
     payload: dict = {"title": title, "content": content_html,
                      "status": "draft"}
     if featured_media:
         payload["featured_media"] = featured_media
     if category_id:
         payload["categories"] = [category_id]
+    if slug:
+        payload["slug"] = slug
     return payload
 
 

@@ -553,6 +553,77 @@ def test_qs_and_check_all_valid_brief_style_profile_still_scores(stores):
 
 
 # ---------------------------------------------------------------------------
+# Fix round (Smith review, 23 Nov 2026) F4: final_gate S3 parity —
+# the stale/corrupt brief style-profile rule quality_score and
+# check_draft_all already follow (approved item A) applies to
+# final_gate too (Smith approved via the review report).
+# ---------------------------------------------------------------------------
+
+def test_fg_stale_brief_style_profile_is_an_error(stores):
+    """F4: final_gate must NOT gate a draft whose brief names a
+    style profile that no longer resolves as if no profile were
+    intended — the stale id is a structured error naming it, and NO
+    gate_history entry is recorded (an error is not a verdict).
+    (Fail-first: before the fix the call returns a full verdict
+    with no style report.)"""
+    draft_id = _stale_profile_draft_id()
+    out = srv.final_gate(draft_id)
+    assert "error" in out, out
+    assert "sp-doesnotexist" in out["error"]
+    assert "passed" not in out
+    draft = srv.get_draft(draft_id)
+    assert draft["gate_history"] == []
+    assert draft["status"] == "drafting"
+
+
+def test_fg_corrupt_stored_style_profile_is_a_structured_error(stores):
+    """F4 pin: a stored profile file that fails to load makes
+    final_gate return a structured error, not a crash."""
+    (Path(stores) / "style_profiles").mkdir(parents=True, exist_ok=True)
+    (Path(stores) / "style_profiles" / "sp-broken.json").write_text(
+        "{not json", encoding="utf-8")
+    brief = {"format": "blog", "topic": "cà phê văn phòng",
+             "keyword": "cà phê", "title": "Cà phê Mộc Brew",
+             "style_profile_id": "sp-broken"}
+    draft_id = srv.start_draft(brief)["draft_id"]
+    srv.save_section(draft_id, "s1", "Mở đầu", GOOD_OPENING,
+                     intent="intro", target_words=120)
+    out = srv.final_gate(draft_id)
+    assert "error" in out, out
+    assert "passed" not in out
+    assert srv.get_draft(draft_id)["gate_history"] == []
+
+
+def test_fg_stale_corpus_default_in_brief_stays_silent(stores):
+    """F4: a brief whose style_profile_id came from the brand's
+    corpus choice (style_profile_source == "brand_corpus_choice")
+    treats a stale id the way assemble_context treats a stale
+    default: silently no style part — the gate still runs."""
+    brief = {"format": "blog", "topic": "cà phê văn phòng",
+             "keyword": "cà phê", "title": "Cà phê Mộc Brew",
+             "style_profile_id": "sp-doesnotexist",
+             "style_profile_source": "brand_corpus_choice"}
+    draft_id = srv.start_draft(brief)["draft_id"]
+    srv.save_section(draft_id, "s1", "Mở đầu", GOOD_OPENING,
+                     intent="intro", target_words=120)
+    out = srv.final_gate(draft_id)
+    assert "error" not in out, out
+    assert "passed" in out
+    assert "style_match" not in out
+
+
+def test_fg_valid_brief_style_profile_still_gates(stores):
+    """F4 pin: a brief naming a profile that DOES resolve still
+    gates with the advisory style report recorded — the fix must
+    not turn every profiled draft into an error."""
+    draft_id = _mocbrew_draft(stores, style=True)
+    out = srv.final_gate(draft_id)
+    assert "error" not in out, out
+    assert "style_match" in out
+    assert out["gate_history"][-1]["style_profile_id"]
+
+
+# ---------------------------------------------------------------------------
 # WS3 — WordPress edit feedback sync
 # ---------------------------------------------------------------------------
 
@@ -692,6 +763,10 @@ def _exported_draft(stores, mock) -> str:
         srv.save_section(draft_id, sec["id"], sec["heading"],
                          sec["text"], intent=sec["intent"],
                          target_words=120)
+    # Fix round F1: the exporter only ships a draft carrying a
+    # current final_gate pass — gate first (this content passes).
+    gate = srv.final_gate(draft_id)
+    assert gate["passed"], gate
     srv.set_wordpress_target(WP_BRAND, mock.base_url, WP_USER)
     (stores / "wordpress_secrets.json").write_text(
         json.dumps({WP_BRAND: WP_PASSWORD}), encoding="utf-8")

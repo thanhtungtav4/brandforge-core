@@ -2,7 +2,7 @@
   "id": "mien-tay-van-hoa-voice",
   "name": "Miền Tây văn hóa — giọng kể sông nước",
   "brand_id": "mambagiaokhoe",
-  "algorithm_version": 2,
+  "algorithm_version": 3,
   "created_from": {
     "sample_count": 32,
     "total_words": 39619
@@ -347,5 +347,11 @@
     ]
   },
   "exemplars": [],
-  "excerpts_note": "excerpts not stored — fingerprint + distilled traits only (default; use store_excerpts=True only for your own/licensed samples)"
+  "excerpts_note": "excerpts not stored — fingerprint + distilled traits only (default; use store_excerpts=True only for your own/licensed samples)",
+  "fingerprint_stale": {
+    "from_version": 2,
+    "to_version": 3,
+    "reason": "fingerprint computed under algorithm v2 and NOT recomputed by the v3 refresh — the original samples are not stored, so it cannot be recomputed; metric definitions that changed between versions make comparisons against current-algorithm text metrics approximate. Rebuild the profile from its samples for exact scoring."
+  },
+  "warnings_refreshed_from": 2
 }

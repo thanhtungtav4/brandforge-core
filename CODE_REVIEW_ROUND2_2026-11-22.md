@@ -99,3 +99,34 @@ Smith approved fixing **only the 4 Medium findings**; the 11 Low findings are ex
 | M4 | **Fixed.** `check_images` re-validates stored vision grades with the write side's rule (strict int, not bool, 0..2). A present-but-invalid record never counts as checked in either mode; in complete mode it is a hard `vision_grade_invalid` issue, so it blocks manifest `ready` until the grades are re-recorded. Pinned for stored grades {3,2}, {2,−1}, {5,5}, {True,True}, {"2",2} plus an end-to-end tampered-draft manifest test. |
 
 **Verification after fixes:** pytest 429 passed (414 baseline + 15 new), run_golden 7/7, run_model_golden 6/6, test_mcp_client 24/24, test_mcp_http PASS (39 tools), all four demos exit 0 (demo_images OK). No evaluation number moved — the fixes touch only the image layer's checker/store boundaries.
+
+## Closure addendum — L3 (2026-11-23, 2h review run)
+
+L3 was the next untouched round-2 Low after the Mediums closed; L1, L2,
+L4–L11 remain untouched.
+
+- **L3 — FIXED.** `check_images`' stuffed-alt scan now also catches
+  the two evasion shapes the report demonstrated: glued keyword
+  tokens (`"càphê càphê ngon"`) and letter-spaced keywords
+  (`"c à p h ê …"`). The alt is additionally checked
+  letter-spacing-collapsed (reusing the linter's
+  `collapse_letter_spacing`, the report's prescribed reuse) and with
+  spaces removed, so the keyword is counted in its glued form too;
+  a glued alt made of only the keyword is likewise stuffed. The new
+  disjuncts are purely additive — the old count and token-set clauses
+  are kept verbatim, so nothing previously flagged can un-flag. No
+  gate, threshold, or checker contract was touched; only the image
+  layer's alt scan. Evidence: fail-first tests — the glued-repeat,
+  letter-spaced-repeat, letter-spaced-only-keyword, and glued-only-
+  keyword cases all failed pre-fix; 3 new tests in
+  `tests/test_images.py` (plus a control pinning that a single glued
+  occurrence, `"càphê rang xay thơm ngon"`, is NOT stuffed).
+  Differential over the real stores: `image_check` (both modes) +
+  `get_image_manifest` over all 138 stored drafts —
+  byte-identical before/after (2 drafts carry image plans; 0
+  stuffed_alt in the store either way).
+
+**Verification (fresh output, this fix):** pytest **622 passed**
+· run_golden **7/7** · run_model_golden **6/6** ·
+test_mcp_client **24/24** · test_mcp_http **PASS** (72 tools) ·
+demos **4/4 exit 0**.

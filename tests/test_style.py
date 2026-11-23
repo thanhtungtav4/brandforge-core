@@ -11,6 +11,7 @@ first-person 3.5/100w, reader 1.93/100w, number density 0.36/100w):
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -20,8 +21,10 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 import mcp_server as srv  # noqa: E402
+from content_core import loaders  # noqa: E402
 from content_core.loaders import load_style_profile  # noqa: E402
-from content_core.style import (analyze_samples, build_profile, fingerprint,  # noqa: E402
+from content_core.style import (ALGORITHM_VERSION, analyze_samples,  # noqa: E402
+                                build_profile, fingerprint, refresh_profile,
                                 style_match)
 from fetch_sample import strip_html  # noqa: E402
 
@@ -207,6 +210,73 @@ def test_style_match_monotone_flagged_on_rhythm():
     stdev = next(m for m in out["metrics"] if m["metric"] == "sentence_stdev")
     assert stdev["within_range"] is False
     assert any("uniform" in a or "burstiness" in a for a in out["advice"])
+
+
+# -- stale fingerprints (fix round F3, Smith review 23 Nov 2026) -------------------
+#
+# refresh_profile migrates a stored profile's WARNINGS to the current
+# algorithm, but it cannot recompute the FINGERPRINT — the original
+# samples are not stored (copyright rule). A profile fingerprinted
+# under an older algorithm (e.g. v2, before the "em" self-reference
+# counting of v3) is therefore silently compared against text metrics
+# computed by the NEW algorithm. F3 makes that visible instead of
+# silent: refresh stamps fingerprint_stale, style_match warns.
+
+def _v2_profile() -> dict:
+    profile = build_profile("Giọng Cũ", [CONV1, CONV2, SAME_VOICE])
+    profile["algorithm_version"] = ALGORITHM_VERSION - 1  # pretend v2
+    return profile
+
+
+def test_refresh_stamps_fingerprint_stale_on_version_bump():
+    """(Fail-first: before F3, refresh bumped the version and said
+    nothing about the fingerprint's provenance.)"""
+    stale = _v2_profile()
+    fp_before = json.loads(json.dumps(stale["fingerprint"]))
+    refreshed = refresh_profile(stale)
+    assert refreshed["algorithm_version"] == ALGORITHM_VERSION
+    stamp = refreshed.get("fingerprint_stale")
+    assert stamp, refreshed.keys()
+    assert stamp["from_version"] == ALGORITHM_VERSION - 1
+    assert stamp["to_version"] == ALGORITHM_VERSION
+    assert stamp["reason"]
+    # The fingerprint itself is NOT touched by the refresh.
+    assert refreshed["fingerprint"] == fp_before
+
+
+def test_refresh_current_version_profile_has_no_stale_stamp():
+    profile = build_profile("Giọng Mới", [CONV1, CONV2, SAME_VOICE])
+    refreshed = refresh_profile(profile)
+    assert "fingerprint_stale" not in refreshed
+
+
+def test_stale_stamp_survives_a_store_roundtrip(tmp_path, monkeypatch):
+    """The stamp is part of the stored profile once saved: loaders
+    persist it verbatim (no key-stripping validator in the way)."""
+    monkeypatch.setenv("CONTENT_CORE_STYLE_PROFILES_DIR",
+                       str(tmp_path / "profiles"))
+    refreshed = refresh_profile(_v2_profile())
+    loaders.save_style_profile(refreshed)
+    loaded = loaders.load_style_profile(refreshed["id"])
+    assert loaded["fingerprint_stale"]["from_version"] == \
+        ALGORITHM_VERSION - 1
+
+
+def test_style_match_warns_on_stale_profile_without_changing_score():
+    """(Fail-first: before F3 the result carried no warning at all.)
+    The warning is additive — the score and metrics are exactly what
+    the same profile scores when served fresh."""
+    fresh = build_profile("Giọng", [CONV1, CONV2, SAME_VOICE])
+    stale = _v2_profile()
+    out_fresh = style_match(SAME_VOICE, fresh)
+    out_stale = style_match(SAME_VOICE, stale)
+    assert "fingerprint_warning" not in out_fresh
+    warning = out_stale.get("fingerprint_warning", "")
+    assert f"v{ALGORITHM_VERSION - 1}" in warning
+    assert f"v{ALGORITHM_VERSION}" in warning
+    assert "rebuild" in warning
+    assert out_stale["score"] == out_fresh["score"]
+    assert out_stale["metrics"] == out_fresh["metrics"]
 
 
 # -- MCP layer -------------------------------------------------------------------------

@@ -54,7 +54,7 @@ from __future__ import annotations
 import os
 import re
 
-from .linter import normalize_for_match
+from .linter import collapse_letter_spacing, normalize_for_match
 from .loaders import slugify, validate_visual
 
 # --- design constants -------------------------------------------------------
@@ -373,7 +373,8 @@ def check_images(plan: list[dict], images: dict, brief: dict,
 
     Hard issues: missing_image (complete), missing_alt, duplicate_alt
     (diacritics-insensitive), stuffed_alt (the brief keyword repeated,
-    or an alt made of nothing but the keyword), bad_filename,
+    or an alt made of nothing but the keyword — glued and
+    letter-spaced forms count too), bad_filename,
     featured_filename_missing_keyword, featured_reused (the featured
     ref used again in-content), duplicate_ref (the same normalised
     ref fulfilling 2+ slots — the featured-reuse pair is reported as
@@ -465,10 +466,26 @@ def check_images(plan: list[dict], images: dict, brief: dict,
                        f"alt duplicates {seen_alts[nalt]}'s alt text")
             else:
                 seen_alts[nalt] = iid
+            # Stuffed alt: the brief keyword repeated, or an alt made
+            # of nothing but the keyword. Two evasion shapes are
+            # closed here (review round 2 L3): glued tokens
+            # ("càphê càphê") and letter-spacing ("c à p h ê") both
+            # hide the keyword from a plain substring/token scan, so
+            # the alt is ALSO checked letter-spacing-collapsed and
+            # with spaces removed. The new disjuncts are purely
+            # additive: anything the old scan caught is still caught
+            # (the old count and token-set clauses are kept verbatim).
+            nalt_collapsed = collapse_letter_spacing(nalt)
+            nalt_flat = nalt_collapsed.replace(" ", "")
+            keyword_flat = keyword_norm.replace(" ", "")
             if keyword_norm and (
                     nalt.count(keyword_norm) > 1
                     or (keyword_tokens
-                        and set(nalt.split()) <= keyword_tokens)):
+                        and set(nalt.split()) <= keyword_tokens)
+                    or nalt_flat.count(keyword_flat) > 1
+                    or (keyword_tokens
+                        and set(nalt_collapsed.split()) <= keyword_tokens)
+                    or not nalt_flat.replace(keyword_flat, "")):
                 _issue(iid, "stuffed_alt",
                        "alt repeats the brief keyword or is only keywords")
             if len(alt) > ALT_HARD_LIMIT:

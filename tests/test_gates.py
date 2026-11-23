@@ -49,10 +49,13 @@ def test_research_only_retrieves_triggered_facts():
 # final_gate does; only the record shape changes, never a verdict.
 
 # The MCP entry shape with no style profile and no quality layer active:
-# exactly the keys final_gate writes in that case.
+# exactly the keys final_gate writes in that case. content_sha joined
+# in fix round F1 (the exporter's pass-currency fingerprint, recorded
+# by BOTH gate paths).
 _MCP_PLAIN_ENTRY_KEYS = {"pass", "brand_score", "brand_violations",
                          "fact_issues", "passed", "craft_score",
-                         "craft_blocking", "craft_advisory"}
+                         "craft_blocking", "craft_advisory",
+                         "content_sha"}
 
 
 def test_graph_gate_history_matches_mcp_entry_shape():
@@ -108,3 +111,46 @@ def test_graph_gate_history_omits_style_for_corrupt_profile(tmp_path, monkeypatc
     entry = state["gate_history"][0]
     assert "style_score" not in entry
     assert "style_profile_id" not in entry
+
+
+# --- Fix round F1: the gate content fingerprint --------------------------------
+# content_sha is what lets the WordPress exporter prove a recorded
+# pass still describes the current text. It must be deterministic,
+# content-sensitive (title, heading, text, order) and blind to
+# planning metadata (intent / target_words are not content).
+
+from content_core.gates import content_sha  # noqa: E402
+
+_SECS = [{"id": "s1", "heading": "Mở đầu", "intent": "intro",
+          "target_words": 120, "text": "Nội dung một."},
+         {"id": "s2", "heading": "Thân bài", "intent": "body",
+          "target_words": 200, "text": "Nội dung hai."}]
+
+
+def test_content_sha_deterministic_and_metadata_blind():
+    a = content_sha(_SECS, "Tiêu đề")
+    assert a == content_sha([dict(s) for s in _SECS], "Tiêu đề")
+    tweaked = [dict(s) for s in _SECS]
+    tweaked[0]["intent"] = "khác"
+    tweaked[0]["target_words"] = 999
+    assert content_sha(tweaked, "Tiêu đề") == a
+
+
+def test_content_sha_changes_with_any_content_edit():
+    a = content_sha(_SECS, "Tiêu đề")
+    assert content_sha(_SECS, "Tiêu đề khác") != a
+    edited = [dict(s) for s in _SECS]
+    edited[1]["text"] = "Nội dung hai, đã sửa."
+    assert content_sha(edited, "Tiêu đề") != a
+    edited = [dict(s) for s in _SECS]
+    edited[0]["heading"] = "Mở đầu khác"
+    assert content_sha(edited, "Tiêu đề") != a
+    assert content_sha(list(reversed(_SECS)), "Tiêu đề") != a
+
+
+def test_graph_and_mcp_entries_carry_the_same_content_sha():
+    # Both gate paths fingerprint the same content identically.
+    state = run_flow(GOOD_BRIEF, outline_approved=True)
+    entry = state["gate_history"][0]
+    expect = content_sha(state["sections"], GOOD_BRIEF["title"])
+    assert entry["content_sha"] == expect

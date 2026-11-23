@@ -12,7 +12,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from .fact_check import check_draft, find_refused_claims
-from .gates import MAX_REWRITES, evaluate_gate
+from .gates import MAX_REWRITES, content_sha, evaluate_gate
 from .linter import lint_draft
 from .loaders import (DEFAULT_STYLE_PROFILE_ID, load_brand, load_facts,
                       load_persona, load_style_profile)
@@ -173,7 +173,13 @@ class Core:
             "passed": verdict["passed"],
             "craft_score": verdict["craft"]["score"],
             "craft_blocking": verdict["craft"]["blocking"],
-            "craft_advisory": verdict["craft"]["advisory"]}
+            "craft_advisory": verdict["craft"]["advisory"],
+            # Fix round F1: same content fingerprint MCP final_gate
+            # records (gates.content_sha) — the exporter's currency
+            # proof for a recorded pass.
+            "content_sha": content_sha(
+                state.get("sections", []),
+                state.get("brief", {}).get("title") or "")}
         # Style (advisory, v1) — same computation as MCP final_gate:
         # score the joined draft text against the brief's profile.
         # It NEVER changes `passed`; a stale/corrupt profile resolves
