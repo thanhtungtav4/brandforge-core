@@ -50,6 +50,7 @@ from content_core.craft import craft_check as _craft_check_text
 from content_core.craft import craft_check_sections as _craft_check_draft
 from content_core.craft import get_exemplars as _get_exemplars
 from content_core.craft import glossary_group as _glossary_group
+from content_core.craft import resolve_glossary as _resolve_glossary
 from content_core.craft import retrieve_cards as _retrieve_cards
 from content_core.fact_check import check_draft as _fact_check_draft
 from content_core.fact_check import check_section as _fact_check_section
@@ -116,6 +117,7 @@ from content_core.loaders import add_image_library_entry as _add_library_image_f
 from content_core.loaders import list_image_library as _list_image_library_file
 from content_core.loaders import set_image_library_tags as _set_library_tags_file
 from content_core.seo import seo_pass as _seo_pass
+from content_core import geo as _geo
 from content_core import research as _research
 from content_core import seo_profile as _seo
 from content_core import setup_assist as _setup_assist
@@ -875,10 +877,21 @@ def get_exemplars(format: str) -> dict:
 
 
 @mcp.tool()
-def get_domain_glossary(group: str = "") -> dict:
-    """Layer 4: coffee domain glossary. No group → all groups + weak words.
-    Groups: aroma, acidity, body, aftertaste, brewing, roast. Weak words are
-    vague terms to avoid, each with a precise suggested replacement."""
+def get_domain_glossary(group: str = "", brand_id: str = "") -> dict:
+    """Layer 4: domain glossary. No group → all groups + weak words.
+    Default (no brand_id): the shipped glossary — Mộc Brew's coffee
+    groups aroma, acidity, body, aftertaste, brewing, roast. Weak words
+    are vague terms to avoid, each with a precise suggested replacement.
+
+    `brand_id` (optional) resolves the glossary the checker judges
+    that brand with (craft.resolve_glossary): a brand with a stored
+    per-brand glossary (data/glossaries/<brand-id>.json — e.g.
+    mambagiaokhoe's món-mắm dish group) gets it merged over the
+    generic brand-neutral set; any other non-Mộc-Brew brand gets the
+    generic set."""
+    if brand_id:
+        return _glossary_group(group or None,
+                               glossary=_resolve_glossary(brand_id=brand_id))
     return _glossary_group(group or None)
 
 
@@ -896,7 +909,8 @@ def craft_check(text: str = "", format: str = "blog", draft_id: str = "",
 
     `brand_id` (optional) selects the judging glossary: the shipped
     glossary belongs to Mộc Brew — pass another brand's id to judge with
-    the generic brand-neutral weak-word/sensory set instead of Mộc
+    the generic brand-neutral weak-word/sensory set (extended by the
+    brand's stored per-brand glossary when it has one) instead of Mộc
     Brew's coffee vocabulary. Empty = the default Mộc Brew path."""
     server_brand = not brand_id or brand_id == "moc-brew"
     # Load the server brand ONCE when its context is needed (perf P4:
@@ -1358,8 +1372,63 @@ def compare_brand_voice(pages_a: list[dict], pages_b: list[dict]) -> dict:
 _CONTEXT_PART_CAPS = {"persona": 8000, "brand_rules": 6000,
                       "craft_cards": 4000, "style_profile": 4000,
                       "facts_triggered": 3000, "depth_material": 6000,
-                      "exemplar": 3000,
+                      "exemplar": 3000, "geo_guidance": 2000,
                       "task": 1000, "post_history_reminder": 4000}
+
+# GEO writer guidance (specs/geo-feature.md): advisory instructions
+# for writing citable-by-AI prose, rendered as the `geo_guidance`
+# context part when the caller opts in. Static text on purpose — the
+# moves do not depend on the brand, and a static part keeps every
+# non-opted-in context byte-identical to before.
+_GEO_GUIDANCE_TEXT = (
+    "GEO — viết để máy trả lời AI (ChatGPT, Gemini, Perplexity, AI "
+    "Overview) trích dẫn được (hướng dẫn advisory, không phải luật "
+    "của brand):\n"
+    "- Trả lời thẳng câu hỏi chính trong 1–2 câu đầu, nêu rõ chủ đề "
+    "và một sự thật cụ thể.\n"
+    "- Mỗi section có ít nhất một câu sự thật tự chứa: chủ thể + một "
+    "con số hoặc một định nghĩa, đọc riêng vẫn hiểu.\n"
+    "- Mọi số liệu kèm nguồn (theo …, tên tổ chức, hoặc link) — số "
+    "không nguồn ít khi được trích.\n"
+    "- Định nghĩa chủ đề một lần theo mẫu 'X là …' ở phần đầu bài.\n"
+    "- Dùng tiêu đề dạng câu hỏi khi tự nhiên; cuối bài cân nhắc một "
+    "mục Hỏi đáp ngắn với các câu khách hay hỏi."
+)
+
+# Shopping/recipe pattern block (daily proposal 2, 2026-11-28,
+# Smith-approved scope): question-shaped section headings + a closing
+# FAQ, prescribed ONLY for shopping/recipe pieces. Narrative essays
+# (tản văn — e.g. the mùa nước nổi piece) do NOT get it: forcing
+# question headings and an FAQ onto a literary essay would fight the
+# approved voice for zero citability gain. The scoping uses the two
+# signals the core already carries — the brief's FORMAT (the core's
+# commercial formats are product/comparison) and the brief's INTENT
+# (the same free signal craft-card retrieval matches on; "_" and
+# spaces normalise to "-"). A blog essay carries neither signal, so
+# it receives the base guidance only. Documented in
+# specs/geo-feature.md §7.
+_GEO_SHOPPING_FORMATS = {"product", "comparison"}
+_GEO_SHOPPING_INTENTS = {"recipe", "buying-guide", "shopping", "how-to"}
+_GEO_GUIDANCE_SHOPPING_TEXT = (
+    "Pattern riêng cho bài mua sắm/công thức (GEO, không áp cho bài "
+    "tản văn/kể chuyện):\n"
+    "- Đặt tiêu đề các mục chính dạng câu hỏi khách hay hỏi thật "
+    "(ví dụ: 'Mắm cá lóc giá bao nhiêu?', 'Chưng mắm cá lóc mất "
+    "bao lâu?').\n"
+    "- Cuối bài thêm một mục Hỏi đáp: 2–4 câu hỏi khách hay hỏi, "
+    "mỗi câu trả lời bằng 1–3 câu tự chứa kèm sự thật cụ thể."
+)
+
+
+def _geo_shopping_patterns(fmt: str, brief: dict) -> list[str]:
+    """The GEO pattern names a brief is scoped into (see the note
+    above): ["question_headings", "faq_closing"] for shopping/recipe
+    briefs, [] for everything else."""
+    intent = str(brief.get("intent", "") or "").strip().lower()
+    intent = intent.replace("_", "-").replace(" ", "-")
+    if fmt in _GEO_SHOPPING_FORMATS or intent in _GEO_SHOPPING_INTENTS:
+        return ["question_headings", "faq_closing"]
+    return []
 _MAX_BRAND_EXAMPLES = 8   # few-shot examples rendered into brand_rules
 _MAX_FACT_ENTRIES = 12    # lorebook entries rendered into facts_triggered
 _MAX_EXEMPLARS = 2        # passages rendered into the exemplar part
@@ -1377,7 +1446,8 @@ def _cap_part(text: str, cap: int, part: str, truncated: list[str]) -> str:
 
 @mcp.tool()
 def assemble_context(brief: dict, format: str | None = None,
-                     style_profile_id: str | None = None) -> dict:
+                     style_profile_id: str | None = None,
+                     geo_guidance: bool = False) -> dict:
     """Assemble the ordered prompt context the writing model must follow.
 
     Order: 1 persona → 2 brand rules → 3 craft cards (Layer 4, triggered for
@@ -1396,6 +1466,22 @@ def assemble_context(brief: dict, format: str | None = None,
     before. Brands without applied items get no part and a context
     identical to before; the result then carries a `depth_material`
     metadata block ({applied_items, fact_items, source_excerpts}).
+
+    GEO GUIDANCE (specs/geo-feature.md): with `geo_guidance=True`
+    (or a brief carrying "geo": true), a `geo_guidance` part is
+    inserted after the exemplar, before the task: advisory
+    instructions for writing prose AI answer engines can extract
+    and cite (answer-first opening, one quotable fact per section,
+    question headings where natural, sources for statistics, one
+    explicit definition). Without the opt-in the context is exactly
+    as before — the part is absent and no metadata key appears.
+    SHOPPING/RECIPE SCOPING (2026-11-28): for shopping/recipe
+    briefs only — format product/comparison, or intent recipe /
+    buying-guide / shopping / how-to — the part gains a pattern
+    block prescribing question-shaped section headings and a
+    closing FAQ, and the metadata's `patterns` names them
+    (["question_headings", "faq_closing"]); narrative essays get
+    the base guidance with `patterns` empty.
 
     The response carries the rendered `context_text` (the single
     representation of the content) + lightweight metadata: `counts`
@@ -1552,8 +1638,16 @@ def assemble_context(brief: dict, format: str | None = None,
     parts.append(("facts_triggered", facts_text))
     if depth is not None:
         parts.append(("depth_material", depth["text"]))
-    parts += [("exemplar", exemplar_text),
-              ("task", task_text), ("post_history_reminder", reminder)]
+    parts.append(("exemplar", exemplar_text))
+    geo_enabled = bool(geo_guidance or brief.get("geo"))
+    geo_patterns: list[str] = []
+    if geo_enabled:
+        geo_text = _GEO_GUIDANCE_TEXT
+        geo_patterns = _geo_shopping_patterns(fmt, brief)
+        if geo_patterns:
+            geo_text += "\n" + _GEO_GUIDANCE_SHOPPING_TEXT
+        parts.append(("geo_guidance", geo_text))
+    parts += [("task", task_text), ("post_history_reminder", reminder)]
     truncated_parts: list[str] = []
     parts = [(name, _cap_part(content, _CONTEXT_PART_CAPS[name], name,
                               truncated_parts))
@@ -1584,6 +1678,10 @@ def assemble_context(brief: dict, format: str | None = None,
             "source_excerpts": depth["source_excerpts"]}
     if depth_error:
         result["depth_material_error"] = depth_error
+    if geo_enabled:
+        result["geo_guidance"] = {"enabled": True,
+                                  "version": _geo.GEO_VERSION,
+                                  "patterns": geo_patterns}
     return result
 
 
@@ -2057,6 +2155,89 @@ def record_vision_check(draft_id: str, image_id: str, content_grade: int,
         return {"error": str(exc), "draft_id": draft_id}
     return {"draft_id": draft_id, "image_id": image_id,
             "vision_check": entry["vision_check"]}
+
+
+# ---------------------------------------------------------------------------
+# Tools — GEO layer (specs/geo-feature.md): advisory citability checks
+# for AI answer engines. Same split as the image layer: the core runs
+# the deterministic checks and keeps the records; the host model
+# supplies the judged layer. Nothing here enters final_gate's verdict.
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def check_geo(draft_id: str) -> dict:
+    """Deterministic GEO checker for a stored draft: eight checks on
+    whether AI answer engines (ChatGPT, Gemini, Perplexity, AI
+    Overview) can extract and cite the article — answer-first
+    opening, quotable self-contained facts, fact density, statistics
+    carrying a source, an explicit definition of the topic,
+    question-shaped headings, extractable structure, an FAQ block.
+    Checks that cannot judge this draft are EXCLUDED and the weights
+    renormalise (never a default 0). The report — per-check
+    {status, score, evidence, suggestion}, the overall geo_score,
+    and a per-section fix list — is stored on the draft (any earlier
+    judgement is preserved) and returned. ADVISORY: this never
+    changes final_gate's verdict or any quality axis; the weights
+    are provisional v1 values (see the report's weights_status)."""
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            report = _geo.check_geo(_sections_of(draft),
+                                    draft.get("brief", {}))
+            report["checked_at"] = datetime.now(timezone.utc).isoformat(
+                timespec="seconds")
+            state = draft.get("geo")
+            if not isinstance(state, dict):
+                state = {}
+            state["report"] = report
+            draft["geo"] = state
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {**report, "draft_id": draft_id}
+
+
+@mcp.tool()
+def record_geo_judgement(draft_id: str, grades: dict,
+                         issues: list[str] | None = None) -> dict:
+    """Record YOUR judgement of a draft's citability — the judged
+    layer for GEO (the core counts surface signals; only a reader
+    can judge whether the answer is actually good). Read the draft
+    first, then grade each dimension 0/1/2: `citability` (does the
+    article contain statements an AI could lift verbatim?),
+    `answer_clarity` (is the main answer direct, not buried?),
+    `self_contained` (do the blocks stand alone without the text
+    before them?). `issues` picks from a fixed vocabulary
+    (buried_answer, vague_claims, missing_context,
+    jargon_unexplained, not_self_contained, no_citable_fact,
+    structure_hard_to_extract). A grade of 0 is a hard flag INSIDE
+    the GEO report only — it never blocks the gate. Requires a
+    stored GEO report: call check_geo first."""
+    try:
+        judgement = _geo.validate_geo_judgement(grades, issues)
+    except ValueError as exc:
+        return {"error": str(exc), "draft_id": draft_id}
+    try:
+        with _draft_lock(draft_id):
+            draft, error = _load_draft_or_error(draft_id)
+            if error:
+                return error
+            state = draft.get("geo")
+            if not isinstance(state, dict) \
+                    or not isinstance(state.get("report"), dict):
+                return {"error": "draft has no GEO report — call "
+                                 "check_geo first",
+                        "draft_id": draft_id}
+            judgement["judged_at"] = datetime.now(timezone.utc).isoformat(
+                timespec="seconds")
+            state["judgement"] = judgement
+            draft["geo"] = state
+            _store_draft(draft)
+    except ValueError as exc:  # lock timeout / invalid draft id
+        return {"error": str(exc), "draft_id": draft_id}
+    return {"draft_id": draft_id, "judgement": judgement}
 
 
 @mcp.tool()
@@ -2968,7 +3149,9 @@ def check_draft_all(draft_id: str, judged_scores: dict | None = None,
     _precomputed reuse the gate itself uses (review M4) — so every
     number here is exactly what the individual tool (or final_gate)
     reports for the same draft. It changes NO state: no gate history,
-    no verdict — final_gate remains the only verdict.
+    no verdict — final_gate remains the only verdict. When the draft
+    carries a stored GEO report (check_geo), the result gains ONE
+    additive `geo` summary field; every other field is unchanged.
 
     Returns {brand, fact, craft, style, quality, draft_id} where each
     sub-report mirrors the corresponding tool's shape: brand =
@@ -3019,7 +3202,7 @@ def check_draft_all(draft_id: str, judged_scores: dict | None = None,
     except ValueError as exc:
         return {"error": str(exc), "draft_id": draft_id}
     resolved_id = brand.get("brand", {}).get("id", "")
-    return {
+    result = {
         "brand": {"score": brand_score, "violations": violations,
                   "failing_sections": lint_failing, "brand_id": resolved_id,
                   "banned_found": [v["detail"] for v in violations
@@ -3033,6 +3216,13 @@ def check_draft_all(draft_id: str, judged_scores: dict | None = None,
                         resolved_id, facts)},
         "draft_id": draft_id,
     }
+    # GEO summary — ADDITIVE only (specs/geo-feature.md): present
+    # exactly when the draft carries a stored GEO report, and no
+    # existing field above changes shape or value either way.
+    geo_summary = _geo.geo_summary(draft.get("geo"))
+    if geo_summary is not None:
+        result["geo"] = geo_summary
+    return result
 
 
 @mcp.tool()

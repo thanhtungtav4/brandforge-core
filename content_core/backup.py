@@ -61,6 +61,7 @@ def _store_sources() -> list[tuple[str, Path, bool]]:
         ("brand_files", data, False),          # brand_*.yaml (globbed)
         ("core_data_files", data, False),      # shipped JSON (globbed)
         ("brand_drafts", loaders.brand_drafts_dir(), False),
+        ("glossaries", loaders.glossaries_dir(), False),
         ("facts_profiles", loaders.facts_profiles_dir(), False),
         ("style_profiles", loaders.style_profiles_dir(), False),
         ("quality_profiles", loaders.quality_profiles_dir(), False),

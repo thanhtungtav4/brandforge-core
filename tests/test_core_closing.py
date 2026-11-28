@@ -401,13 +401,56 @@ def test_shipped_cnm_facts_profile_resolves():
     # 169.000đ bag now, and drip-bag coffee 119.000đ is new.
     # Hạt mix 219.000đ (500g bag) added later on 23 Nov 2026 from the
     # same live listing, under Smith's delegation of Brandforge calls.
-    assert set(facts["facts"]["known_prices_vnd"]) == {169000, 119000, 219000}
+    # Expanded 24 Nov 2026 (Smith-approved daily-digest proposal 1):
+    # the remaining seven shop lines (almond, macca, two dried mango,
+    # jackfruit, banana, sweet potato) added with prices re-verified
+    # live that morning — see test_shipped_cnm_facts_cover_all_products.
+    assert set(facts["facts"]["known_prices_vnd"]) == {
+        169000, 119000, 219000, 260000, 270000, 90000, 170000, 80000, 150000}
     assert 359000 not in facts["facts"]["known_prices_vnd"]
     assert 179000 not in facts["facts"]["known_prices_vnd"]
     # The calibration never verified delivery or roast day for CNM:
     # absent, so those checks skip rather than borrow Mộc Brew's.
     assert "delivery_days" not in facts["facts"]
     assert "roast_weekday" not in facts["facts"]
+
+
+def test_shipped_cnm_facts_cover_all_products():
+    # 24 Nov 2026 (Smith-approved daily-digest proposal 1): the seven
+    # remaining shop lines were added with prices re-verified live on
+    # caonguyenmoc.vn that morning — all sold as 500g bags, which is
+    # also why pack_weights_g KEEPS [250, 500]: only the COFFEE 500g
+    # pack disappeared; cashew, hạt mix and every dried line are still
+    # 500g bags, so dropping 500 would false-flag legitimate mentions.
+    facts = load_facts("cao-nguyen-moc")
+    by_id = {e["id"]: e["content"] for e in facts["entries"]}
+    for entry_id, price in (("almond", "260.000đ"), ("macca", "270.000đ"),
+                            ("mango_plain", "90.000đ"),
+                            ("mango_chili", "90.000đ"),
+                            ("jackfruit", "170.000đ"), ("banana", "80.000đ"),
+                            ("sweet_potato", "150.000đ")):
+        assert entry_id in by_id, entry_id
+        assert price in by_id[entry_id], entry_id
+        assert "500g" in by_id[entry_id], entry_id
+    assert facts["facts"]["pack_weights_g"] == [250, 500]
+
+
+def test_cnm_new_product_prices_clean_and_wrong_price_flags():
+    facts = load_facts("cao-nguyen-moc")
+    clean = ("Hạnh nhân sấy 260.000đ, nhân macca 270.000đ, xoài sấy nguyên "
+             "vị 90.000đ, xoài sấy muối ớt 90.000đ, mít sấy 170.000đ, chuối "
+             "sấy 80.000đ, khoai sấy 150.000đ — tất cả đều túi 500g.")
+    issues, _, _ = check_draft([{"id": "s1", "text": clean}], facts, CNM_BRAND)
+    assert "wrong_price" not in {i["type"] for i in issues}
+    assert "unknown_weight" not in {i["type"] for i in issues}
+    wrong = "Hạnh nhân sấy ở đây chỉ 200.000đ một túi."
+    issues, _, _ = check_draft([{"id": "s1", "text": wrong}], facts, CNM_BRAND)
+    assert "wrong_price" in {i["type"] for i in issues}
+    # Controls from the 23 Nov refresh stay clean.
+    controls = ("Cà phê 89.000đ gói 250g, hạt điều 169.000đ, cà phê túi "
+                "lọc 119.000đ, hạt mix 219.000đ.")
+    issues, _, _ = check_draft([{"id": "s1", "text": controls}], facts, CNM_BRAND)
+    assert "wrong_price" not in {i["type"] for i in issues}
 
 
 def test_facts_save_load_roundtrip_and_validation(tmp_path, monkeypatch):

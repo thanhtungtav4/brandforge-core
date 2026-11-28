@@ -34,6 +34,7 @@ EXPECTED_TOOLS = {"get_persona", "get_brand", "research_facts", "assemble_contex
                   "get_facts", "save_facts",
                   "plan_images", "set_image", "image_check",
                   "record_vision_check", "get_image_manifest",
+                  "check_geo", "record_geo_judgement",
                   "add_library_image", "list_library_images",
                   "tag_library_image", "fulfil_images_from_library",
                   "add_image_candidate", "record_candidate_vetting",

@@ -648,6 +648,40 @@ def load_domain_glossary(path: Path | None = None) -> dict:
     return json.loads((path or DATA_DIR / "domain_glossary.json").read_text(encoding="utf-8"))
 
 
+# --- Per-brand glossaries (daily proposal 3, 2026-11-28) ---
+# The shipped domain_glossary.json above is MỘC BREW's own glossary;
+# every other brand used to fall back to craft.GENERIC_GLOSSARY (the
+# brand-neutral set, calibration F8 — whose note named per-brand
+# glossaries "the long-term answer"). A brand with a stored glossary
+# file now gets it MERGED over the generic set by
+# craft.resolve_glossary (the brand's groups/terms are added; the
+# generic weak words and sensory terms keep judging the brand).
+# Files live in data/glossaries/<brand-id>.json, the same
+# stored-per-brand pattern as facts_profiles; tests point
+# CONTENT_CORE_GLOSSARIES_DIR at a tmp dir.
+
+def glossaries_dir() -> Path:
+    override = os.environ.get("CONTENT_CORE_GLOSSARIES_DIR")
+    return Path(override) if override else DATA_DIR / "glossaries"
+
+
+def load_brand_glossary(brand_id: str | None) -> dict | None:
+    """The stored per-brand glossary for `brand_id`, or None when the
+    brand has none (the common case — resolution then falls back to
+    the generic set). An unparseable file raises ValueError: a corrupt
+    glossary must surface, never silently judge with another brand's
+    vocabulary."""
+    if not brand_id:
+        return None
+    path = glossaries_dir() / f"{stored_file_stem(brand_id)}.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"corrupt brand glossary {path.name}: {exc}") from exc
+
+
 # --- Style profiles (Style Extraction) ---
 # ALL file IO for style profiles lives HERE, in loaders.py — the same rule
 # the MCP server follows for drafts. content_core/style.py is pure

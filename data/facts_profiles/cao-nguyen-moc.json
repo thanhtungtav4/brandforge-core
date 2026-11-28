@@ -51,13 +51,81 @@
         "hạt mix",
         "mix"
       ]
+    },
+    {
+      "constant": false,
+      "id": "almond",
+      "content": "Hạnh nhân sấy: 260.000đ cho túi 500g.",
+      "keys": [
+        "hạnh nhân"
+      ]
+    },
+    {
+      "constant": false,
+      "id": "macca",
+      "content": "Nhân macca: 270.000đ cho túi 500g.",
+      "keys": [
+        "macca",
+        "nhân macca"
+      ]
+    },
+    {
+      "constant": false,
+      "id": "mango_plain",
+      "content": "Xoài sấy nguyên vị: 90.000đ cho túi 500g.",
+      "keys": [
+        "xoài sấy nguyên vị",
+        "xoài nguyên vị"
+      ]
+    },
+    {
+      "constant": false,
+      "id": "mango_chili",
+      "content": "Xoài sấy muối ớt: 90.000đ cho túi 500g.",
+      "keys": [
+        "xoài sấy muối ớt",
+        "muối ớt"
+      ]
+    },
+    {
+      "constant": false,
+      "id": "jackfruit",
+      "content": "Mít sấy: 170.000đ cho túi 500g.",
+      "keys": [
+        "mít sấy",
+        "mít"
+      ]
+    },
+    {
+      "constant": false,
+      "id": "banana",
+      "content": "Chuối sấy: 80.000đ cho túi 500g.",
+      "keys": [
+        "chuối sấy",
+        "chuối"
+      ]
+    },
+    {
+      "constant": false,
+      "id": "sweet_potato",
+      "content": "Khoai sấy: 150.000đ cho túi 500g.",
+      "keys": [
+        "khoai sấy",
+        "khoai lang"
+      ]
     }
   ],
   "facts": {
     "known_prices_vnd": [
-      169000,
+      80000,
+      90000,
       119000,
-      219000
+      150000,
+      169000,
+      170000,
+      219000,
+      260000,
+      270000
     ],
     "origins": [
       "Robusta Đức Cơ"
@@ -70,6 +138,6 @@
     "price_display": "89.000đ",
     "price_vnd_per_250g": 89000
   },
-  "note": "Per-brand fact base built from facts verified live on caonguyenmoc.vn. Updated 23 Nov 2026 from a live shop read that morning: coffee is now sold ONLY as the 250g bag at 89.000đ (the 500g 179.000đ and 1kg 359.000đ packs are no longer listed, so they were removed until the shop sells them again); cashew is now sold ONLY as the 500g bag at 169.000đ — the old blog number — so the blog-vs-shop contradiction recorded at calibration (shop 99/199/379k vs blog 94/169/339k) has resolved in favour of the blog and the old shop prices were removed; cà phê túi lọc (drip bag, box of 10 × 15g) at 119.000đ is new. Hạt mix (almond, macadamia and cashew blend) at 219.000đ for the 500g bag was added later the same day from the same live listing, under Smith's delegation of Brandforge decisions to Ember. No delivery_days and no roast_weekday: never verified for this brand, so those checks are skipped rather than judged against another brand's facts.",
+  "note": "Per-brand fact base built from facts verified live on caonguyenmoc.vn. Updated 23 Nov 2026 from a live shop read that morning: coffee is now sold ONLY as the 250g bag at 89.000đ (the 500g 179.000đ and 1kg 359.000đ packs are no longer listed, so they were removed until the shop sells them again); cashew is now sold ONLY as the 500g bag at 169.000đ — the old blog number — so the blog-vs-shop contradiction recorded at calibration (shop 99/199/379k vs blog 94/169/339k) has resolved in favour of the blog and the old shop prices were removed; cà phê túi lọc (drip bag, box of 10 × 15g) at 119.000đ is new. Hạt mix (almond, macadamia and cashew blend) at 219.000đ for the 500g bag was added later the same day from the same live listing, under Smith's delegation of Brandforge decisions to Ember. No delivery_days and no roast_weekday: never verified for this brand, so those checks are skipped rather than judged against another brand's facts. Expanded 24 Nov 2026 (Smith-approved daily-digest proposal 1) with the remaining seven shop lines, prices re-verified live on caonguyenmoc.vn that morning: hạnh nhân sấy 260.000đ, nhân macca 270.000đ, xoài sấy nguyên vị 90.000đ, xoài sấy muối ớt 90.000đ, mít sấy 170.000đ, chuối sấy 80.000đ, khoai sấy 150.000đ — all 500g bags; the profile now covers all 11 products the shop lists. pack_weights_g deliberately KEEPS [250, 500]: the 500g pack disappeared only for coffee — cashew, hạt mix and every nut/dried line are still sold as 500g bags, so removing 500 would false-flag legitimate mentions.",
   "simulated": false
 }

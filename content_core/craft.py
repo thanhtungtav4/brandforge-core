@@ -32,7 +32,8 @@ import statistics
 from functools import lru_cache as _lru_cache
 
 from .linter import fuzzy_phrase_spans, normalize_for_match, split_sentences
-from .loaders import load_craft_library, load_domain_glossary, load_exemplars
+from .loaders import (load_brand_glossary, load_craft_library,
+                      load_domain_glossary, load_exemplars)
 
 
 def _sentences(text: str) -> list[str]:
@@ -95,8 +96,11 @@ _SENSORY_FORMATS = {"product", "blog"}
 #   GENERIC_GLOSSARY below: a small, documented, brand-neutral
 #   Vietnamese set — cross-domain vague praise words (no ordinary
 #   vocabulary like "ngon") and broad sensory words any food/drink/
-#   product copy can use. Per-brand glossaries remain the long-term
-#   answer; the generic set is the honest fallback, not a new judge.
+#   product copy can use. Per-brand glossaries were the long-term
+#   answer and now exist (2026-11-28): a brand with a stored file in
+#   data/glossaries/ gets it merged OVER this generic set by
+#   resolve_glossary — the generic set stays the judging base and
+#   the honest fallback for brands without a file.
 
 GENERIC_WEAK_WORDS = [
     "tuyệt vời", "hoàn hảo", "xuất sắc", "đẳng cấp", "chất lượng cao",
@@ -122,17 +126,67 @@ GENERIC_GLOSSARY: dict = {
 }
 
 
+def _merge_brand_glossary(brand_glossary: dict) -> dict:
+    """GENERIC_GLOSSARY + one brand's stored glossary file (per-brand
+    glossaries, 2026-11-28): the brand file EXTENDS the generic set —
+    it never replaces it. Generic weak words and sensory terms keep
+    judging the brand (the F8 safety), the brand's groups are added
+    (a same-named group gains the brand's terms), its extra weak
+    words are appended (deduplicated by word) and its sensory groups
+    are unioned in. A group the brand file does NOT declare as
+    sensory stays plain vocabulary: it is returned by the glossary
+    lookups but never counts as sensory evidence, so adding a brand
+    glossary cannot move an existing craft score by itself."""
+    merged: dict = dict(GENERIC_GLOSSARY)
+    merged["brand_id"] = brand_glossary.get("brand_id")
+    merged["name"] = brand_glossary.get(
+        "name", GENERIC_GLOSSARY.get("name", ""))
+    merged["generic"] = False
+    merged["per_brand"] = True
+    groups: dict = {}
+    for key, group in GENERIC_GLOSSARY.get("groups", {}).items():
+        groups[key] = {"label_vi": group.get("label_vi", ""),
+                       "terms": list(group.get("terms", []))}
+    for key, group in brand_glossary.get("groups", {}).items():
+        if key in groups:
+            groups[key]["terms"] = (groups[key]["terms"]
+                                    + list(group.get("terms", [])))
+            groups[key]["label_vi"] = (group.get("label_vi")
+                                       or groups[key]["label_vi"])
+        else:
+            groups[key] = {"label_vi": group.get("label_vi", ""),
+                           "terms": list(group.get("terms", []))}
+    merged["groups"] = groups
+    weak = list(GENERIC_GLOSSARY.get("weak_words", []))
+    seen = {str(w.get("word", "")).lower() for w in weak}
+    for entry in brand_glossary.get("weak_words", []):
+        if str(entry.get("word", "")).lower() not in seen:
+            weak.append(entry)
+            seen.add(str(entry.get("word", "")).lower())
+    merged["weak_words"] = weak
+    sensory = list(GENERIC_GLOSSARY.get("sensory_groups", []))
+    for key in brand_glossary.get("sensory_groups", []):
+        if key not in sensory:
+            sensory.append(key)
+    merged["sensory_groups"] = sensory
+    return merged
+
+
 def resolve_glossary(glossary: dict | None = None,
                      brand_id: str | None = None) -> dict:
     """Pick the glossary a craft check judges with (see F8 note above):
     explicit glossary > per-brand rule (the shipped glossary only for
-    its own brand; GENERIC_GLOSSARY for any other brand) > shipped
-    glossary (the default Mộc Brew path)."""
+    its own brand; a brand with a stored per-brand glossary file gets
+    that file merged over GENERIC_GLOSSARY; any other brand gets
+    GENERIC_GLOSSARY) > shipped glossary (the default Mộc Brew path)."""
     if glossary is not None:
         return glossary
     if brand_id:
         shipped = load_domain_glossary()
         if brand_id != shipped.get("brand_id"):
+            brand_glossary = load_brand_glossary(brand_id)
+            if brand_glossary is not None:
+                return _merge_brand_glossary(brand_glossary)
             return GENERIC_GLOSSARY
         return shipped
     return load_domain_glossary()
@@ -469,8 +523,9 @@ def craft_check(text: str, fmt: str = "blog", glossary: dict | None = None,
     The weak-word and sensory vocabularies come from the ACTIVE
     glossary (resolve_glossary): an explicit `glossary` wins; a
     `brand_id` other than the shipped glossary's own brand judges with
-    the generic brand-neutral set; the default (neither given) is the
-    shipped Mộc Brew glossary — the path the golden sets pin.
+    the generic brand-neutral set, extended by the brand's stored
+    per-brand glossary when it has one; the default (neither given)
+    is the shipped Mộc Brew glossary — the path the golden sets pin.
 
     Too-short guard: text under MIN_WORDS_TO_JUDGE words is not judged
     at all — it returns score 0 with a too_short_to_judge violation.

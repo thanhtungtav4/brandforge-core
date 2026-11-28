@@ -242,9 +242,10 @@ def test_mcp_tool_list_now_29():
     # and the CRUD-completion round added the 9 persona/delete
     # tools plus create_brand_draft (the document-store path the
     # manual brand creation needed — save_brand_draft is the
-    # site builder, not a document store): 106.)
+    # site builder, not a document store), and the GEO round
+    # added check_geo + record_geo_judgement: 108.)
     assert EXPECTED_NEW_TOOLS <= set(srv.TOOL_NAMES)
-    assert len(srv.TOOL_NAMES) == 106
+    assert len(srv.TOOL_NAMES) == 108
     for name in EXPECTED_NEW_TOOLS:
         assert callable(getattr(srv, name)), name
 
